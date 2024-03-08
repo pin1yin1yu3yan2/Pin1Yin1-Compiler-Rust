@@ -1,42 +1,13 @@
 use crate::{
     error::{Error, ParseResult},
     parse_unit::ParseUnit,
-    tokens::Token,
+    tokens::{Location, Selection, Token},
 };
 
 #[derive(Debug, Clone, Copy)]
-pub struct Location<'s> {
-    src: &'s [char],
-    idx: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Selection<'s> {
-    selections: &'s [char],
-}
-
-impl Selection<'_> {
-    pub fn new(selections: &[char]) -> Selection<'_> {
-        Selection { selections }
-    }
-
-    pub fn from_parser<'s>(parser: &Parser<'s>, start: Location) -> Selection<'s> {
-        Selection::new(&parser.src[start.idx..parser.idx])
-    }
-}
-
-impl std::ops::Deref for Selection<'_> {
-    type Target = [char];
-
-    fn deref(&self) -> &Self::Target {
-        self.selections
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct Parser<'s> {
-    src: &'s [char],
-    idx: usize,
+    pub(crate) src: &'s [char],
+    pub(crate) idx: usize,
 }
 
 impl Iterator for Parser<'_> {
@@ -65,10 +36,7 @@ impl<'s> Parser<'s> {
     }
 
     pub fn get_location(&self) -> Location<'s> {
-        Location {
-            src: self.src,
-            idx: self.idx,
-        }
+        Location::new(self.src, self.idx)
     }
 
     pub fn r#try<F, P>(&mut self, p: F) -> Try<'_, 's, P>

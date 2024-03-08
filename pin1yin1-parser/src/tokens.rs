@@ -1,9 +1,53 @@
-use crate::{
-    error::Result,
-    parse_unit::ParseUnit,
-    parser::{Location, Selection, Selector},
-};
-use std::{collections::HashMap, fmt::Debug};
+use crate::{parse_unit::ParseUnit, parser::Parser};
+use std::fmt::Debug;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Location<'s> {
+    src: &'s [char],
+    idx: usize,
+}
+
+impl<'s> Location<'s> {
+    pub fn new(src: &'s [char], idx: usize) -> Self {
+        Self { src, idx }
+    }
+
+    pub fn backtrace_line(&self) -> (usize, String) {
+        let new_lines = (0..self.idx).filter(|idx| self.src[*idx] == '\n').count();
+        let left = (0..self.idx)
+            .rev()
+            .find(|idx| self.src[*idx] == '\n')
+            .unwrap_or(0);
+        let right = (self.idx..self.src.len())
+            .find(|idx| self.src[*idx] == '\n')
+            .unwrap_or(self.src.len());
+
+        (new_lines, self.src[left + 1..right].iter().collect())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Selection<'s> {
+    selections: &'s [char],
+}
+
+impl Selection<'_> {
+    pub fn new(selections: &[char]) -> Selection<'_> {
+        Selection { selections }
+    }
+
+    pub fn from_parser<'s>(parser: &Parser<'s>, start: Location) -> Selection<'s> {
+        Selection::new(&parser.src[start.idx..parser.idx])
+    }
+}
+
+impl std::ops::Deref for Selection<'_> {
+    type Target = [char];
+
+    fn deref(&self) -> &Self::Target {
+        self.selections
+    }
+}
 
 pub struct Token<'s, P: ParseUnit> {
     location: Location<'s>,
@@ -61,59 +105,4 @@ impl<P: ParseUnit> std::ops::DerefMut for Token<'_, P> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
-}
-
-macro_rules! keywords {
-    (keywords $enum_name:ident{ $($string:literal -> $var:ident),*}) => {
-        #[derive(Debug, Clone, Copy)]
-        pub enum $enum_name {
-            $(
-                $var,
-            )*
-        }
-
-        impl ParseUnit for $enum_name {
-            type Target<'t> = $enum_name;
-            fn select(selector: &mut Selector) {
-                String::select(selector)
-            }
-            fn generate(selection: Selection) -> Result<'_, Self::Target<'_>> {
-                lazy_static::lazy_static! {
-                    static ref MAP: HashMap<&'static str,$enum_name> = {
-                        let mut _map = HashMap::new();
-                        $(
-                            _map.insert($string, $enum_name::$var);
-                        )*
-                        _map
-                    };
-                }
-                let str: &str= &String::generate(selection)?;
-                MAP.get(str).copied().ok_or(None)
-            }
-            // fn select<'s>(p: &mut Parser<'s>) -> ParseResult<'s,Self> {
-
-
-
-            // }
-        }
-    };
-}
-
-keywords! {
-    keywords PrimitiveTypes {
-        "zheng3" -> Integer,
-        "fu2" -> Float,
-        "zi4" -> Char,
-        "bu4" -> Bool,
-        "xu1" -> Complex
-    }
-}
-
-#[test]
-fn feature() {
-    let chars = "zheng3 xu1".chars().collect::<Vec<_>>();
-    let mut parser = crate::parser::Parser::new(&chars);
-
-    dbg!(PrimitiveTypes::parse(&mut parser)).ok();
-    dbg!(PrimitiveTypes::parse(&mut parser)).ok();
 }

@@ -2,8 +2,8 @@ use std::any::Any;
 
 use crate::{
     error::{ParseResult, Result},
-    parser::{Parser, Selection, Selector},
-    tokens::Token,
+    parser::{Parser, Selector},
+    tokens::{Selection, Token},
 };
 
 pub trait ParseUnit: Any {
