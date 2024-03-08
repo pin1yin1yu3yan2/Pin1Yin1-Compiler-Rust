@@ -104,16 +104,16 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
 
 pub struct Selector<'s> {
     parser: Parser<'s>,
-    pub(crate) location: Option<Location<'s>>,
-    pub(crate) selection: Option<Selection<'s>>,
+    pub(crate) location: Vec<Location<'s>>,
+    pub(crate) selection: Vec<Selection<'s>>,
 }
 
 impl Selector<'_> {
     pub fn new(parser: Parser) -> Selector<'_> {
         Selector {
             parser,
-            location: None,
-            selection: None,
+            location: vec![],
+            selection: vec![],
         }
     }
 
@@ -149,13 +149,10 @@ impl Selector<'_> {
     where
         Rule: Fn(char) -> bool,
     {
-        if self.location.is_some() {
-            return;
-        }
-
         let location = self.parser.get_location();
         self.skip_while(rule);
-        self.location = Some(location);
-        self.selection = Some(Selection::from_parser(&self.parser, location));
+        self.location.push(location);
+        self.selection
+            .push(Selection::from_parser(&self.parser, location));
     }
 }

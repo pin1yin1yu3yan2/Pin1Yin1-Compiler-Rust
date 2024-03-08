@@ -1,32 +1,66 @@
-use std::any::Any;
-
 use crate::{
     error::{ParseResult, Result},
     parser::{Parser, Selector},
     tokens::{Selection, Token},
 };
 
-pub trait ParseUnit: Any {
+pub struct Selections<'s> {
+    pub sum: Selection<'s>,
+    subs: Vec<Selection<'s>>,
+}
+
+impl<'s> Selections<'s> {
+    pub fn new(sum: Selection<'s>, subs: Vec<Selection<'s>>) -> Self {
+        Self { sum, subs }
+    }
+
+    pub fn len(&self) -> usize {
+        self.sum.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.sum.is_empty()
+    }
+
+    pub fn throw(&self, reason: impl Into<String>) -> Result<'s, ()> {
+        self.sum.throw(reason)
+    }
+}
+
+impl<'s> std::ops::Index<usize> for Selections<'s> {
+    type Output = Selection<'s>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.subs[index]
+    }
+}
+
+pub trait ParseUnit {
     type Target<'t>;
 
     fn select(selector: &mut Selector);
 
-    fn generate(selection: Selection) -> Result<'_, Self::Target<'_>>;
+    fn generate<'s>(selections: &Selections<'s>) -> Result<'s, Self::Target<'s>>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self>
     where
         Self: Sized,
     {
         let selector = p.select(Self::select);
-        let selection = selector.selection.unwrap_or_else(|| {
+        let location = *selector.location.first().unwrap_or_else(|| {
             panic!(
                 "{} selected nothing!",
                 std::any::type_name_of_val(&Self::select)
             )
         });
-        let location = selector.location.unwrap();
-        let target = Self::generate(selection)?;
-        Ok(Token::new(location, selection, target))
+        let selections = Selections::new(
+            Selection::new(location, selector.selection.last().unwrap().len()),
+            selector.selection,
+        );
+
+        let target = Self::generate(&selections)?;
+
+        Ok(Token::new(selections.sum, target))
     }
 }
 
@@ -39,8 +73,8 @@ impl ParseUnit for String {
             .take_while(|s| s.is_ascii_alphanumeric())
     }
 
-    fn generate(selection: Selection) -> Result<'_, Self::Target<'_>> {
-        Ok(selection.iter().collect())
+    fn generate<'s>(selection: &Selections<'s>) -> Result<'s, Self::Target<'s>> {
+        Ok(selection.sum.iter().collect())
     }
 }
 
@@ -53,8 +87,9 @@ impl ParseUnit for usize {
             .take_while(|c| c.is_ascii_digit())
     }
 
-    fn generate(selection: Selection) -> Result<'_, Self::Target<'_>> {
+    fn generate<'s>(selection: &Selections<'s>) -> Result<'s, Self::Target<'s>> {
         Ok(selection
+            .sum
             .iter()
             .rev()
             .enumerate()

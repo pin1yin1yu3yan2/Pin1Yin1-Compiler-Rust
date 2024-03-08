@@ -1,5 +1,6 @@
 pub mod keywords;
 pub mod macros;
+pub mod syntax;
 
 #[cfg(test)]
 mod tests {

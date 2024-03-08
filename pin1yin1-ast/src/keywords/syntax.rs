@@ -7,7 +7,7 @@ keywords! {
         "lian2"    -> Union,
         "jie2gou4" -> Struct
     }
-    keywords Symbols {
+    keywords Symbol {
         "han2"  -> Block,
         "can1"  -> Parameter,
         "zhu4"  -> Commnet,

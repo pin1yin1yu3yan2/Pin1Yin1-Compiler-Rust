@@ -8,7 +8,7 @@ macro_rules! keywords {
         ),*}
     )*) => {
         $(
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum $enum_name {
             $(
                 $var,
@@ -20,7 +20,7 @@ macro_rules! keywords {
             fn select(selector: &mut pin1yin1_parser::Selector) {
                 String::select(selector)
             }
-            fn generate(selection: pin1yin1_parser::Selection) -> pin1yin1_parser::Result<'_, Self::Target<'_>> {
+            fn generate<'s>(selection: &pin1yin1_parser::Selections<'s>) -> pin1yin1_parser::Result<'s, Self::Target<'s>> {
                 use std::collections::HashMap;
                 lazy_static::lazy_static! {
                     static ref MAP: HashMap<&'static str,$enum_name> = {
