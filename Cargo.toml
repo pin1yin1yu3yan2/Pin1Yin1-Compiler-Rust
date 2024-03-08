@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["pin1yin1-compiler", "pin1yin1-parser"]
+
+[profile.release]
+lto = true
+strip = true
