@@ -117,18 +117,31 @@ impl Selector<'_> {
         }
     }
 
-    pub fn skip_whitespace(&mut self) -> &mut Self {
-        self.skip_while(|c| c.is_ascii_whitespace());
-        self
+    pub fn peek(&self) -> Option<char> {
+        self.parser.peek()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> Option<char> {
+        self.parser.next()
+    }
+
+    pub fn next_back(&mut self) -> Option<char> {
+        self.parser.next_back()
     }
 
     pub fn skip_while<Rule>(&mut self, rule: Rule) -> &mut Self
     where
         Rule: Fn(char) -> bool,
     {
-        while self.parser.peek().is_some_and(&rule) {
-            self.parser.next();
+        while self.peek().is_some_and(&rule) {
+            self.next();
         }
+        self
+    }
+
+    pub fn skip_whitespace(&mut self) -> &mut Self {
+        self.skip_while(|c| c.is_ascii_whitespace());
         self
     }
 

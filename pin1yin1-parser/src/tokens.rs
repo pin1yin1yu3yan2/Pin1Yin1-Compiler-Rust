@@ -17,12 +17,13 @@ impl<'s> Location<'s> {
         let left = (0..self.idx)
             .rev()
             .find(|idx| self.src[*idx] == '\n')
+            .map(|idx| idx + 1)
             .unwrap_or(0);
         let right = (self.idx..self.src.len())
             .find(|idx| self.src[*idx] == '\n')
             .unwrap_or(self.src.len());
 
-        (new_lines, self.src[left + 1..right].iter().collect())
+        (new_lines + 1, self.src[left..right].iter().collect())
     }
 }
 
@@ -62,6 +63,10 @@ impl<'s, P: ParseUnit> Token<'s, P> {
             selection,
             inner,
         }
+    }
+
+    pub fn location(&self) -> Location<'_> {
+        self.location
     }
 }
 
