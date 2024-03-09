@@ -2,53 +2,15 @@ use crate::*;
 use std::fmt::Debug;
 
 #[derive(Debug, Clone, Copy)]
-pub struct Location<'s> {
-    pub src: &'s [char],
-    pub idx: usize,
-}
-
-impl<'s> Location<'s> {
-    pub fn new(src: &'s [char], idx: usize) -> Self {
-        Self { src, idx }
-    }
-
-    pub fn backtrace_line(&self) -> (usize, String) {
-        let new_lines = (0..self.idx).filter(|idx| self.src[*idx] == '\n').count();
-        let left = (0..self.idx)
-            .rev()
-            .find(|idx| self.src[*idx] == '\n')
-            .map(|idx| idx + 1)
-            .unwrap_or(0);
-        let right = (self.idx..self.src.len())
-            .find(|idx| self.src[*idx] == '\n')
-            .unwrap_or(self.src.len());
-
-        (new_lines + 1, self.src[left..right].iter().collect())
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
 pub struct Selection<'s> {
-    src: &'s [char],
-    start: usize,
-    len: usize,
+    pub(crate) src: &'s [char],
+    pub(crate) start: usize,
+    pub(crate) len: usize,
 }
 
 impl<'s> Selection<'s> {
-    pub fn new(location: Location, len: usize) -> Selection<'_> {
-        Selection {
-            src: location.src,
-            start: location.idx,
-            len,
-        }
-    }
-
-    pub fn from_parser(parser: &Parser, start: Location<'s>) -> Selection<'s> {
-        Selection::new(start, parser.idx - start.idx)
-    }
-
-    pub fn location(&self) -> Location<'_> {
-        Location::new(self.src, self.start)
+    pub fn new(src: &'s [char], start: usize, len: usize) -> Self {
+        Self { src, start, len }
     }
 
     pub fn len(&self) -> usize {
@@ -57,19 +19,6 @@ impl<'s> Selection<'s> {
 
     pub fn is_empty(&self) -> bool {
         self.len == 0
-    }
-
-    pub fn throw(&self, reason: impl Into<String>) -> Result<'s, ()> {
-        Err(Some(Error::new(*self, reason.into())))
-    }
-
-    /// its very ugly to use this method!
-    fn to_selections(self) -> Selections<'s> {
-        Selections::new(self, Vec::with_capacity(0))
-    }
-
-    pub fn parse<P: ParseUnit>(&self) -> ParseResult<'s, P> {
-        P::generate(&self.to_selections()).map(|target| Token::new(*self, target))
     }
 }
 
@@ -82,8 +31,8 @@ impl std::ops::Deref for Selection<'_> {
 }
 
 pub struct Token<'s, P: ParseUnit> {
-    selection: Selection<'s>,
-    target: P::Target<'s>,
+    pub(crate) selection: Selection<'s>,
+    pub(crate) target: P::Target<'s>,
 }
 
 impl<'s, P: ParseUnit> Token<'s, P> {
@@ -92,10 +41,6 @@ impl<'s, P: ParseUnit> Token<'s, P> {
             selection,
             target: inner,
         }
-    }
-
-    pub fn location(&self) -> Location<'_> {
-        Location::new(self.selection.src, self.selection.start)
     }
 }
 

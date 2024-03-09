@@ -81,10 +81,10 @@ keywords! {
         "you4yi2"     -> Shr
     }
     keywords SpecialOperator {
-    "qu3zhi3"   -> AddrOf,
-    "fang3zhi3" -> Deref,
-    "fang3su4"  -> GetElement,
-    "zhuan3"    -> Cast,
-    "chang2du4" -> SizeOf
+        "qu3zhi3"   -> AddrOf,
+        "fang3zhi3" -> Deref,
+        "fang3su4"  -> GetElement,
+        "zhuan3"    -> Cast,
+        "chang2du4" -> SizeOf
     }
 }

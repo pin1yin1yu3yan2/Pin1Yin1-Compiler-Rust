@@ -1,13 +1,15 @@
-use crate::{
-    error::{Error, ParseResult},
-    parse_unit::ParseUnit,
-    tokens::{Location, Selection, Token},
-};
+use crate::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Parser<'s> {
+    // src
     pub(crate) src: &'s [char],
     pub(crate) idx: usize,
+    // parse state
+    pub(crate) start_idx: usize,
+    // used to compute start_idx
+    pub(crate) tries: usize,
+    pub(crate) done_tries: usize,
 }
 
 impl Iterator for Parser<'_> {
@@ -32,102 +34,36 @@ impl DoubleEndedIterator for Parser<'_> {
 
 impl<'s> Parser<'s> {
     pub fn new(src: &[char]) -> Parser<'_> {
-        Parser { src, idx: 0 }
-    }
-
-    pub fn get_location(&self) -> Location<'s> {
-        Location::new(self.src, self.idx)
-    }
-
-    pub fn r#try<F, P>(&mut self, p: F) -> Try<'_, 's, P>
-    where
-        P: ParseUnit,
-        F: FnOnce(&mut Parser) -> ParseResult<'s, P>,
-    {
-        Try {
-            parser: self,
-            state: None,
+        Parser {
+            src,
+            idx: 0,
+            start_idx: 0,
+            tries: 0,
+            done_tries: 0,
         }
-        .or_try(p)
     }
 
     pub fn peek(&self) -> Option<char> {
         self.src.get(self.idx).copied()
     }
 
-    pub fn select<C>(&mut self, selector: C) -> Selector<'s>
-    where
-        C: FnOnce(&mut Selector),
-    {
-        let mut c = Selector::new(*self);
-        selector(&mut c);
-        *self = c.parser;
-        c
-    }
-}
-
-pub struct Try<'p, 's, P: ParseUnit> {
-    parser: &'p mut Parser<'s>,
-    state: Option<std::result::Result<Token<'s, P>, Error<'s>>>,
-}
-
-impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
-    pub fn or_try<F>(mut self, p: F) -> Self
+    pub fn r#try<'p, F, P>(&'p mut self, p: F) -> Try<'p, 's, P>
     where
         P: ParseUnit,
-        F: FnOnce(&mut Parser<'s>) -> ParseResult<'s, P>,
+        F: FnOnce(&mut Parser) -> ParseResult<'s, P>,
     {
-        if self.state.is_some() {
-            return self;
-        }
-
-        let mut tmp = *self.parser;
-
-        match p(&mut tmp) {
-            Ok(r) => self.state = Some(Ok(r)),
-            Err(opte) => {
-                if let Some(e) = opte {
-                    self.state = Some(Err(e))
-                }
-            }
-        }
-
-        self
+        Try::new(self).or_try(p)
     }
 
-    #[inline]
-    pub fn or_parse(self) -> Self {
-        let p = |p: &mut Parser<'s>| P::parse(p);
-        self.or_try(p)
-    }
-}
-
-pub struct Selector<'s> {
-    parser: Parser<'s>,
-    pub(crate) location: Vec<Location<'s>>,
-    pub(crate) selection: Vec<Selection<'s>>,
-}
-
-impl Selector<'_> {
-    pub fn new(parser: Parser) -> Selector<'_> {
-        Selector {
-            parser,
-            location: vec![],
-            selection: vec![],
-        }
+    pub fn parse<P: ParseUnit>(&mut self) -> ParseResult<'s, P> {
+        P::parse(self)
     }
 
-    pub fn peek(&self) -> Option<char> {
-        self.parser.peek()
-    }
-
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Option<char> {
-        self.parser.next()
-    }
-
-    pub fn next_back(&mut self) -> Option<char> {
-        self.parser.next_back()
+    pub fn try_parse<'p, P: ParseUnit>(&'p mut self) -> ParseResult<'s, P> {
+        Try::new(self)
+            .or_try(P::parse)
+            .or_error("no reason")
+            .finish()
     }
 
     pub fn skip_while<Rule>(&mut self, rule: Rule) -> &mut Self
@@ -145,14 +81,88 @@ impl Selector<'_> {
         self
     }
 
-    pub fn take_while<Rule>(&mut self, rule: Rule)
+    pub fn take_while<Rule>(&mut self, rule: Rule) -> &'s [char]
     where
         Rule: Fn(char) -> bool,
     {
-        let location = self.parser.get_location();
+        let start = self.idx;
         self.skip_while(rule);
-        self.location.push(location);
-        self.selection
-            .push(Selection::from_parser(&self.parser, location));
+        &self.src[start..self.idx]
+    }
+
+    pub fn selection(&self) -> Selection<'s> {
+        Selection::new(self.src, self.start_idx, self.idx - self.start_idx)
+    }
+
+    pub fn gen_token<P: ParseUnit>(&self, t: P::Target<'s>) -> Token<'s, P> {
+        Token::new(self.selection(), t)
+    }
+
+    pub fn finish<P: ParseUnit>(&self, t: P::Target<'s>) -> ParseResult<'s, P> {
+        Ok(self.gen_token(t))
+    }
+
+    pub fn gen_error(&mut self, reason: impl Into<String>) -> Error<'s> {
+        Error::new(self.selection(), reason.into())
+    }
+
+    pub fn throw(&mut self, reason: impl Into<String>) -> Result<'s, ()> {
+        Err(Some(self.gen_error(reason)))
+    }
+}
+
+pub struct Try<'p, 's, P: ParseUnit> {
+    parser: &'p mut Parser<'s>,
+    state: Option<std::result::Result<Token<'s, P>, Error<'s>>>,
+}
+
+impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
+    pub fn new(parser: &'p mut Parser<'s>) -> Self {
+        parser.tries += 1;
+        Self {
+            parser,
+            state: None,
+        }
+    }
+
+    pub fn or_try<P1, F>(mut self, p: F) -> Self
+    where
+        P1: ParseUnit<Target<'s> = P::Target<'s>>,
+        F: FnOnce(&mut Parser<'s>) -> ParseResult<'s, P1>,
+    {
+        if self.state.is_some() {
+            return self;
+        }
+
+        let mut tmp = *self.parser;
+        tmp.start_idx = tmp.idx;
+
+        match p(&mut tmp) {
+            Ok(r) => {
+                self.state = Some(Ok(Token::new(r.selection, r.target)));
+                if self.parser.done_tries != self.parser.tries {
+                    self.parser.start_idx = tmp.start_idx;
+                    self.parser.done_tries = self.parser.tries;
+                }
+            }
+            Err(opte) => {
+                if let Some(e) = opte {
+                    self.state = Some(Err(e))
+                }
+            }
+        }
+
+        self
+    }
+
+    pub fn or_error(mut self, reason: impl Into<String>) -> Self {
+        self.state = self
+            .state
+            .or_else(|| Some(Err(self.parser.gen_error(reason))));
+        self
+    }
+
+    pub fn finish(self) -> ParseResult<'s, P> {
+        self.state.expect("uncatched error").map_err(Some)
     }
 }

@@ -3,10 +3,10 @@ use crate::keywords;
 keywords! {
     keywords PrimitiveType {
         "zheng3" -> Integer,
-        "fu2" -> Float,
-        "zi4" -> Char,
-        "bu4" -> Bool,
-        "xu1" -> Complex
+        "fu2"    -> Float,
+        "zi4"    -> Char,
+        "bu4"    -> Bool,
+        "xu1"    -> Complex
     }
     keywords BasicExtenWord {
         "zu3"      -> Array,
