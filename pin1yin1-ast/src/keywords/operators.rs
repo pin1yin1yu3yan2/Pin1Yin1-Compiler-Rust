@@ -1,54 +1,8 @@
 use crate::keywords;
 
-/// however, there are **NO SYMBOL** in Pin1Yin1Yu3Yan2
-#[allow(unused_macros)]
-macro_rules! symbols {
-    (symbols $enum_name:ident {$($str:literal -> $name:ident),*}) => {
-        pub enum $enum_name {
-            $(
-                $name,
-            )*
-        }
-
-        impl std::str::FromStr for $enum_name {
-            type Err = ();
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s {
-                    $(
-                        $str => Ok($enum_name::$name),
-                    )*
-                    _ => Err(()),
-                }
-            }
-        }
-        impl ParseUnit for $enum_name {
-            type Target<'t> = $enum_name;
-
-            fn select(selector: &mut pin1yin1_parser::Selector) {
-                let mut str = String::new();
-                while selector.peek().is_some() {
-                    str.extend(selector.next());
-                    if str.parse::<$enum_name>().is_err() {
-                        str.pop();
-                        selector.next_back();
-                        return;
-                    }
-                }
-            }
-
-            fn generate(
-                selection: pin1yin1_parser::Selection,
-            ) -> pin1yin1_parser::Result<'_, Self::Target<'_>> {
-                selection
-                    .iter()
-                    .collect::<String>()
-                    .parse::<$enum_name>()
-                    .map_err(|_| unreachable!())
-            }
-        }
-
-    };
-}
+// /// however, there are **NO SYMBOL** in Pin1Yin1Yu3Yan2
+// #[allow(unused_macros)]
+// macro_rules! symbols {}
 
 keywords! {
     keywords AlgebraOperator {

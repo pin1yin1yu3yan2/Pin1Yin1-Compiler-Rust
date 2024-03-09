@@ -42,6 +42,13 @@ impl<'s, P: ParseUnit> Token<'s, P> {
             target: inner,
         }
     }
+
+    pub fn map<P2: ParseUnit, M>(self, mapper: M) -> Token<'s, P2>
+    where
+        M: FnOnce(P::Target<'s>) -> P2::Target<'s>,
+    {
+        Token::new(self.selection, mapper(self.target))
+    }
 }
 
 impl<'s, P: ParseUnit> Debug for Token<'s, P>

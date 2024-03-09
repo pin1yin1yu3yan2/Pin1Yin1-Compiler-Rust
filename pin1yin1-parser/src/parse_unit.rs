@@ -1,7 +1,9 @@
+use std::fmt::Debug;
+
 use crate::*;
 
 pub trait ParseUnit: Sized {
-    type Target<'t>;
+    type Target<'t>: Debug;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self>;
 }

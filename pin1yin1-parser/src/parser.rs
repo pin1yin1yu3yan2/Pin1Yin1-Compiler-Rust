@@ -12,18 +12,35 @@ pub struct Parser<'s> {
     pub(crate) done_tries: usize,
 }
 
-impl Iterator for Parser<'_> {
-    type Item = char;
+// impl Iterator for Parser<'_> {
+//     type Item = char;
 
-    fn next(&mut self) -> Option<Self::Item> {
+//     fn next(&mut self) -> Option<Self::Item> {
+//         let next = self.src.get(self.idx).copied()?;
+//         self.idx += 1;
+//         Some(next)
+//     }
+// }
+
+// impl DoubleEndedIterator for Parser<'_> {
+//     fn next_back(&mut self) -> Option<Self::Item> {
+//         if self.idx == 0 {
+//             return None;
+//         }
+//         self.idx -= 1;
+//         Some(self.src[self.idx])
+//     }
+// }
+
+impl Parser<'_> {
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> Option<char> {
         let next = self.src.get(self.idx).copied()?;
         self.idx += 1;
         Some(next)
     }
-}
 
-impl DoubleEndedIterator for Parser<'_> {
-    fn next_back(&mut self) -> Option<Self::Item> {
+    pub fn next_back(&mut self) -> Option<char> {
         if self.idx == 0 {
             return None;
         }
@@ -50,7 +67,7 @@ impl<'s> Parser<'s> {
     pub fn r#try<'p, F, P>(&'p mut self, p: F) -> Try<'p, 's, P>
     where
         P: ParseUnit,
-        F: FnOnce(&mut Parser) -> ParseResult<'s, P>,
+        F: FnOnce(&mut Parser<'s>) -> ParseResult<'s, P>,
     {
         Try::new(self).or_try(p)
     }
@@ -60,10 +77,7 @@ impl<'s> Parser<'s> {
     }
 
     pub fn try_parse<'p, P: ParseUnit>(&'p mut self) -> ParseResult<'s, P> {
-        Try::new(self)
-            .or_try(P::parse)
-            .or_error("no reason")
-            .finish()
+        Try::new(self).or_try(P::parse).no_error().finish()
     }
 
     pub fn skip_while<Rule>(&mut self, rule: Rule) -> &mut Self
@@ -140,6 +154,7 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
         match p(&mut tmp) {
             Ok(r) => {
                 self.state = Some(Ok(Token::new(r.selection, r.target)));
+                self.parser.idx = tmp.idx;
                 if self.parser.done_tries != self.parser.tries {
                     self.parser.start_idx = tmp.start_idx;
                     self.parser.done_tries = self.parser.tries;
@@ -160,6 +175,10 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
             .state
             .or_else(|| Some(Err(self.parser.gen_error(reason))));
         self
+    }
+
+    pub fn no_error(self) -> Self {
+        self.or_error("no error")
     }
 
     pub fn finish(self) -> ParseResult<'s, P> {
