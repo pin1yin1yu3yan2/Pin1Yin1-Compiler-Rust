@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn char() {
-        parse_test("zi4 _t", |p| {
+        parse_test("wen2 _t", |p| {
             assert!(p.parse::<CharLiteral>().is_ok());
         });
     }
