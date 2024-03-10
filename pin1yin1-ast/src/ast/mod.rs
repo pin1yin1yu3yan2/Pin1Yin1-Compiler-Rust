@@ -15,12 +15,11 @@ impl ParseUnit for Ident<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let ident = p.parse::<String>()?;
         let Some(start_char) = ident.chars().next() else {
-            p.throw("empty ident!")?;
-            unreachable!()
+            return ident.throw("empty ident!");
         };
 
         if !(start_char.is_alphabetic() || start_char == '_') {
-            p.throw("bad ident")?;
+            return ident.throw("bad ident");
         }
         p.finish(Ident { ident })
     }

@@ -166,8 +166,7 @@ impl ParseUnit for TypeSignDeclare<'_> {
             types::BasicExtenWord::Signed => true,
             types::BasicExtenWord::Unsigned => false,
             _ => {
-                p.throw(std::any::type_name_of_val(&Self::parse))?;
-                unreachable!()
+                return keyword.throw::<Self>("should be `you3fu2` or `wu2fu2`");
             }
         };
 

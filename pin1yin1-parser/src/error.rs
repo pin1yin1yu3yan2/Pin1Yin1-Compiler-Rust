@@ -39,8 +39,9 @@ impl Debug for Error<'_> {
 
         let line = selection.src[left..right].iter().collect::<String>();
 
+        writeln!(f)?;
         writeln!(f, "fa1sheng1le1yi1ge4cuo4wu4: {}", self.reason)?;
-        let head = format!("zai4di4{line_num}hang2\t| ");
+        let head = format!("zai4di4 {line_num} hang2\t| ");
         writeln!(f, "{head}{line}")?;
         let ahead = (0..head.len() + self.selection.start - left)
             .map(|_| ' ')

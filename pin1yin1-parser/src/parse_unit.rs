@@ -8,20 +8,8 @@ pub trait ParseUnit: Sized {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self>;
 }
 
-impl ParseUnit for usize {
-    type Target<'t> = usize;
-
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let num = p
-            .skip_whitespace()
-            .take_while(|c| c.is_ascii_digit())
-            .iter()
-            .rev()
-            .enumerate()
-            .map(|(fac, c)| (c.to_digit(10).unwrap() as usize) * 10usize.pow(fac as _))
-            .sum();
-        p.finish(num)
-    }
+pub(crate) const fn chars_taking_rule(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
 }
 
 impl ParseUnit for String {
@@ -31,10 +19,6 @@ impl ParseUnit for String {
         let s = p.parse::<&[char]>()?.iter().collect::<String>();
         p.finish(s)
     }
-}
-
-pub(crate) const fn chars_taking_rule(c: char) -> bool {
-    c.is_ascii_alphanumeric()
 }
 
 ///  very hot funtion!!!
@@ -52,5 +36,21 @@ impl ParseUnit for &[char] {
         }
 
         p.finish(p.chars_cache)
+    }
+}
+
+impl ParseUnit for usize {
+    type Target<'t> = usize;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let num = p
+            .skip_whitespace()
+            .take_while(|c| c.is_ascii_digit())
+            .iter()
+            .rev()
+            .enumerate()
+            .map(|(fac, c)| (c.to_digit(10).unwrap() as usize) * 10usize.pow(fac as _))
+            .sum();
+        p.finish(num)
     }
 }

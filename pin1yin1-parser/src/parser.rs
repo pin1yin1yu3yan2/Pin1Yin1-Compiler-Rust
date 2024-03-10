@@ -87,9 +87,9 @@ impl<'s> Parser<'s> {
     where
         Rule: Fn(char) -> bool,
     {
-        let start = self.idx;
+        self.start_idx = self.idx;
         self.skip_while(&rule);
-        &self.src[start..self.idx]
+        &self.src[self.start_idx..self.idx]
     }
 
     pub fn selection(&self) -> Selection<'s> {
@@ -108,7 +108,7 @@ impl<'s> Parser<'s> {
         Error::new(self.selection(), reason.into())
     }
 
-    pub fn throw(&mut self, reason: impl Into<String>) -> Result<'s, ()> {
+    pub fn throw<P: ParseUnit>(&mut self, reason: impl Into<String>) -> ParseResult<'s, P> {
         Err(Some(self.new_error(reason)))
     }
 }
@@ -116,6 +116,9 @@ impl<'s> Parser<'s> {
 pub struct Try<'p, 's, P: ParseUnit> {
     parser: &'p mut Parser<'s>,
     state: Option<std::result::Result<Token<'s, P>, Error<'s>>>,
+    /// TODO
+    #[cfg(feature = "parallel")]
+    tasks: tokio::task::JoinSet<ParseResult<'s, P>>,
 }
 
 impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
@@ -143,8 +146,8 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
             Ok(r) => {
                 self.state = Some(Ok(Token::new(r.selection, r.target)));
                 self.parser.idx = tmp.idx;
+                self.parser.start_idx = tmp.start_idx;
                 if self.parser.done_tries != self.parser.tries {
-                    self.parser.start_idx = tmp.start_idx;
                     self.parser.done_tries = self.parser.tries;
                 }
             }

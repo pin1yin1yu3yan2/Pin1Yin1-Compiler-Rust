@@ -43,6 +43,13 @@ impl<'s, P: ParseUnit> Token<'s, P> {
         }
     }
 
+    pub fn try_map<P2: ParseUnit, M>(self, mapper: M) -> ParseResult<'s, P2>
+    where
+        M: FnOnce(P::Target<'s>) -> Result<'s, P2::Target<'s>>,
+    {
+        mapper(self.target).map(|target| Token::new(self.selection, target))
+    }
+
     pub fn map<P2: ParseUnit, M>(self, mapper: M) -> Token<'s, P2>
     where
         M: FnOnce(P::Target<'s>) -> P2::Target<'s>,
@@ -50,15 +57,46 @@ impl<'s, P: ParseUnit> Token<'s, P> {
         Token::new(self.selection, mapper(self.target))
     }
 
+    pub fn which_or<C, E>(self, condition: C, error: E) -> ParseResult<'s, P>
+    where
+        C: FnOnce(&P::Target<'s>) -> bool,
+        E: FnOnce(Self) -> ParseResult<'s, P>,
+    {
+        if condition(&*self) {
+            Ok(self)
+        } else {
+            error(self)
+        }
+    }
+
+    pub fn which<C>(self, condition: C) -> ParseResult<'s, P>
+    where
+        C: FnOnce(&P::Target<'s>) -> bool,
+    {
+        self.which_or(condition, |_| Err(None))
+    }
+
+    pub fn is_or<E>(self, rhs: P::Target<'s>) -> ParseResult<'s, P>
+    where
+        P::Target<'s>: PartialEq,
+        E: FnOnce(Self) -> ParseResult<'s, P>,
+    {
+        self.which_or(|t| t == &rhs, |_| Err(None))
+    }
+
     pub fn is(self, rhs: P::Target<'s>) -> ParseResult<'s, P>
     where
         P::Target<'s>: PartialEq,
     {
-        if *self == rhs {
-            Ok(self)
-        } else {
-            Err(None)
-        }
+        self.which(|t| t == &rhs)
+    }
+
+    pub fn new_error(&self, reason: impl Into<String>) -> Error<'s> {
+        Error::new(self.selection, reason.into())
+    }
+
+    pub fn throw<P1: ParseUnit>(&self, reason: impl Into<String>) -> ParseResult<'s, P1> {
+        Err(Some(self.new_error(reason)))
     }
 }
 

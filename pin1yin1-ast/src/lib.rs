@@ -3,17 +3,8 @@ pub mod keywords;
 pub mod macros;
 
 #[cfg(test)]
-mod tests {
-
-    use crate::keywords::types::PrimitiveType;
-    use pin1yin1_parser::*;
-
-    #[test]
-    fn it_works() {
-        let chars = "zheng3\nxu1".chars().collect::<Vec<_>>();
-        let mut parser = Parser::new(&chars);
-
-        let _zheng3 = PrimitiveType::parse(&mut parser).unwrap();
-        let _xu1 = PrimitiveType::parse(&mut parser).unwrap();
-    }
+fn parse_test(chars: &str, tester: impl FnOnce(&mut pin1yin1_parser::Parser)) {
+    let chars = chars.chars().collect::<Vec<_>>();
+    let mut parser = pin1yin1_parser::Parser::new(&chars);
+    tester(&mut parser);
 }
