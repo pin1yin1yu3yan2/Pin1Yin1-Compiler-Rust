@@ -1,5 +1,5 @@
 use super::*;
-use crate::keywords::{syntax, types};
+use crate::keywords::types;
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
@@ -12,10 +12,9 @@ impl ParseUnit for TypeConstExtend<'_> {
     type Target<'t> = TypeConstExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<types::BasicExtenWord>()?;
-        if *keyword != types::BasicExtenWord::Const {
-            return Err(None);
-        }
+        let keyword = p
+            .parse::<types::BasicExtenWord>()?
+            .is(types::BasicExtenWord::Const)?;
 
         let size = p.try_parse::<usize>().ok();
         p.finish(TypeConstExtend { keyword, size })
@@ -33,10 +32,9 @@ impl ParseUnit for TypeArrayExtend<'_> {
     type Target<'t> = TypeArrayExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<types::BasicExtenWord>()?;
-        if *keyword != types::BasicExtenWord::Array {
-            return Err(None);
-        }
+        let keyword = p
+            .parse::<types::BasicExtenWord>()?
+            .is(types::BasicExtenWord::Array)?;
 
         let size = p.try_parse::<usize>().ok();
         p.finish(TypeArrayExtend { keyword, size })
@@ -53,10 +51,10 @@ impl ParseUnit for TypeReferenceExtend<'_> {
     type Target<'t> = TypeReferenceExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<types::BasicExtenWord>()?;
-        if *keyword != types::BasicExtenWord::Reference {
-            return Err(None);
-        }
+        let keyword = p
+            .parse::<types::BasicExtenWord>()?
+            .is(types::BasicExtenWord::Reference)?;
+
         p.finish(TypeReferenceExtend { keyword })
     }
 }
@@ -71,10 +69,10 @@ impl ParseUnit for TypeRightReferenceExtend<'_> {
     type Target<'t> = TypeRightReferenceExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<types::BasicExtenWord>()?;
-        if *keyword != types::BasicExtenWord::RightReference {
-            return Err(None);
-        }
+        let keyword = p
+            .parse::<types::BasicExtenWord>()?
+            .is(types::BasicExtenWord::RightReference)?;
+
         p.finish(TypeRightReferenceExtend { keyword })
     }
 }
@@ -89,10 +87,10 @@ impl ParseUnit for TypePointerExtend<'_> {
     type Target<'t> = TypePointerExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<types::BasicExtenWord>()?;
-        if *keyword != types::BasicExtenWord::Pointer {
-            return Err(None);
-        }
+        let keyword = p
+            .parse::<types::BasicExtenWord>()?
+            .is(types::BasicExtenWord::Pointer)?;
+
         p.finish(TypePointerExtend { keyword })
     }
 }
@@ -147,7 +145,7 @@ impl ParseUnit for TypeWidthDeclare<'_> {
         }
         let width = p
             .parse::<usize>()
-            .map_err(|_| Some(p.gen_error("usage: kaun1 <width> ")))?;
+            .map_err(|_| Some(p.new_error("usage: kaun1 <width> ")))?;
         p.finish(TypeWidthDeclare { keyword, width })
     }
 }
@@ -208,20 +206,9 @@ impl ParseUnit for TypeDeclare<'_> {
     }
 }
 
-pub struct Statement<'s> {
-    pub x: &'s (),
-}
-
-pub struct CodeBlocks<'s> {
-    pub start: Token<'s, syntax::Symbol>,
-    pub stmts: Vec<Statement<'s>>,
-    pub end: Token<'s, syntax::Symbol>,
-}
-
-pub struct DefineFunction {}
-
 #[test]
 fn fucking_test() {
+    // unsigend int a[114514]&
     let fucking_type = "yin3 zu3 114514 kuan1 32 wu2fu2 zheng3"
         .chars()
         .collect::<Vec<_>>();

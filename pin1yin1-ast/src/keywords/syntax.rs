@@ -8,14 +8,16 @@ keywords! {
         "jie2gou4" -> Struct
     }
     keywords Symbol {
-        "han2"  -> Block,
-        "can1"  -> Parameter,
-        "zhu4"  -> Commnet,
-        "jie2"  -> RevBracket,
-        "fen1"  -> Eol,
-        "deng3" -> Assign,
-        "de1"   -> GetElement,
-        "biao1" -> Label
+        "han2"   -> Block,
+        "can1"   -> Parameter,
+        "zhu4"   -> Commnet,
+        "jie2"   -> RevBracket,
+        "fen1"   -> Eol,
+        "deng3"  -> Assign,
+        "de1"    -> GetElement,
+        "biao1"  -> Label,
+        "wen2"   -> Char,
+        "chuan4" -> String
     }
     keywords ControlFlow {
         "ruo4"      -> If,

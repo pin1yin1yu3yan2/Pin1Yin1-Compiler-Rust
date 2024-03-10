@@ -10,43 +10,32 @@ pub struct Parser<'s> {
     // used to compute start_idx
     pub(crate) tries: usize,
     pub(crate) done_tries: usize,
+
+    // for &[char]::parse
+    pub(crate) chars_cache: &'s [char],
+    pub(crate) chars_cache_idx: usize,
+    pub(crate) chars_cache_final: usize,
 }
-
-// impl Iterator for Parser<'_> {
-//     type Item = char;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let next = self.src.get(self.idx).copied()?;
-//         self.idx += 1;
-//         Some(next)
-//     }
-// }
-
-// impl DoubleEndedIterator for Parser<'_> {
-//     fn next_back(&mut self) -> Option<Self::Item> {
-//         if self.idx == 0 {
-//             return None;
-//         }
-//         self.idx -= 1;
-//         Some(self.src[self.idx])
-//     }
-// }
 
 impl Parser<'_> {
     #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Option<char> {
+    pub(crate) fn next(&mut self) -> Option<char> {
         let next = self.src.get(self.idx).copied()?;
         self.idx += 1;
         Some(next)
     }
 
-    pub fn next_back(&mut self) -> Option<char> {
-        if self.idx == 0 {
-            return None;
-        }
-        self.idx -= 1;
-        Some(self.src[self.idx])
+    pub(crate) fn peek(&self) -> Option<char> {
+        self.src.get(self.idx).copied()
     }
+
+    // pub(crate) fn next_back(&mut self) -> Option<char> {
+    //     if self.idx == 0 {
+    //         return None;
+    //     }
+    //     self.idx -= 1;
+    //     Some(self.src[self.idx])
+    // }
 }
 
 impl<'s> Parser<'s> {
@@ -57,11 +46,10 @@ impl<'s> Parser<'s> {
             start_idx: 0,
             tries: 0,
             done_tries: 0,
+            chars_cache: &src[..0],
+            chars_cache_idx: usize::MAX,
+            chars_cache_final: usize::MAX,
         }
-    }
-
-    pub fn peek(&self) -> Option<char> {
-        self.src.get(self.idx).copied()
     }
 
     pub fn r#try<'p, F, P>(&'p mut self, p: F) -> Try<'p, 's, P>
@@ -100,7 +88,7 @@ impl<'s> Parser<'s> {
         Rule: Fn(char) -> bool,
     {
         let start = self.idx;
-        self.skip_while(rule);
+        self.skip_while(&rule);
         &self.src[start..self.idx]
     }
 
@@ -108,20 +96,20 @@ impl<'s> Parser<'s> {
         Selection::new(self.src, self.start_idx, self.idx - self.start_idx)
     }
 
-    pub fn gen_token<P: ParseUnit>(&self, t: P::Target<'s>) -> Token<'s, P> {
+    pub fn new_token<P: ParseUnit>(&self, t: P::Target<'s>) -> Token<'s, P> {
         Token::new(self.selection(), t)
     }
 
     pub fn finish<P: ParseUnit>(&self, t: P::Target<'s>) -> ParseResult<'s, P> {
-        Ok(self.gen_token(t))
+        Ok(self.new_token(t))
     }
 
-    pub fn gen_error(&mut self, reason: impl Into<String>) -> Error<'s> {
+    pub fn new_error(&mut self, reason: impl Into<String>) -> Error<'s> {
         Error::new(self.selection(), reason.into())
     }
 
     pub fn throw(&mut self, reason: impl Into<String>) -> Result<'s, ()> {
-        Err(Some(self.gen_error(reason)))
+        Err(Some(self.new_error(reason)))
     }
 }
 
@@ -163,6 +151,11 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
             Err(opte) => {
                 if let Some(e) = opte {
                     self.state = Some(Err(e))
+                } else {
+                    // synchron
+                    self.parser.chars_cache = tmp.chars_cache;
+                    self.parser.chars_cache_idx = tmp.chars_cache_idx;
+                    self.parser.chars_cache_final = tmp.chars_cache_final;
                 }
             }
         }
@@ -173,7 +166,7 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
     pub fn or_error(mut self, reason: impl Into<String>) -> Self {
         self.state = self
             .state
-            .or_else(|| Some(Err(self.parser.gen_error(reason))));
+            .or_else(|| Some(Err(self.parser.new_error(reason))));
         self
     }
 

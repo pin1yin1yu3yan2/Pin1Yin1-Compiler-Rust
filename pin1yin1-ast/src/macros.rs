@@ -20,18 +20,17 @@ macro_rules! keywords {
             fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
                 use std::collections::HashMap;
                 lazy_static::lazy_static! {
-                    static ref MAP: HashMap<&'static str,$enum_name> = {
+                    static ref MAP: HashMap<Vec<char>, $enum_name> = {
                         let mut _map = HashMap::new();
                         $(
-                            _map.insert($string, $enum_name::$var);
+                            _map.insert($string.chars().collect::<Vec<_>>(), $enum_name::$var);
                         )*
                         _map
                     };
                 }
 
-
-                let s: &str = &p.parse::<String>()?;
-                MAP.get(s).copied().map(|t| p.gen_token(t)).ok_or(None)
+                let s: &[char] = &p.parse::<&[char]>()?;
+                MAP.get(s).copied().map(|t| p.new_token(t)).ok_or(None)
             }
         }
         )*

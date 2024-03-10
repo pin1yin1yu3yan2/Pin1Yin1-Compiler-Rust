@@ -49,6 +49,17 @@ impl<'s, P: ParseUnit> Token<'s, P> {
     {
         Token::new(self.selection, mapper(self.target))
     }
+
+    pub fn is(self, rhs: P::Target<'s>) -> ParseResult<'s, P>
+    where
+        P::Target<'s>: PartialEq,
+    {
+        if *self == rhs {
+            Ok(self)
+        } else {
+            Err(None)
+        }
+    }
 }
 
 impl<'s, P: ParseUnit> Debug for Token<'s, P>

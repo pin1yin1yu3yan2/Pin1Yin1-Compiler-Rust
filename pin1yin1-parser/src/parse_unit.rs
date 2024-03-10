@@ -8,19 +8,6 @@ pub trait ParseUnit: Sized {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self>;
 }
 
-impl ParseUnit for String {
-    type Target<'t> = String;
-
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let s = p
-            .skip_whitespace()
-            .take_while(|s| s.is_ascii_alphanumeric())
-            .iter()
-            .collect::<String>();
-        p.finish(s)
-    }
-}
-
 impl ParseUnit for usize {
     type Target<'t> = usize;
 
@@ -34,5 +21,36 @@ impl ParseUnit for usize {
             .map(|(fac, c)| (c.to_digit(10).unwrap() as usize) * 10usize.pow(fac as _))
             .sum();
         p.finish(num)
+    }
+}
+
+impl ParseUnit for String {
+    type Target<'t> = String;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let s = p.parse::<&[char]>()?.iter().collect::<String>();
+        p.finish(s)
+    }
+}
+
+pub(crate) const fn chars_taking_rule(c: char) -> bool {
+    c.is_ascii_alphanumeric()
+}
+
+///  very hot funtion!!!
+impl ParseUnit for &[char] {
+    type Target<'t> = &'t [char];
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        if p.chars_cache_idx != p.idx {
+            p.chars_cache_idx = p.idx;
+            p.chars_cache = p.skip_whitespace().take_while(chars_taking_rule);
+            p.chars_cache_final = p.idx;
+        } else {
+            // just skip
+            p.idx = p.chars_cache_final;
+        }
+
+        p.finish(p.chars_cache)
     }
 }

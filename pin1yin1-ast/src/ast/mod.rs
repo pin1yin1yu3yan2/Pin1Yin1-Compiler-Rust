@@ -1,5 +1,7 @@
 use pin1yin1_parser::*;
 
+pub mod expr;
+pub mod syntax;
 pub mod types;
 
 #[derive(Debug, Clone)]
