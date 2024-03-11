@@ -9,7 +9,7 @@ pub trait ParseUnit: Sized {
 }
 
 pub(crate) const fn chars_taking_rule(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_'
+    c.is_ascii_alphanumeric() || c.is_ascii_punctuation()
 }
 
 impl ParseUnit for String {
@@ -50,7 +50,16 @@ impl ParseUnit for usize {
             .rev()
             .enumerate()
             .map(|(fac, c)| (c.to_digit(10).unwrap() as usize) * 10usize.pow(fac as _))
-            .sum();
+            .sum::<usize>();
         p.finish(num)
+    }
+}
+
+impl ParseUnit for char {
+    type Target<'t> = char;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let next = p.next();
+        p.finish(next.ok_or(None)?)
     }
 }

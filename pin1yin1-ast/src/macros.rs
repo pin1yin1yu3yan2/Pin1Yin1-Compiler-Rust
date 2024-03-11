@@ -36,3 +36,42 @@ macro_rules! keywords {
         )*
     };
 }
+
+#[macro_export]
+macro_rules! complex_pu {
+    (cpu $enum_name:ident {
+        $($variant:ident),*
+    }) => {
+        #[derive(Debug, Clone)]
+        pub enum $enum_name<'s> {
+            $(
+                $variant($variant<'s>),
+            )*
+        }
+
+        $(
+        impl<'s> From<$variant<'s>> for $enum_name<'s> {
+             fn from(v: $variant<'s>) -> $enum_name<'s> {
+                <$enum_name>::$variant(v)
+            }
+        }
+        )*
+
+        impl pin1yin1_parser::ParseUnit for $enum_name<'_> {
+            type Target<'t> = $enum_name<'t>;
+
+            fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+                pin1yin1_parser::Try::new(p)
+                $(
+                    // whats the meaning of `tae` ???
+                    .or_try::<Self, _>(|p| {
+                        p.parse::<$variant>()
+                            .map(|tae| tae.map(<$enum_name>::$variant))
+                    })
+                )*
+                .no_error()
+                .finish()
+            }
+        }
+    };
+}

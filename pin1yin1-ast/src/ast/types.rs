@@ -1,5 +1,5 @@
 use super::*;
-use crate::keywords::types;
+use crate::{complex_pu, keywords::types};
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
@@ -95,48 +95,24 @@ impl ParseUnit for TypePointerExtend<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum TypeDecoratorExtends<'s> {
-    Array(TypeArrayExtend<'s>),
-    Reference(TypeReferenceExtend<'s>),
-    RightReference(TypeRightReferenceExtend<'s>),
-    Pointer(TypePointerExtend<'s>),
-}
-
-impl ParseUnit for TypeDecoratorExtends<'_> {
-    type Target<'t> = TypeDecoratorExtends<'t>;
-
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        p.r#try(|p| {
-            p.parse::<TypeArrayExtend>()
-                .map(|tae| tae.map(TypeDecoratorExtends::Array))
-        })
-        .or_try(|p| {
-            p.parse::<TypeReferenceExtend>()
-                .map(|tae| tae.map::<Self, _>(TypeDecoratorExtends::Reference))
-        })
-        .or_try(|p| {
-            p.parse::<TypeRightReferenceExtend>()
-                .map(|tae| tae.map::<Self, _>(TypeDecoratorExtends::RightReference))
-        })
-        .or_try(|p| {
-            p.parse::<TypePointerExtend>()
-                .map(|tae| tae.map::<Self, _>(TypeDecoratorExtends::Pointer))
-        })
-        .no_error()
-        .finish()
+complex_pu! {
+    cpu TypeDecoratorExtends {
+        TypeArrayExtend,
+        TypeReferenceExtend,
+        TypeRightReferenceExtend,
+        TypePointerExtend
     }
 }
 
 /// Decorators for primitive types
 #[derive(Debug, Clone, Copy)]
-pub struct TypeWidthDeclare<'s> {
+pub struct TypeWidthExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
     pub width: Token<'s, usize>,
 }
 
-impl ParseUnit for TypeWidthDeclare<'_> {
-    type Target<'t> = TypeWidthDeclare<'t>;
+impl ParseUnit for TypeWidthExtend<'_> {
+    type Target<'t> = TypeWidthExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let keyword = p.parse::<types::BasicExtenWord>()?;
@@ -146,19 +122,19 @@ impl ParseUnit for TypeWidthDeclare<'_> {
         let width = p
             .parse::<usize>()
             .map_err(|_| Some(p.new_error("usage: kaun1 <width> ")))?;
-        p.finish(TypeWidthDeclare { keyword, width })
+        p.finish(TypeWidthExtend { keyword, width })
     }
 }
 
 /// Decorators for `zheng3`
 #[derive(Debug, Clone, Copy)]
-pub struct TypeSignDeclare<'s> {
+pub struct TypeSignExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
     pub sign: bool,
 }
 
-impl ParseUnit for TypeSignDeclare<'_> {
-    type Target<'t> = TypeSignDeclare<'t>;
+impl ParseUnit for TypeSignExtend<'_> {
+    type Target<'t> = TypeSignExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let keyword = p.parse::<types::BasicExtenWord>()?;
@@ -170,7 +146,7 @@ impl ParseUnit for TypeSignDeclare<'_> {
             }
         };
 
-        p.finish(TypeSignDeclare { keyword, sign })
+        p.finish(TypeSignExtend { keyword, sign })
     }
 }
 
@@ -178,9 +154,9 @@ impl ParseUnit for TypeSignDeclare<'_> {
 pub struct TypeDeclare<'s> {
     pub const_: Option<Token<'s, TypeConstExtend<'s>>>,
     pub decorators: Vec<Token<'s, TypeDecoratorExtends<'s>>>,
-    pub width: Option<Token<'s, TypeWidthDeclare<'s>>>,
-    pub sign: Option<Token<'s, TypeSignDeclare<'s>>>,
-    pub real_type: Token<'s, Ident<'s>>,
+    pub width: Option<Token<'s, TypeWidthExtend<'s>>>,
+    pub sign: Option<Token<'s, TypeSignExtend<'s>>>,
+    pub real_type: Token<'s, Ident>,
 }
 
 impl ParseUnit for TypeDeclare<'_> {
@@ -192,8 +168,8 @@ impl ParseUnit for TypeDeclare<'_> {
         while let Ok(decorator) = p.try_parse::<TypeDecoratorExtends>() {
             decorators.push(decorator);
         }
-        let width = p.try_parse::<TypeWidthDeclare>().ok();
-        let sign = p.try_parse::<TypeSignDeclare>().ok();
+        let width = p.try_parse::<TypeWidthExtend>().ok();
+        let sign = p.try_parse::<TypeSignExtend>().ok();
         let real_type = p.try_parse::<Ident>()?;
         p.finish(TypeDeclare {
             const_,
@@ -205,14 +181,16 @@ impl ParseUnit for TypeDeclare<'_> {
     }
 }
 
-#[test]
-fn fucking_test() {
-    // unsigend int a[114514]&
-    let fucking_type = "yin3 zu3 114514 kuan1 32 wu2fu2 zheng3"
-        .chars()
-        .collect::<Vec<_>>();
-    let mut parser = Parser::new(&fucking_type);
+#[cfg(test)]
+mod tests {
+    use crate::parse_test;
 
-    let fucking_decl = parser.parse::<TypeDeclare>().unwrap();
-    dbg!(&fucking_decl);
+    use super::*;
+
+    #[test]
+    fn fucking_type() {
+        parse_test("yin3 zu3 114514 kuan1 32 wu2fu2 zheng3", |p| {
+            assert!(dbg!(p.parse::<TypeDeclare>()).is_ok())
+        })
+    }
 }

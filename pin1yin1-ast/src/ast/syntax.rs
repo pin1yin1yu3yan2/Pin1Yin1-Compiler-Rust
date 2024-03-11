@@ -4,7 +4,7 @@ use crate::keywords::syntax;
 
 pub struct VariableDefine<'s> {
     pub type_: Token<'s, TypeDeclare<'s>>,
-    pub ident: Token<'s, Ident<'s>>,
+    pub ident: Token<'s, Ident>,
 }
 
 pub struct VariableAssign<'s> {

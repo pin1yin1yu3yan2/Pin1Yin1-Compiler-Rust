@@ -5,22 +5,56 @@ pub mod syntax;
 pub mod types;
 
 #[derive(Debug, Clone)]
-pub struct Ident<'s> {
-    pub ident: Token<'s, String>,
+pub struct Ident {
+    pub ident: String,
 }
 
-impl ParseUnit for Ident<'_> {
-    type Target<'t> = Ident<'t>;
+impl ParseUnit for Ident {
+    type Target<'t> = Ident;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let ident = p.parse::<String>()?;
-        let Some(start_char) = ident.chars().next() else {
-            return ident.throw("empty ident!");
-        };
+        let ident = p
+            .parse::<String>()?
+            .which_or(|s| !s.is_empty(), |s| s.throw("empty ident!"))?
+            .which_or(
+                |s| !s.chars().next().unwrap().is_ascii_digit(),
+                |s| s.throw("bad ident"),
+            )?;
 
-        if !(start_char.is_alphabetic() || start_char == '_') {
-            return ident.throw("bad ident");
+        p.finish(Ident {
+            ident: ident.take(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parse_test;
+
+    use super::*;
+
+    #[test]
+    fn good_ident() {
+        parse_test("*)(&%^&*a(*&^%", |p| {
+            assert!((p.parse::<Ident>()).is_ok());
+        })
+    }
+
+    #[test]
+    fn bad_ident() {
+        parse_test("1*)(&%^&*a(*&^%", |p| {
+            assert!(p.parse::<Ident>().is_err());
+        })
+    }
+
+    #[test]
+    fn e4chou4de1_ident() {
+        fn is_e4chou4de1<P: ParseUnit>(r: ParseResult<'_, P>) -> bool {
+            r.is_err()
         }
-        p.finish(Ident { ident })
+
+        parse_test("114514", |p| {
+            assert!(is_e4chou4de1(p.parse::<Ident>()));
+        })
     }
 }

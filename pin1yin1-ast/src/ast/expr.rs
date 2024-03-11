@@ -84,6 +84,28 @@ impl ParseUnit for StringLiteral<'_> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct NumberLiteral {
+    pub number: f64,
+}
+
+impl ParseUnit for NumberLiteral {
+    type Target<'t> = NumberLiteral;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let mut number = *p.parse::<usize>()? as f64;
+
+        if p.try_parse::<char>().is_ok_and(|c| *c == '.') {
+            let decimal = p
+                .parse::<usize>()
+                .or_else(|_| p.throw("there should be a decimal"))?;
+            let decimal = *decimal as f64;
+            number += decimal / 10f64.powi(decimal.log10().ceil() as _);
+        }
+        p.finish(NumberLiteral { number })
+    }
+}
+
 // pub enum Literal<'s> {}
 
 // pub struct Expr<'s> {}
@@ -104,6 +126,27 @@ mod tests {
     fn string() {
         parse_test("chuan4 _t11514___na", |p| {
             assert!(p.parse::<StringLiteral>().is_ok());
+        })
+    }
+
+    #[test]
+    fn number1() {
+        parse_test("114514", |p| {
+            assert!(p.parse::<NumberLiteral>().is_ok());
+        })
+    }
+
+    #[test]
+    fn number2() {
+        parse_test("114514.", |p| {
+            assert!(p.parse::<NumberLiteral>().is_ok());
+        })
+    }
+
+    #[test]
+    fn number3() {
+        parse_test("1919.810", |p| {
+            assert!(p.parse::<NumberLiteral>().is_ok());
         })
     }
 }

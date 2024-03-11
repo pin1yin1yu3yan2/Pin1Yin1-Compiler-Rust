@@ -96,11 +96,11 @@ impl<'s> Parser<'s> {
         Selection::new(self.src, self.start_idx, self.idx - self.start_idx)
     }
 
-    pub fn new_token<P: ParseUnit>(&self, t: P::Target<'s>) -> Token<'s, P> {
-        Token::new(self.selection(), t)
+    pub fn new_token<I: Into<P::Target<'s>>, P: ParseUnit>(&self, t: I) -> Token<'s, P> {
+        Token::new(self.selection(), t.into())
     }
 
-    pub fn finish<P: ParseUnit>(&self, t: P::Target<'s>) -> ParseResult<'s, P> {
+    pub fn finish<I: Into<P::Target<'s>>, P: ParseUnit>(&self, t: I) -> ParseResult<'s, P> {
         Ok(self.new_token(t))
     }
 
@@ -112,7 +112,6 @@ impl<'s> Parser<'s> {
         Err(Some(self.new_error(reason)))
     }
 }
-
 pub struct Try<'p, 's, P: ParseUnit> {
     parser: &'p mut Parser<'s>,
     state: Option<std::result::Result<Token<'s, P>, Error<'s>>>,

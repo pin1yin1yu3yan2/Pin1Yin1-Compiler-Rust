@@ -43,6 +43,10 @@ impl<'s, P: ParseUnit> Token<'s, P> {
         }
     }
 
+    pub fn take(self) -> P::Target<'s> {
+        self.target
+    }
+
     pub fn try_map<P2: ParseUnit, M>(self, mapper: M) -> ParseResult<'s, P2>
     where
         M: FnOnce(P::Target<'s>) -> Result<'s, P2::Target<'s>>,
