@@ -7,6 +7,7 @@ macro_rules! keywords {
         ),*}
     )*) => {
         $(
+        #[cfg_attr(feature ="ser", derive(serde::Serialize,serde::Deserialize))]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum $enum_name {
             $(
@@ -42,6 +43,8 @@ macro_rules! complex_pu {
     (cpu $enum_name:ident {
         $($variant:ident),*
     }) => {
+        #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+        #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
         #[derive(Debug, Clone)]
         pub enum $enum_name<'s> {
             $(

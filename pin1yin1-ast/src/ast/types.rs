@@ -2,6 +2,8 @@ use super::*;
 use crate::{complex_pu, keywords::types};
 
 /// Decorators
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeConstExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
@@ -22,6 +24,8 @@ impl ParseUnit for TypeConstExtend<'_> {
 }
 
 /// Decorators
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeArrayExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
@@ -42,6 +46,8 @@ impl ParseUnit for TypeArrayExtend<'_> {
 }
 
 /// Decorators
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeReferenceExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
@@ -60,6 +66,8 @@ impl ParseUnit for TypeReferenceExtend<'_> {
 }
 
 /// Decorators
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeRightReferenceExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
@@ -78,6 +86,8 @@ impl ParseUnit for TypeRightReferenceExtend<'_> {
 }
 
 /// Decorators
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypePointerExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
@@ -105,6 +115,8 @@ complex_pu! {
 }
 
 /// Decorators for primitive types
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeWidthExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
@@ -127,6 +139,8 @@ impl ParseUnit for TypeWidthExtend<'_> {
 }
 
 /// Decorators for `zheng3`
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeSignExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
@@ -150,6 +164,8 @@ impl ParseUnit for TypeSignExtend<'_> {
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct TypeDeclare<'s> {
     pub const_: Option<Token<'s, TypeConstExtend<'s>>>,

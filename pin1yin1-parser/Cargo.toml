@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1", features = ["rt"], optional = true }
+serde = { version = "1", optional = true }
 
 [features]
-default = []
+default = ["ser"]
+ser = ["serde"]
 parallel = ["tokio"]

@@ -1,13 +1,17 @@
+use std::marker::PhantomData;
+
 use pin1yin1_parser::*;
 
 pub mod expr;
 pub mod syntax;
 pub mod types;
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct Ident<'s> {
     pub ident: String,
-    _p: &'s (),
+    _p: PhantomData<&'s ()>,
 }
 
 impl ParseUnit for Ident<'_> {
@@ -24,7 +28,7 @@ impl ParseUnit for Ident<'_> {
 
         p.finish(Ident {
             ident: ident.take(),
-            _p: &(),
+            _p: PhantomData,
         })
     }
 }

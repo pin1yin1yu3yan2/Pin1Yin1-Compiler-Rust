@@ -15,6 +15,7 @@ pub(crate) struct ParserCache<'s> {
 /// An implementation of the language parser **without** any [`Clone::clone`] call!
 ///
 /// This implementation uses many references to increase performance(maybe...?)
+
 #[derive(Debug, Clone, Copy)]
 pub struct Parser<'s> {
     /// source codes

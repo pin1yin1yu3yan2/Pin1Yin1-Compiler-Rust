@@ -8,3 +8,8 @@ edition = "2021"
 [dependencies]
 pin1yin1-parser = { path = "../pin1yin1-parser" }
 lazy_static = "1.4.0"
+serde = { version = "1", features = ["serde_derive"], optional = true }
+
+[features]
+default = ["ser"]
+ser = ["serde", "pin1yin1-parser/ser"]

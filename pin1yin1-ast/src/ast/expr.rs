@@ -1,7 +1,11 @@
+use std::marker::PhantomData;
+
 use crate::{complex_pu, keywords::syntax};
 
 use super::*;
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct CharLiteral<'s> {
     pub zi4: Token<'s, syntax::Symbol>,
@@ -46,6 +50,8 @@ impl ParseUnit for CharLiteral<'_> {
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct StringLiteral<'s> {
     pub chuan4: Token<'s, syntax::Symbol>,
@@ -84,10 +90,12 @@ impl ParseUnit for StringLiteral<'_> {
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct NumberLiteral<'s> {
     pub number: f64,
-    _p: &'s (),
+    _p: PhantomData<&'s ()>,
 }
 
 impl ParseUnit for NumberLiteral<'_> {
@@ -101,10 +109,15 @@ impl ParseUnit for NumberLiteral<'_> {
             number += decimal / 10f64.powi(decimal.log10().ceil() as _);
         }
 
-        p.finish(NumberLiteral { number, _p: &() })
+        p.finish(NumberLiteral {
+            number,
+            _p: PhantomData,
+        })
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct Arguments<'s> {
     pub parms: Vec<Token<'s, Expr<'s>>>,
@@ -142,6 +155,8 @@ impl ParseUnit for Arguments<'_> {
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct Initialization<'s> {
     pub han2: Token<'s, syntax::Symbol>,
@@ -166,6 +181,8 @@ impl ParseUnit for Initialization<'_> {
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct FunctionCall<'s> {
     pub fn_name: Token<'s, Ident<'s>>,

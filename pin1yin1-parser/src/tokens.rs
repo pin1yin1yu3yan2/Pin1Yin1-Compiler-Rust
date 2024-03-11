@@ -24,6 +24,11 @@ impl<'s> Selection<'s> {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+
+    const EMPTY_CHARS: &'static [char] = &[];
+    pub fn empty() -> Selection<'static> {
+        Selection::new(Self::EMPTY_CHARS, 0, 0)
+    }
 }
 
 impl std::ops::Deref for Selection<'_> {
@@ -155,5 +160,30 @@ impl<'s, P: ParseUnit> std::ops::Deref for Token<'s, P> {
 impl<P: ParseUnit> std::ops::DerefMut for Token<'_, P> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.target
+    }
+}
+
+impl<'s, P: ParseUnit> serde::Serialize for Token<'s, P>
+where
+    P::Target<'s>: serde::Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.target.serialize(serializer)
+    }
+}
+
+impl<'s, P: ParseUnit> serde::Deserialize<'s> for Token<'s, P>
+where
+    P::Target<'s>: serde::Deserialize<'s>,
+{
+    fn deserialize<D>(deserializer: D) -> std::prelude::v1::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'s>,
+    {
+        let taregt = P::Target::deserialize(deserializer)?;
+        Ok(Self::new(Selection::empty(), taregt))
     }
 }

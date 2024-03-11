@@ -1,6 +1,8 @@
 use super::*;
 use crate::keywords::syntax;
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct VariableDefine<'s> {
     pub type_: Token<'s, types::TypeDeclare<'s>>,
