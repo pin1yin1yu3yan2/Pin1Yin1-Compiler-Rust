@@ -1,4 +1,4 @@
-use crate::keywords::syntax;
+use crate::{complex_pu, keywords::syntax};
 
 use super::*;
 
@@ -85,30 +85,127 @@ impl ParseUnit for StringLiteral<'_> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct NumberLiteral {
+pub struct NumberLiteral<'s> {
     pub number: f64,
+    _p: &'s (),
 }
 
-impl ParseUnit for NumberLiteral {
-    type Target<'t> = NumberLiteral;
+impl ParseUnit for NumberLiteral<'_> {
+    type Target<'t> = NumberLiteral<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let mut number = *p.parse::<usize>()? as f64;
 
-        if p.try_parse::<char>().is_ok_and(|c| *c == '.') {
-            let decimal = p
-                .parse::<usize>()
-                .or_else(|_| p.throw("there should be a decimal"))?;
-            let decimal = *decimal as f64;
+        if p.parse::<char>().is_ok_and(|c| *c == '.') {
+            let decimal = p.parse::<usize>().map(|t| *t).unwrap_or(0) as f64;
             number += decimal / 10f64.powi(decimal.log10().ceil() as _);
         }
-        p.finish(NumberLiteral { number })
+
+        p.finish(NumberLiteral { number, _p: &() })
     }
 }
 
-// pub enum Literal<'s> {}
+#[derive(Debug, Clone)]
+pub struct Arguments<'s> {
+    pub parms: Vec<Token<'s, Expr<'s>>>,
+    pub semicolons: Vec<Token<'s, syntax::Symbol>>,
+}
 
-// pub struct Expr<'s> {}
+impl ParseUnit for Arguments<'_> {
+    type Target<'t> = Arguments<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let Ok(parm) = p.parse::<Expr>() else {
+            return p.finish(Arguments {
+                parms: vec![],
+                semicolons: vec![],
+            });
+        };
+
+        let mut parms = vec![parm];
+        let mut semicolons = vec![];
+
+        while let Ok(semicolon) = p
+            .r#try(|p| p.parse::<syntax::Symbol>()?.is(syntax::Symbol::Semicolon))
+            .finish_no_error()
+        {
+            semicolons.push(semicolon);
+            if let Ok(parm) = p.parse::<Expr>() {
+                parms.push(parm)
+            } else {
+                break;
+            }
+        }
+
+        p.finish(Arguments { parms, semicolons })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Initialization<'s> {
+    pub han2: Token<'s, syntax::Symbol>,
+    pub args: Vec<Token<'s, Expr<'s>>>,
+    pub jie2: Token<'s, syntax::Symbol>,
+}
+
+impl ParseUnit for Initialization<'_> {
+    type Target<'t> = Initialization<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let han2 = p.parse::<syntax::Symbol>()?;
+        let mut args = vec![];
+        while let Ok(expr) = p.parse::<Expr>() {
+            args.push(dbg!(expr));
+        }
+        let jie2 = p
+            .parse::<syntax::Symbol>()
+            .map_err(|e| e.map(|e| e.emit("invalid Initialization Expr")))?;
+
+        p.finish(Initialization { han2, args, jie2 })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionCall<'s> {
+    pub fn_name: Token<'s, Ident<'s>>,
+    pub han2: Token<'s, syntax::Symbol>,
+    pub args: Token<'s, Arguments<'s>>,
+    pub jie2: Token<'s, syntax::Symbol>,
+}
+
+impl ParseUnit for FunctionCall<'_> {
+    type Target<'t> = FunctionCall<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let fn_name = p.parse::<Ident>()?;
+        let han2 = p.parse::<syntax::Symbol>()?.is(syntax::Symbol::Parameter)?;
+        let args = p.parse::<Arguments>()?;
+        let jie2 = p
+            .r#try(|p| {
+                p.parse::<syntax::Symbol>()
+                    .or_else(|_| p.throw("should be jie2"))?
+                    .is_or(syntax::Symbol::EndOfBracket, |t| t.throw("should be jie2"))
+            })
+            .finish()?;
+
+        p.finish(FunctionCall {
+            fn_name,
+            han2,
+            args,
+            jie2,
+        })
+    }
+}
+
+complex_pu! {
+    cpu Expr {
+        CharLiteral,
+        StringLiteral,
+        NumberLiteral,
+        Initialization,
+        FunctionCall
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -139,7 +236,7 @@ mod tests {
     #[test]
     fn number2() {
         parse_test("114514.", |p| {
-            assert!(p.parse::<NumberLiteral>().is_ok());
+            assert!(dbg!(p.parse::<NumberLiteral>()).is_ok());
         })
     }
 
@@ -147,6 +244,20 @@ mod tests {
     fn number3() {
         parse_test("1919.810", |p| {
             assert!(p.parse::<NumberLiteral>().is_ok());
+        })
+    }
+
+    #[test]
+    fn initialization() {
+        parse_test("han2 1 1 4 5 1 4 jie2", |p| {
+            assert!(p.parse::<Initialization>().is_ok());
+        })
+    }
+
+    #[test]
+    fn function_call() {
+        parse_test("han2shu41 can1 1919810 fen1 chuan4 acminoac jie2", |p| {
+            assert!(dbg!(p.parse::<FunctionCall>()).is_ok());
         })
     }
 }

@@ -16,7 +16,7 @@ impl ParseUnit for TypeConstExtend<'_> {
             .parse::<types::BasicExtenWord>()?
             .is(types::BasicExtenWord::Const)?;
 
-        let size = p.try_parse::<usize>().ok();
+        let size = p.parse::<usize>().ok();
         p.finish(TypeConstExtend { keyword, size })
     }
 }
@@ -36,7 +36,7 @@ impl ParseUnit for TypeArrayExtend<'_> {
             .parse::<types::BasicExtenWord>()?
             .is(types::BasicExtenWord::Array)?;
 
-        let size = p.try_parse::<usize>().ok();
+        let size = p.parse::<usize>().ok();
         p.finish(TypeArrayExtend { keyword, size })
     }
 }
@@ -150,27 +150,27 @@ impl ParseUnit for TypeSignExtend<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeDeclare<'s> {
     pub const_: Option<Token<'s, TypeConstExtend<'s>>>,
     pub decorators: Vec<Token<'s, TypeDecoratorExtends<'s>>>,
     pub width: Option<Token<'s, TypeWidthExtend<'s>>>,
     pub sign: Option<Token<'s, TypeSignExtend<'s>>>,
-    pub real_type: Token<'s, Ident>,
+    pub real_type: Token<'s, Ident<'s>>,
 }
 
 impl ParseUnit for TypeDeclare<'_> {
     type Target<'t> = TypeDeclare<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let const_ = p.try_parse::<TypeConstExtend>().ok();
+        let const_ = p.parse::<TypeConstExtend>().ok();
         let mut decorators = vec![];
-        while let Ok(decorator) = p.try_parse::<TypeDecoratorExtends>() {
+        while let Ok(decorator) = p.parse::<TypeDecoratorExtends>() {
             decorators.push(decorator);
         }
-        let width = p.try_parse::<TypeWidthExtend>().ok();
-        let sign = p.try_parse::<TypeSignExtend>().ok();
-        let real_type = p.try_parse::<Ident>()?;
+        let width = p.parse::<TypeWidthExtend>().ok();
+        let sign = p.parse::<TypeSignExtend>().ok();
+        let real_type = p.parse::<Ident>()?;
         p.finish(TypeDeclare {
             const_,
             decorators,

@@ -69,8 +69,7 @@ macro_rules! complex_pu {
                             .map(|tae| tae.map(<$enum_name>::$variant))
                     })
                 )*
-                .no_error()
-                .finish()
+                .finish_no_error()
             }
         }
     };

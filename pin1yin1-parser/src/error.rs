@@ -16,6 +16,11 @@ impl<'s> Error<'s> {
     pub fn new(selection: Selection<'s>, reason: String) -> Self {
         Self { selection, reason }
     }
+
+    pub fn emit(mut self, reason: impl Into<String>) -> Self {
+        self.reason = reason.into();
+        self
+    }
 }
 
 impl Debug for Error<'_> {

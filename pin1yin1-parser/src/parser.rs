@@ -6,7 +6,7 @@ pub struct Parser<'s> {
     pub(crate) src: &'s [char],
     pub(crate) idx: usize,
     // parse state
-    pub(crate) start_idx: usize,
+    start_idx: Option<usize>,
     // used to compute start_idx
     pub(crate) tries: usize,
     pub(crate) done_tries: usize,
@@ -29,6 +29,14 @@ impl Parser<'_> {
         self.src.get(self.idx).copied()
     }
 
+    pub(crate) fn start_taking(&mut self) {
+        self.start_idx = Some(self.start_idx.unwrap_or(self.idx));
+    }
+
+    pub(crate) fn start_idx(&self) -> usize {
+        self.start_idx.unwrap()
+    }
+
     // pub(crate) fn next_back(&mut self) -> Option<char> {
     //     if self.idx == 0 {
     //         return None;
@@ -43,7 +51,7 @@ impl<'s> Parser<'s> {
         Parser {
             src,
             idx: 0,
-            start_idx: 0,
+            start_idx: None,
             tries: 0,
             done_tries: 0,
             chars_cache: &src[..0],
@@ -60,15 +68,52 @@ impl<'s> Parser<'s> {
         Try::new(self).or_try(p)
     }
 
+    pub fn try_once<P, F>(&mut self, parser: F) -> ParseResult<'s, P>
+    where
+        P: ParseUnit,
+        F: FnOnce(&mut Parser<'s>) -> ParseResult<'s, P>,
+    {
+        let mut tmp = *self;
+
+        // reset state
+        tmp.start_idx = None;
+        let result = parser(&mut tmp);
+
+        match &result {
+            // if success,
+            Ok(..) => {
+                // foward tmp parser's work to main parser
+                self.idx = tmp.idx;
+                self.start_idx = self.start_idx.or(tmp.start_idx);
+
+                // use to skip repeated parse
+                if self.done_tries != self.tries {
+                    self.done_tries = self.tries;
+                }
+            }
+            Err(opte) => {
+                // fault
+                if opte.is_some() {
+                    // foward tmp parser's work to main parser
+                    self.idx = tmp.idx;
+                } else {
+                    // synchron try cache (for &[char]::parse)
+                    self.chars_cache = tmp.chars_cache;
+                    self.chars_cache_idx = tmp.chars_cache_idx;
+                    self.chars_cache_final = tmp.chars_cache_final;
+                }
+            }
+        }
+
+        result
+    }
+
+    /// make effort if success or no error, make no effort if failure
     pub fn parse<P: ParseUnit>(&mut self) -> ParseResult<'s, P> {
-        P::parse(self)
+        self.try_once(P::parse)
     }
 
-    pub fn try_parse<'p, P: ParseUnit>(&'p mut self) -> ParseResult<'s, P> {
-        Try::new(self).or_try(P::parse).no_error().finish()
-    }
-
-    pub fn skip_while<Rule>(&mut self, rule: Rule) -> &mut Self
+    pub(crate) fn skip_while<Rule>(&mut self, rule: Rule) -> &mut Self
     where
         Rule: Fn(char) -> bool,
     {
@@ -78,22 +123,22 @@ impl<'s> Parser<'s> {
         self
     }
 
-    pub fn skip_whitespace(&mut self) -> &mut Self {
+    pub(crate) fn skip_whitespace(&mut self) -> &mut Self {
         self.skip_while(|c| c.is_ascii_whitespace());
         self
     }
 
-    pub fn take_while<Rule>(&mut self, rule: Rule) -> &'s [char]
+    pub(crate) fn take_while<Rule>(&mut self, rule: Rule) -> &'s [char]
     where
         Rule: Fn(char) -> bool,
     {
-        self.start_idx = self.idx;
+        self.start_taking();
         self.skip_while(&rule);
-        &self.src[self.start_idx..self.idx]
+        &self.src[self.start_idx.unwrap()..self.idx]
     }
 
-    pub fn selection(&self) -> Selection<'s> {
-        Selection::new(self.src, self.start_idx, self.idx - self.start_idx)
+    pub(crate) fn selection(&self) -> Selection<'s> {
+        Selection::new(self.src, self.start_idx(), self.idx - self.start_idx())
     }
 
     pub fn new_token<I: Into<P::Target<'s>>, P: ParseUnit>(&self, t: I) -> Token<'s, P> {
@@ -129,7 +174,7 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
         }
     }
 
-    pub fn or_try<P1, F>(mut self, p: F) -> Self
+    pub fn or_try<P1, F>(mut self, parser: F) -> Self
     where
         P1: ParseUnit<Target<'s> = P::Target<'s>>,
         F: FnOnce(&mut Parser<'s>) -> ParseResult<'s, P1>,
@@ -138,29 +183,11 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
             return self;
         }
 
-        let mut tmp = *self.parser;
-        tmp.start_idx = tmp.idx;
-
-        match p(&mut tmp) {
-            Ok(r) => {
-                self.state = Some(Ok(Token::new(r.selection, r.target)));
-                self.parser.idx = tmp.idx;
-                self.parser.start_idx = tmp.start_idx;
-                if self.parser.done_tries != self.parser.tries {
-                    self.parser.done_tries = self.parser.tries;
-                }
-            }
-            Err(opte) => {
-                if let Some(e) = opte {
-                    self.state = Some(Err(e))
-                } else {
-                    // synchron
-                    self.parser.chars_cache = tmp.chars_cache;
-                    self.parser.chars_cache_idx = tmp.chars_cache_idx;
-                    self.parser.chars_cache_final = tmp.chars_cache_final;
-                }
-            }
-        }
+        self.state = match self.parser.try_once(parser) {
+            Ok(tk) => Some(Ok(Token::new(tk.selection, tk.target))),
+            Err(Some(e)) => Some(Err(e)),
+            _ => self.state,
+        };
 
         self
     }
@@ -172,11 +199,14 @@ impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {
         self
     }
 
-    pub fn no_error(self) -> Self {
-        self.or_error("no error")
-    }
-
     pub fn finish(self) -> ParseResult<'s, P> {
         self.state.expect("uncatched error").map_err(Some)
+    }
+
+    pub fn finish_no_error(self) -> ParseResult<'s, P> {
+        match self.state {
+            Some(r) => r.map_err(Some),
+            None => Err(None),
+        }
     }
 }

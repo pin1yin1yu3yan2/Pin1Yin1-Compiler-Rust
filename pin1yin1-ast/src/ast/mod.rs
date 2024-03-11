@@ -5,12 +5,13 @@ pub mod syntax;
 pub mod types;
 
 #[derive(Debug, Clone)]
-pub struct Ident {
+pub struct Ident<'s> {
     pub ident: String,
+    _p: &'s (),
 }
 
-impl ParseUnit for Ident {
-    type Target<'t> = Ident;
+impl ParseUnit for Ident<'_> {
+    type Target<'t> = Ident<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let ident = p
@@ -23,6 +24,7 @@ impl ParseUnit for Ident {
 
         p.finish(Ident {
             ident: ident.take(),
+            _p: &(),
         })
     }
 }

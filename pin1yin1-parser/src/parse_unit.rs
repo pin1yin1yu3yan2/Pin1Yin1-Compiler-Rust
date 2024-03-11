@@ -16,7 +16,8 @@ impl ParseUnit for String {
     type Target<'t> = String;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let s = p.parse::<&[char]>()?.iter().collect::<String>();
+        let s = <&[char]>::parse(p)?.iter().collect::<String>();
+
         p.finish(s)
     }
 }
@@ -31,6 +32,7 @@ impl ParseUnit for &[char] {
             p.chars_cache = p.skip_whitespace().take_while(chars_taking_rule);
             p.chars_cache_final = p.idx;
         } else {
+            p.start_taking();
             // just skip
             p.idx = p.chars_cache_final;
         }
@@ -43,9 +45,11 @@ impl ParseUnit for usize {
     type Target<'t> = usize;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let num = p
-            .skip_whitespace()
-            .take_while(|c| c.is_ascii_digit())
+        let chars = p.skip_whitespace().take_while(|c| c.is_ascii_digit());
+        if chars.is_empty() {
+            return Err(None);
+        }
+        let num = chars
             .iter()
             .rev()
             .enumerate()
@@ -59,7 +63,17 @@ impl ParseUnit for char {
     type Target<'t> = char;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        p.start_taking();
         let next = p.next();
         p.finish(next.ok_or(None)?)
+    }
+}
+
+impl ParseUnit for () {
+    type Target<'t> = ();
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        p.start_taking();
+        p.finish(())
     }
 }

@@ -80,12 +80,12 @@ impl<'s, P: ParseUnit> Token<'s, P> {
         self.which_or(condition, |_| Err(None))
     }
 
-    pub fn is_or<E>(self, rhs: P::Target<'s>) -> ParseResult<'s, P>
+    pub fn is_or<E>(self, rhs: P::Target<'s>, e: E) -> ParseResult<'s, P>
     where
         P::Target<'s>: PartialEq,
         E: FnOnce(Self) -> ParseResult<'s, P>,
     {
-        self.which_or(|t| t == &rhs, |_| Err(None))
+        self.which_or(|t| t == &rhs, e)
     }
 
     pub fn is(self, rhs: P::Target<'s>) -> ParseResult<'s, P>
