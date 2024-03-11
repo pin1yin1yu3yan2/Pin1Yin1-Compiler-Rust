@@ -115,6 +115,7 @@ impl ParseUnit for Arguments<'_> {
     type Target<'t> = Arguments<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        // may be empty
         let Ok(parm) = p.parse::<Expr>() else {
             return p.finish(Arguments {
                 parms: vec![],
@@ -127,7 +128,7 @@ impl ParseUnit for Arguments<'_> {
 
         while let Ok(semicolon) = p
             .r#try(|p| p.parse::<syntax::Symbol>()?.is(syntax::Symbol::Semicolon))
-            .finish_no_error()
+            .finish()
         {
             semicolons.push(semicolon);
             if let Ok(parm) = p.parse::<Expr>() {
@@ -183,7 +184,7 @@ impl ParseUnit for FunctionCall<'_> {
         let jie2 = p
             .r#try(|p| {
                 p.parse::<syntax::Symbol>()
-                    .or_else(|_| p.throw("should be jie2"))?
+                    .or_else(|_| p.throw("should insert jie2"))?
                     .is_or(syntax::Symbol::EndOfBracket, |t| t.throw("should be jie2"))
             })
             .finish()?;

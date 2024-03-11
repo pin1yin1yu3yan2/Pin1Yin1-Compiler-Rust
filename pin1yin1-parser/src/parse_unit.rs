@@ -2,12 +2,18 @@ use std::fmt::Debug;
 
 use crate::*;
 
+/// implement for a type and make it parseable
+///
+/// [`ParseUnit::Target`] measn the actual type of the parse result
 pub trait ParseUnit: Sized {
     type Target<'t>: Debug;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self>;
 }
 
+/// extract this function to make the addition of the UNICODE support much easier
+///
+/// but, whether how easy to support UNICODE, i wont support it QWQ
 pub(crate) const fn chars_taking_rule(c: char) -> bool {
     c.is_ascii_alphanumeric() || c.is_ascii_punctuation()
 }
@@ -27,17 +33,18 @@ impl ParseUnit for &[char] {
     type Target<'t> = &'t [char];
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        if p.chars_cache_idx != p.idx {
-            p.chars_cache_idx = p.idx;
-            p.chars_cache = p.skip_whitespace().take_while(chars_taking_rule);
-            p.chars_cache_final = p.idx;
+        // reparse and cache the result
+        if p.cache.first_index != p.idx {
+            p.cache.first_index = p.idx;
+            p.cache.chars = p.skip_whitespace().take_while(chars_taking_rule);
+            p.cache.final_index = p.idx;
         } else {
+            // load from cache, call p.start_taking() to perform the right behavior
             p.start_taking();
-            // just skip
-            p.idx = p.chars_cache_final;
+            p.idx = p.cache.final_index;
         }
 
-        p.finish(p.chars_cache)
+        p.finish(p.cache.chars)
     }
 }
 
@@ -66,14 +73,5 @@ impl ParseUnit for char {
         p.start_taking();
         let next = p.next();
         p.finish(next.ok_or(None)?)
-    }
-}
-
-impl ParseUnit for () {
-    type Target<'t> = ();
-
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        p.start_taking();
-        p.finish(())
     }
 }
