@@ -1,6 +1,12 @@
 use std::marker::PhantomData;
 
-use crate::{complex_pu, keywords::syntax};
+use crate::{
+    complex_pu,
+    keywords::{
+        operators::{self, OperatorAssociativity},
+        syntax,
+    },
+};
 
 use super::*;
 
@@ -95,6 +101,7 @@ impl ParseUnit for StringLiteral<'_> {
 #[derive(Debug, Clone, Copy)]
 pub struct NumberLiteral<'s> {
     pub number: f64,
+    #[serde(skip)]
     _p: PhantomData<&'s ()>,
 }
 
@@ -120,7 +127,7 @@ impl ParseUnit for NumberLiteral<'_> {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct Arguments<'s> {
-    pub parms: Vec<Token<'s, Expr<'s>>>,
+    pub parms: Vec<Token<'s, AtomicExpr<'s>>>,
     pub semicolons: Vec<Token<'s, syntax::Symbol>>,
 }
 
@@ -129,7 +136,7 @@ impl ParseUnit for Arguments<'_> {
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         // may be empty
-        let Ok(parm) = p.parse::<Expr>() else {
+        let Ok(parm) = p.parse::<AtomicExpr>() else {
             return p.finish(Arguments {
                 parms: vec![],
                 semicolons: vec![],
@@ -144,7 +151,7 @@ impl ParseUnit for Arguments<'_> {
             .finish()
         {
             semicolons.push(semicolon);
-            if let Ok(parm) = p.parse::<Expr>() {
+            if let Ok(parm) = p.parse::<AtomicExpr>() {
                 parms.push(parm)
             } else {
                 break;
@@ -160,7 +167,7 @@ impl ParseUnit for Arguments<'_> {
 #[derive(Debug, Clone)]
 pub struct Initialization<'s> {
     pub han2: Token<'s, syntax::Symbol>,
-    pub args: Vec<Token<'s, Expr<'s>>>,
+    pub args: Vec<Token<'s, AtomicExpr<'s>>>,
     pub jie2: Token<'s, syntax::Symbol>,
 }
 
@@ -170,7 +177,7 @@ impl ParseUnit for Initialization<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let han2 = p.parse::<syntax::Symbol>()?;
         let mut args = vec![];
-        while let Ok(expr) = p.parse::<Expr>() {
+        while let Ok(expr) = p.parse::<AtomicExpr>() {
             args.push(dbg!(expr));
         }
         let jie2 = p
@@ -215,13 +222,76 @@ impl ParseUnit for FunctionCall<'_> {
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[derive(Debug, Clone)]
+pub struct Variable<'s> {
+    pub ident: Token<'s, Ident<'s>>,
+}
+
+impl ParseUnit for Variable<'_> {
+    type Target<'t> = Variable<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let ident = p.parse::<Ident>()?;
+        p.finish(Variable { ident })
+    }
+}
+
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[derive(Debug, Clone)]
+pub struct UnaryExpr<'s> {
+    pub operator: Token<'s, operators::Operators>,
+    // using box, or cycle in AtomicExpr
+    pub expr: Box<Token<'s, AtomicExpr<'s>>>,
+}
+
+impl ParseUnit for UnaryExpr<'_> {
+    type Target<'t> = UnaryExpr<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let operator = p
+            .parse::<operators::Operators>()?
+            .which(|op| op.associativity() == OperatorAssociativity::Unary)?;
+        let expr = Box::new(p.parse::<AtomicExpr>()?);
+        p.finish(UnaryExpr { operator, expr })
+    }
+}
+
 complex_pu! {
-    cpu Expr {
+    cpu AtomicExpr {
         CharLiteral,
         StringLiteral,
         NumberLiteral,
         Initialization,
-        FunctionCall
+        FunctionCall,
+        Variable,
+        UnaryExpr
+    }
+}
+
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[derive(Debug, Clone)]
+pub enum Expr<'s> {
+    Atomic(Token<'s, AtomicExpr<'s>>),
+    Binary {
+        lhs: Box<Token<'s, Expr<'s>>>,
+        op: Token<'s, operators::Operators>,
+        rhs: Box<Token<'s, Expr<'s>>>,
+    },
+}
+
+impl ParseUnit for Expr<'_> {
+    type Target<'t> = Expr<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let start = p.parse::<UnaryExpr>()?;
+
+        // loop {}
+
+        todo!()
     }
 }
 
@@ -275,7 +345,21 @@ mod tests {
     #[test]
     fn function_call() {
         parse_test("han2shu41 can1 1919810 fen1 chuan4 acminoac jie2", |p| {
-            assert!(dbg!(p.parse::<FunctionCall>()).is_ok());
+            assert!(p.parse::<FunctionCall>().is_ok());
+        })
+    }
+
+    #[test]
+    fn unary() {
+        parse_test("fei1 191810", |p| {
+            assert!(p.parse::<UnaryExpr>().is_ok());
+        })
+    }
+
+    #[test]
+    fn nested_unary() {
+        parse_test("fei1 fei1 fei1 fei1 191810", |p| {
+            assert!(p.parse::<UnaryExpr>().is_ok());
         })
     }
 }

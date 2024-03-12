@@ -69,26 +69,6 @@ impl ParseUnit for TypeReferenceExtend<'_> {
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
-pub struct TypeRightReferenceExtend<'s> {
-    pub keyword: Token<'s, types::BasicExtenWord>,
-}
-
-impl ParseUnit for TypeRightReferenceExtend<'_> {
-    type Target<'t> = TypeRightReferenceExtend<'t>;
-
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p
-            .parse::<types::BasicExtenWord>()?
-            .is(types::BasicExtenWord::RightReference)?;
-
-        p.finish(TypeRightReferenceExtend { keyword })
-    }
-}
-
-/// Decorators
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[derive(Debug, Clone, Copy)]
 pub struct TypePointerExtend<'s> {
     pub keyword: Token<'s, types::BasicExtenWord>,
 }
@@ -109,7 +89,6 @@ complex_pu! {
     cpu TypeDecoratorExtends {
         TypeArrayExtend,
         TypeReferenceExtend,
-        TypeRightReferenceExtend,
         TypePointerExtend
     }
 }
@@ -168,6 +147,7 @@ impl ParseUnit for TypeSignExtend<'_> {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct TypeDeclare<'s> {
+    #[cfg_attr(feature = "ser", serde(rename = "const"))]
     pub const_: Option<Token<'s, TypeConstExtend<'s>>>,
     pub decorators: Vec<Token<'s, TypeDecoratorExtends<'s>>>,
     pub width: Option<Token<'s, TypeWidthExtend<'s>>>,

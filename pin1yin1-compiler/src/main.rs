@@ -8,6 +8,8 @@ fn main() {
     let mut parser = Parser::new(&chars);
 
     let type_declare = parser.parse::<TypeDeclare>().unwrap();
+    let string = serde_json::to_string(&type_declare).unwrap();
+    println!("{}", string);
 
-    println!("{}", serde_json::to_string(&type_declare).unwrap());
+    std::fs::write("test.json", string).unwrap();
 }

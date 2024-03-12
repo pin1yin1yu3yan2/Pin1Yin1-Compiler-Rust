@@ -92,8 +92,16 @@ impl<'s> Parser<'s> {
 
         // do parsing
         let result = parser(&mut tmp);
+        self.sync_with(&result, &tmp);
+        result
+    }
 
-        match &result {
+    /// sync state with the parsing result from a temp sub parser
+    pub(crate) fn sync_with<P>(&mut self, result: &ParseResult<'s, P>, tmp: &Parser<'s>)
+    where
+        P: ParseUnit,
+    {
+        match result {
             // if success,
             Ok(..) => {
                 // foward tmp parser's work to main parser
@@ -111,8 +119,6 @@ impl<'s> Parser<'s> {
                 }
             }
         }
-
-        result
     }
 
     /// make effort if success or return [`Error`], make no effort if failure
@@ -196,9 +202,6 @@ impl<'s> Parser<'s> {
 pub struct Try<'p, 's, P: ParseUnit> {
     parser: &'p mut Parser<'s>,
     state: Option<std::result::Result<Token<'s, P>, Error<'s>>>,
-    /// TODO, i wonder parallel is even slower
-    #[cfg(feature = "parallel")]
-    tasks: tokio::task::JoinSet<ParseResult<'s, P>>,
 }
 
 impl<'p, 's, P: ParseUnit> Try<'p, 's, P> {

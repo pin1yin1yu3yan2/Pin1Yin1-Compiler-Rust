@@ -1,13 +1,16 @@
+/// use to define some keyword
+///
+/// you should only use at most one keywords! macro in a mod
 #[macro_export]
 macro_rules! keywords {
     ($(
         keywords $enum_name:ident
         { $(
-            $string:literal -> $var:ident
-        ),*}
+            $string:literal -> $var:ident,
+        )*}
     )*) => {
         $(
-        #[cfg_attr(feature ="ser", derive(serde::Serialize,serde::Deserialize))]
+        #[cfg_attr(feature = "ser", derive(serde::Serialize,serde::Deserialize))]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum $enum_name {
             $(
@@ -35,9 +38,20 @@ macro_rules! keywords {
             }
         }
         )*
+
+        lazy_static::lazy_static! {
+            pub static ref KEPPING_KEYWORDS: std::collections::HashSet<Vec<char>> = {
+                let mut set = std::collections::HashSet::<Vec<char>>::default();
+                $($(
+                    set.insert($string.chars().collect::<Vec<_>>());
+                )*)*
+                set
+            };
+        }
     };
 }
 
+/// use to define a complex parse unit which could be one of its variants
 #[macro_export]
 macro_rules! complex_pu {
     (cpu $enum_name:ident {
@@ -63,7 +77,8 @@ macro_rules! complex_pu {
         impl pin1yin1_parser::ParseUnit for $enum_name<'_> {
             type Target<'t> = $enum_name<'t>;
 
-            fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+            fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self>
+            {
                 pin1yin1_parser::Try::new(p)
                 $(
                     // whats the meaning of `tae` ???

@@ -11,6 +11,7 @@ pub mod types;
 #[derive(Debug, Clone)]
 pub struct Ident<'s> {
     pub ident: String,
+    #[serde(skip)]
     _p: PhantomData<&'s ()>,
 }
 
@@ -19,15 +20,24 @@ impl ParseUnit for Ident<'_> {
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let ident = p
-            .parse::<String>()?
+            .parse::<&[char]>()?
             .which_or(|s| !s.is_empty(), |s| s.throw("empty ident!"))?
-            .which_or(
-                |s| !s.chars().next().unwrap().is_ascii_digit(),
-                |s| s.throw("bad ident"),
-            )?;
+            .which_or(|s| !s[0].is_ascii_digit(), |s| s.throw("bad ident"))?;
+
+        use crate::keywords::*;
+
+        // keeping keywords cant be used as identifiers
+        if operators::KEPPING_KEYWORDS.contains(*ident)
+            || operators::sub_classes::KEPPING_KEYWORDS.contains(*ident)
+            || preprocess::KEPPING_KEYWORDS.contains(*ident)
+            || syntax::KEPPING_KEYWORDS.contains(*ident)
+            || types::KEPPING_KEYWORDS.contains(*ident)
+        {
+            return Err(None);
+        }
 
         p.finish(Ident {
-            ident: ident.take(),
+            ident: ident.take().iter().collect(),
             _p: PhantomData,
         })
     }

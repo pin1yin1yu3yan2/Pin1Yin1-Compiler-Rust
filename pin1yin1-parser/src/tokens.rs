@@ -5,6 +5,8 @@ use std::fmt::Debug;
 ///
 /// be different from &[char], this type contains
 /// two data: the start of the selection, and the length of the selection
+///
+/// as for [`serde`],,, we skip [`Selection`] now
 #[derive(Debug, Clone, Copy)]
 pub struct Selection<'s> {
     pub(crate) src: &'s [char],
@@ -24,9 +26,13 @@ impl<'s> Selection<'s> {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+}
 
+#[cfg(feature = "ser")]
+/// will and will only, should and should only be used in [`serde`]
+impl Selection<'_> {
     const EMPTY_CHARS: &'static [char] = &[];
-    pub fn empty() -> Selection<'static> {
+    fn empty() -> Selection<'static> {
         Selection::new(Self::EMPTY_CHARS, 0, 0)
     }
 }
@@ -163,6 +169,7 @@ impl<P: ParseUnit> std::ops::DerefMut for Token<'_, P> {
     }
 }
 
+#[cfg(feature = "ser")]
 impl<'s, P: ParseUnit> serde::Serialize for Token<'s, P>
 where
     P::Target<'s>: serde::Serialize,
@@ -175,6 +182,7 @@ where
     }
 }
 
+#[cfg(feature = "ser")]
 impl<'s, P: ParseUnit> serde::Deserialize<'s> for Token<'s, P>
 where
     P::Target<'s>: serde::Deserialize<'s>,

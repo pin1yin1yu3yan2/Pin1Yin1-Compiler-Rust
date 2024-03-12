@@ -5,7 +5,7 @@ keywords! {
         "lei4"     -> Classs,
         "mei2"     -> Enum,
         "lian2"    -> Union,
-        "jie2gou4" -> Struct
+        "jie2gou4" -> Struct,
     }
     keywords Symbol {
         "han2"   -> Block,
@@ -17,7 +17,7 @@ keywords! {
         "de1"    -> GetElement,
         "biao1"  -> Label,
         "wen2"   -> Char,
-        "chuan4" -> String
+        "chuan4" -> String,
     }
     keywords ControlFlow {
         "ruo4"      -> If,
@@ -25,6 +25,6 @@ keywords! {
         "chong2"    -> Repeat,
         "qie4huan4" -> Switch,
         "tiao4"     -> Jump,
-        "fan3"      -> Return
+        "fan3"      -> Return,
     }
 }
