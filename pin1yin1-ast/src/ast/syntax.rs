@@ -283,20 +283,20 @@ mod tests {
 
     #[test]
     fn variable_define_init() {
-        parse_test("kuan1 32 zheng3 a deng3 114514", |p| {
+        parse_test("kuan1 32 zheng3 a deng3 114514 fen1", |p| {
             assert!(p.parse::<Statement>().is_ok())
         });
-        parse_test("kuan1 32 zheng3 a deng3 114514", |p| {
+        parse_test("kuan1 32 zheng3 a deng3 114514 fen1", |p| {
             assert!(p.parse::<VariableInit>().is_ok())
         });
     }
 
     #[test]
     fn variable_reassign() {
-        parse_test("a deng3 114514", |p| {
+        parse_test("a deng3 114514 fen1", |p| {
             assert!(p.parse::<Statement>().is_ok())
         });
-        parse_test("a deng3 114514", |p| {
+        parse_test("a deng3 114514 fen1", |p| {
             assert!(p.parse::<VariableReAssign>().is_ok())
         });
     }
@@ -317,6 +317,22 @@ mod tests {
     }
 
     #[test]
+    fn complex_funcion_define() {
+        parse_test(
+            "zheng3 zhu3 can1 zheng3 argc fen1 zhi3 zu3 zi4 argv jie2 
+                    han2
+                        ruo4 can1 can1 1 da4 0 jie2 huo4 can1 2 xiao3 3 jie2 yu3 fei1 fou3 jie2
+                        han2 
+                            shi4 if ((1>0)||(2<3)&&!false){} else{} jie2
+                        jie2 ze2 han2 
+
+                        jie2
+                    jie2",
+            |p| assert!(p.parse::<FunctionDefine>().is_ok()),
+        )
+    }
+
+    #[test]
     fn comment() {
         parse_test("shi4 ehhhaaaaaaaaaaaaaaaaaaaaaaaa jie2", |p| {
             assert!(p.parse::<Comment>().is_ok())
@@ -324,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn comment_e() {
+    fn comment_without_ending() {
         parse_test("shi4 ehhhaaaaaaaaaaaaaaaaaaaaaaaa ajie2", |p| {
             assert!(p.parse::<Comment>().is_err())
         });
