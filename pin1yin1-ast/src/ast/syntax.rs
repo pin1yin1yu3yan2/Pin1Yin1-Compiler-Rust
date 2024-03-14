@@ -1,17 +1,14 @@
-use super::statements::Statement;
 use super::*;
+use super::{expr::Expr, statements::Statement};
 
-use crate::keywords::syntax::{defaults::Symbol::*, Symbol};
+use crate::keywords::syntax::Symbol;
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg(feature = "ser")]
+use crate::keywords::syntax::defaults::Symbol::*;
+
 #[derive(Debug, Clone)]
 pub struct Comment<'s> {
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Comment"))]
     pub shi4: Token<'s, Symbol>,
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "EndOfBracket"))]
     pub jie2: Token<'s, Symbol>,
 }
 
@@ -60,7 +57,7 @@ pub struct VariableAssign<'s> {
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "Assign"))]
     pub deng3: Token<'s, Symbol>,
-    pub value: Token<'s, expr::Expr<'s>>,
+    pub value: Token<'s, Expr<'s>>,
 }
 
 impl ParseUnit for VariableAssign<'_> {
@@ -68,7 +65,7 @@ impl ParseUnit for VariableAssign<'_> {
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let deng3 = p.parse::<Symbol>()?.is(Symbol::Assign)?;
-        let value = p.parse::<expr::Expr>()?;
+        let value = p.parse::<Expr>()?;
         p.finish(VariableAssign { deng3, value })
     }
 }
@@ -79,6 +76,9 @@ impl ParseUnit for VariableAssign<'_> {
 pub struct VariableInit<'s> {
     pub define: Token<'s, VariableDefine<'s>>,
     pub init: Token<'s, VariableAssign<'s>>,
+    #[cfg_attr(feature = "ser", serde(skip))]
+    #[cfg_attr(feature = "ser", serde(default = "Semicolon"))]
+    pub fen1: Token<'s, Symbol>,
 }
 
 impl ParseUnit for VariableInit<'_> {
@@ -87,7 +87,8 @@ impl ParseUnit for VariableInit<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let define = p.parse::<VariableDefine>()?;
         let init = p.parse::<VariableAssign>()?;
-        p.finish(VariableInit { define, init })
+        let fen1 = p.match_one(Symbol::Semicolon, "missing `fen1`")?;
+        p.finish(VariableInit { define, init, fen1 })
     }
 }
 
@@ -97,6 +98,9 @@ impl ParseUnit for VariableInit<'_> {
 pub struct VariableReAssign<'s> {
     pub name: Token<'s, Ident<'s>>,
     pub assign: Token<'s, VariableAssign<'s>>,
+    #[cfg_attr(feature = "ser", serde(skip))]
+    #[cfg_attr(feature = "ser", serde(default = "Semicolon"))]
+    pub fen1: Token<'s, Symbol>,
 }
 
 impl ParseUnit for VariableReAssign<'_> {
@@ -105,7 +109,8 @@ impl ParseUnit for VariableReAssign<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let name = p.parse::<Ident>()?;
         let assign = p.parse::<VariableAssign>()?;
-        p.finish(VariableReAssign { name, assign })
+        let fen1 = p.match_one(Symbol::Semicolon, "missing `fen1`")?;
+        p.finish(VariableReAssign { name, assign, fen1 })
     }
 }
 
@@ -120,6 +125,7 @@ pub struct CodeBlock<'s> {
     pub jie2: Token<'s, Symbol>,
 }
 
+#[cfg(feature = "ser")]
 impl<'s> From<Vec<Token<'s, Statement<'s>>>> for CodeBlock<'s> {
     fn from(value: Vec<Token<'s, Statement<'s>>>) -> Self {
         CodeBlock {
@@ -130,6 +136,7 @@ impl<'s> From<Vec<Token<'s, Statement<'s>>>> for CodeBlock<'s> {
     }
 }
 
+#[cfg(feature = "ser")]
 impl<'s> From<CodeBlock<'s>> for Vec<Token<'s, Statement<'s>>> {
     fn from(value: CodeBlock<'s>) -> Self {
         value.stmts
@@ -143,7 +150,9 @@ impl ParseUnit for CodeBlock<'_> {
         let han2 = p.parse::<Symbol>()?.is(Symbol::Block)?;
         let mut stmts = vec![];
         while let Ok(stmt) = p.parse::<Statement>() {
-            stmts.push(stmt);
+            if !matches!(*stmt, Statement::Comment(..)) {
+                stmts.push(stmt);
+            }
         }
         let jie2 = p.match_one::<Symbol>(Symbol::EndOfBracket, "expect `jie2` {CodeBlock}")?;
         p.finish(CodeBlock { han2, stmts, jie2 })

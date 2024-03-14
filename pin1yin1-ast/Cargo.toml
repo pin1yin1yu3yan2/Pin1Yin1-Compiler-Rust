@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pin1yin1-parser = { path = "../pin1yin1-parser" }
+pin1yin1-parser = { path = "../pin1yin1-parser", default-features = false }
 lazy_static = "1.4.0"
 serde = { version = "1", features = ["serde_derive"], optional = true }
 

@@ -1,10 +1,9 @@
 use self::{expr::Arguments, syntax::CodeBlock};
-use crate::{
-    complex_pu,
-    keywords::syntax::{defaults::ControlFlow::*, ControlFlow},
-};
+use crate::{complex_pu, keywords::syntax::ControlFlow};
 
 use super::*;
+#[cfg(feature = "ser")]
+use crate::keywords::syntax::defaults::ControlFlow::*;
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
@@ -98,6 +97,32 @@ impl ParseUnit for If<'_> {
             }
         }
         p.finish(If { ruo4, chains })
+    }
+}
+
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[derive(Debug, Clone)]
+pub struct While<'s> {
+    #[cfg_attr(feature = "ser", serde(skip))]
+    #[cfg_attr(feature = "ser", serde(default = "Repeat"))]
+    pub chong2: Token<'s, ControlFlow>,
+    pub conds: Token<'s, Arguments<'s>>,
+    pub block: Token<'s, CodeBlock<'s>>,
+}
+
+impl ParseUnit for While<'_> {
+    type Target<'t> = While<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let chong2 = p.parse::<ControlFlow>()?.is(ControlFlow::Repeat)?;
+        let conds = p.parse::<Arguments>()?;
+        let block = p.parse_or::<CodeBlock>("`chong2` without a code block")?;
+        p.finish(While {
+            chong2,
+            conds,
+            block,
+        })
     }
 }
 

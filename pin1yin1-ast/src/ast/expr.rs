@@ -1,17 +1,18 @@
 use std::marker::PhantomData;
 
+use super::*;
 use crate::{
     complex_pu,
     keywords::{
         operators::{self, OperatorAssociativity},
-        syntax::{defaults::Symbol::*, Symbol},
+        syntax::Symbol,
     },
 };
 
-use super::*;
+#[cfg(feature = "ser")]
+use crate::keywords::syntax::defaults::Symbol::*;
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[cfg_attr(feature = "ser", serde(into = "char"))]
 #[cfg_attr(feature = "ser", serde(from = "char"))]
 #[derive(Debug, Clone)]
@@ -21,6 +22,7 @@ pub struct CharLiteral<'s> {
     pub parsed: char,
 }
 
+#[cfg(feature = "ser")]
 impl From<char> for CharLiteral<'_> {
     fn from(value: char) -> Self {
         Self {
@@ -30,7 +32,7 @@ impl From<char> for CharLiteral<'_> {
         }
     }
 }
-
+#[cfg(feature = "ser")]
 impl From<CharLiteral<'_>> for char {
     fn from(value: CharLiteral<'_>) -> Self {
         value.parsed
@@ -75,7 +77,6 @@ impl ParseUnit for CharLiteral<'_> {
 }
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[cfg_attr(feature = "ser", serde(into = "String"))]
 #[cfg_attr(feature = "ser", serde(from = "String"))]
 #[derive(Debug, Clone)]
@@ -85,6 +86,7 @@ pub struct StringLiteral<'s> {
     pub parsed: String,
 }
 
+#[cfg(feature = "ser")]
 impl From<String> for StringLiteral<'_> {
     fn from(value: String) -> Self {
         Self {
@@ -95,6 +97,7 @@ impl From<String> for StringLiteral<'_> {
     }
 }
 
+#[cfg(feature = "ser")]
 impl From<StringLiteral<'_>> for String {
     fn from(value: StringLiteral<'_>) -> Self {
         value.parsed
@@ -138,12 +141,12 @@ impl ParseUnit for StringLiteral<'_> {
 pub enum NumberLiteral<'s> {
     Float {
         number: f64,
-        #[serde(skip)]
+        #[cfg_attr(feature = "ser", serde(skip))]
         _p: PhantomData<&'s ()>,
     },
     Digit {
         number: usize,
-        #[serde(skip)]
+        #[cfg_attr(feature = "ser", serde(skip))]
         _p: PhantomData<&'s ()>,
     },
 }
@@ -251,6 +254,7 @@ impl ParseUnit for Initialization<'_> {
     }
 }
 
+#[cfg(feature = "ser")]
 impl<'s> From<Vec<Token<'s, AtomicExpr<'s>>>> for Initialization<'s> {
     fn from(value: Vec<Token<'s, AtomicExpr<'s>>>) -> Self {
         Self {
@@ -261,6 +265,7 @@ impl<'s> From<Vec<Token<'s, AtomicExpr<'s>>>> for Initialization<'s> {
     }
 }
 
+#[cfg(feature = "ser")]
 impl<'s> From<Initialization<'s>> for Vec<Token<'s, AtomicExpr<'s>>> {
     fn from(val: Initialization<'s>) -> Self {
         val.args
@@ -333,6 +338,7 @@ pub struct BracketExpr<'s> {
     pub jie2: Token<'s, Symbol>,
 }
 
+#[cfg(feature = "ser")]
 impl<'s> From<Expr<'s>> for BracketExpr<'s> {
     fn from(value: Expr<'s>) -> Self {
         Self {
@@ -343,6 +349,7 @@ impl<'s> From<Expr<'s>> for BracketExpr<'s> {
     }
 }
 
+#[cfg(feature = "ser")]
 impl<'s> From<BracketExpr<'s>> for Expr<'s> {
     fn from(value: BracketExpr<'s>) -> Self {
         value.expr.take()

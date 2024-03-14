@@ -11,9 +11,9 @@ fn main() {
 
     let pu = parser.parse::<Target>().unwrap();
     let string = serde_json::to_string(&pu).unwrap();
+    println!("{}", string);
     let pu = serde_json::from_str::<Target>(&string).unwrap();
     let string = serde_json::to_string(&pu).unwrap();
-    println!("{}", string);
 
     std::fs::write("test.json", string).unwrap();
 }

@@ -9,12 +9,28 @@ pub mod syntax;
 pub mod types;
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg_attr(feature = "ser", serde(into = "String"))]
+#[cfg_attr(feature = "ser", serde(from = "String"))]
 #[derive(Debug, Clone)]
 pub struct Ident<'s> {
     pub ident: String,
-    #[serde(skip)]
+    #[cfg_attr(feature = "ser", serde(skip))]
     _p: PhantomData<&'s ()>,
+}
+
+impl From<String> for Ident<'_> {
+    fn from(value: String) -> Self {
+        Self {
+            ident: value,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl From<Ident<'_>> for String {
+    fn from(value: Ident<'_>) -> Self {
+        value.ident
+    }
 }
 
 impl ParseUnit for Ident<'_> {
