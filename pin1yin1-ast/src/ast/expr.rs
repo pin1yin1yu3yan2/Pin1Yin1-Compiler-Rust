@@ -4,7 +4,7 @@ use crate::{
     complex_pu,
     keywords::{
         operators::{self, OperatorAssociativity},
-        syntax,
+        syntax::{defaults::Symbol::*, Symbol},
     },
 };
 
@@ -12,11 +12,29 @@ use super::*;
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg_attr(feature = "ser", serde(into = "char"))]
+#[cfg_attr(feature = "ser", serde(from = "char"))]
 #[derive(Debug, Clone)]
 pub struct CharLiteral<'s> {
-    pub zi4: Token<'s, syntax::Symbol>,
+    pub zi4: Token<'s, Symbol>,
     pub unparsed: Token<'s, String>,
     pub parsed: char,
+}
+
+impl From<char> for CharLiteral<'_> {
+    fn from(value: char) -> Self {
+        Self {
+            zi4: Char(),
+            unparsed: Token::new_without_selection(String::new()),
+            parsed: value,
+        }
+    }
+}
+
+impl From<CharLiteral<'_>> for char {
+    fn from(value: CharLiteral<'_>) -> Self {
+        value.parsed
+    }
 }
 
 fn escape<'s>(src: &Token<'s, String>, c: char) -> Result<'s, char> {
@@ -37,7 +55,7 @@ impl ParseUnit for CharLiteral<'_> {
     type Target<'t> = CharLiteral<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let zi4 = p.parse::<syntax::Symbol>()?.is(syntax::Symbol::Char)?;
+        let zi4 = p.parse::<Symbol>()?.is(Symbol::Char)?;
         let unparsed = p.parse::<String>()?.which_or(
             |s| s.len() == 1 || s.len() == 2 && s.starts_with('_'),
             |token| token.throw(format!("Invalid CharLiteral {}", *token)),
@@ -58,18 +76,36 @@ impl ParseUnit for CharLiteral<'_> {
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg_attr(feature = "ser", serde(into = "String"))]
+#[cfg_attr(feature = "ser", serde(from = "String"))]
 #[derive(Debug, Clone)]
 pub struct StringLiteral<'s> {
-    pub chuan4: Token<'s, syntax::Symbol>,
+    pub chuan4: Token<'s, Symbol>,
     pub unparsed: Token<'s, String>,
     pub parsed: String,
+}
+
+impl From<String> for StringLiteral<'_> {
+    fn from(value: String) -> Self {
+        Self {
+            chuan4: String(),
+            unparsed: Token::new_without_selection(String::default()),
+            parsed: value,
+        }
+    }
+}
+
+impl From<StringLiteral<'_>> for String {
+    fn from(value: StringLiteral<'_>) -> Self {
+        value.parsed
+    }
 }
 
 impl ParseUnit for StringLiteral<'_> {
     type Target<'t> = StringLiteral<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let chuan4 = p.parse::<syntax::Symbol>()?.is(syntax::Symbol::String)?;
+        let chuan4 = p.parse::<Symbol>()?.is(Symbol::String)?;
         let unparsed = p.parse::<String>()?;
 
         let mut next_escape = false;
@@ -99,92 +135,135 @@ impl ParseUnit for StringLiteral<'_> {
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
-pub struct NumberLiteral<'s> {
-    pub number: f64,
-    #[serde(skip)]
-    _p: PhantomData<&'s ()>,
+pub enum NumberLiteral<'s> {
+    Float {
+        number: f64,
+        #[serde(skip)]
+        _p: PhantomData<&'s ()>,
+    },
+    Digit {
+        number: usize,
+        #[serde(skip)]
+        _p: PhantomData<&'s ()>,
+    },
 }
 
 impl ParseUnit for NumberLiteral<'_> {
     type Target<'t> = NumberLiteral<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let mut number = *p.parse::<usize>()? as f64;
+        let number = *p.parse::<usize>()?;
 
         if p.parse::<char>().is_ok_and(|c| *c == '.') {
             let decimal = p.parse::<usize>().map(|t| *t).unwrap_or(0) as f64;
-            number += decimal / 10f64.powi(decimal.log10().ceil() as _);
+            let decimal = decimal / 10f64.powi(decimal.log10().ceil() as _);
+            p.finish(NumberLiteral::Float {
+                number: number as f64 + decimal,
+                _p: PhantomData,
+            })
+        } else {
+            p.finish(NumberLiteral::Digit {
+                number,
+                _p: PhantomData,
+            })
         }
-
-        p.finish(NumberLiteral {
-            number,
-            _p: PhantomData,
-        })
     }
 }
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg_attr(feature = "ser", serde(from = "Vec<Token<'s, AtomicExpr<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(into = "Vec<Token<'s, AtomicExpr<'s>>>"))]
 #[derive(Debug, Clone)]
 pub struct Arguments<'s> {
-    pub parms: Vec<Token<'s, AtomicExpr<'s>>>,
-    pub semicolons: Vec<Token<'s, syntax::Symbol>>,
+    pub args: Vec<Token<'s, AtomicExpr<'s>>>,
+    pub semicolons: Vec<Token<'s, Symbol>>,
+}
+
+impl<'s> From<Vec<Token<'s, AtomicExpr<'s>>>> for Arguments<'s> {
+    fn from(value: Vec<Token<'s, AtomicExpr<'s>>>) -> Self {
+        Arguments {
+            args: value,
+            semicolons: Vec::new(),
+        }
+    }
+}
+
+impl<'s> From<Arguments<'s>> for Vec<Token<'s, AtomicExpr<'s>>> {
+    fn from(value: Arguments<'s>) -> Self {
+        value.args
+    }
 }
 
 impl ParseUnit for Arguments<'_> {
     type Target<'t> = Arguments<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        // may be empty
-        let Ok(parm) = p.parse::<AtomicExpr>() else {
+        let Ok(arg) = p.parse::<AtomicExpr>() else {
             return p.finish(Arguments {
-                parms: vec![],
+                args: vec![],
                 semicolons: vec![],
             });
         };
 
-        let mut parms = vec![parm];
+        let mut args = vec![arg];
         let mut semicolons = vec![];
 
         while let Ok(semicolon) = p
-            .r#try(|p| p.parse::<syntax::Symbol>()?.is(syntax::Symbol::Semicolon))
+            .r#try(|p| p.parse::<Symbol>()?.is(Symbol::Semicolon))
             .finish()
         {
             semicolons.push(semicolon);
-            if let Ok(parm) = p.parse::<AtomicExpr>() {
-                parms.push(parm)
+            if let Ok(arg) = p.parse::<AtomicExpr>() {
+                args.push(arg)
             } else {
                 break;
             }
         }
 
-        p.finish(Arguments { parms, semicolons })
+        p.finish(Arguments { args, semicolons })
     }
 }
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg_attr(feature = "ser", serde(from = "Vec<Token<'s, AtomicExpr<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(into = "Vec<Token<'s, AtomicExpr<'s>>>"))]
 #[derive(Debug, Clone)]
 pub struct Initialization<'s> {
-    pub han2: Token<'s, syntax::Symbol>,
+    pub han2: Token<'s, Symbol>,
     pub args: Vec<Token<'s, AtomicExpr<'s>>>,
-    pub jie2: Token<'s, syntax::Symbol>,
+    pub jie2: Token<'s, Symbol>,
 }
 
 impl ParseUnit for Initialization<'_> {
     type Target<'t> = Initialization<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let han2 = p.parse::<syntax::Symbol>()?;
+        let han2 = p.parse::<Symbol>()?.is(Symbol::Block)?;
         let mut args = vec![];
         while let Ok(expr) = p.parse::<AtomicExpr>() {
-            args.push(dbg!(expr));
+            args.push(expr);
         }
-        let jie2 = p
-            .parse::<syntax::Symbol>()
-            .map_err(|e| e.map(|e| e.emit("invalid Initialization Expr")))?;
+        let jie2 = p.match_one::<Symbol>(Symbol::EndOfBracket, "invalid Initialization Expr")?;
 
         p.finish(Initialization { han2, args, jie2 })
+    }
+}
+
+impl<'s> From<Vec<Token<'s, AtomicExpr<'s>>>> for Initialization<'s> {
+    fn from(value: Vec<Token<'s, AtomicExpr<'s>>>) -> Self {
+        Self {
+            han2: Block(),
+            args: value,
+            jie2: EndOfBracket(),
+        }
+    }
+}
+
+impl<'s> From<Initialization<'s>> for Vec<Token<'s, AtomicExpr<'s>>> {
+    fn from(val: Initialization<'s>) -> Self {
+        val.args
     }
 }
 
@@ -193,9 +272,13 @@ impl ParseUnit for Initialization<'_> {
 #[derive(Debug, Clone)]
 pub struct FunctionCall<'s> {
     pub fn_name: Token<'s, Ident<'s>>,
-    pub han2: Token<'s, syntax::Symbol>,
+    #[cfg_attr(feature = "ser", serde(skip))]
+    #[cfg_attr(feature = "ser", serde(default = "Parameter"))]
+    pub han2: Token<'s, Symbol>,
     pub args: Token<'s, Arguments<'s>>,
-    pub jie2: Token<'s, syntax::Symbol>,
+    #[cfg_attr(feature = "ser", serde(skip))]
+    #[cfg_attr(feature = "ser", serde(default = "EndOfBracket"))]
+    pub jie2: Token<'s, Symbol>,
 }
 
 impl ParseUnit for FunctionCall<'_> {
@@ -203,15 +286,9 @@ impl ParseUnit for FunctionCall<'_> {
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let fn_name = p.parse::<Ident>()?;
-        let han2 = p.parse::<syntax::Symbol>()?.is(syntax::Symbol::Parameter)?;
+        let han2 = p.parse::<Symbol>()?.is(Symbol::Parameter)?;
         let args = p.parse::<Arguments>()?;
-        let jie2 = p
-            .r#try(|p| {
-                p.parse::<syntax::Symbol>()
-                    .or_else(|_| p.throw("should insert jie2"))?
-                    .is_or(syntax::Symbol::EndOfBracket, |t| t.throw("should be jie2"))
-            })
-            .finish()?;
+        let jie2 = p.match_one(Symbol::EndOfBracket, "should be `jie2`")?;
 
         p.finish(FunctionCall {
             fn_name,
@@ -222,21 +299,7 @@ impl ParseUnit for FunctionCall<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[derive(Debug, Clone)]
-pub struct Variable<'s> {
-    pub ident: Token<'s, Ident<'s>>,
-}
-
-impl ParseUnit for Variable<'_> {
-    type Target<'t> = Variable<'t>;
-
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let ident = p.parse::<Ident>()?;
-        p.finish(Variable { ident })
-    }
-}
+pub type Variable<'s> = Ident<'s>;
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
@@ -259,6 +322,45 @@ impl ParseUnit for UnaryExpr<'_> {
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg_attr(feature = "ser", serde(from = "Expr"))]
+#[cfg_attr(feature = "ser", serde(into = "Expr"))]
+#[derive(Debug, Clone)]
+pub struct BracketExpr<'s> {
+    pub can1: Token<'s, Symbol>,
+    pub expr: Box<Token<'s, Expr<'s>>>,
+    pub jie2: Token<'s, Symbol>,
+}
+
+impl<'s> From<Expr<'s>> for BracketExpr<'s> {
+    fn from(value: Expr<'s>) -> Self {
+        Self {
+            can1: Parameter(),
+            expr: Box::new(Token::new_without_selection(value)),
+            jie2: EndOfBracket(),
+        }
+    }
+}
+
+impl<'s> From<BracketExpr<'s>> for Expr<'s> {
+    fn from(value: BracketExpr<'s>) -> Self {
+        value.expr.take()
+    }
+}
+
+impl ParseUnit for BracketExpr<'_> {
+    type Target<'t> = BracketExpr<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let can1 = p.parse::<Symbol>()?.is(Symbol::Parameter)?;
+        let expr = Box::new(p.parse::<Expr>()?);
+        let jie2 = p.match_one::<Symbol>(Symbol::EndOfBracket, "expect `jie2` {BracketExpr}")?;
+
+        p.finish(BracketExpr { can1, expr, jie2 })
+    }
+}
+
 complex_pu! {
     cpu AtomicExpr {
         CharLiteral,
@@ -267,15 +369,17 @@ complex_pu! {
         Initialization,
         FunctionCall,
         Variable,
-        UnaryExpr
+        UnaryExpr,
+        BracketExpr
     }
 }
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg_attr(feature = "ser", serde(untagged))]
 #[derive(Debug, Clone)]
 pub enum Expr<'s> {
-    Atomic(Token<'s, AtomicExpr<'s>>),
+    Atomic(AtomicExpr<'s>),
     Binary {
         lhs: Box<Token<'s, Expr<'s>>>,
         op: Token<'s, operators::Operators>,
@@ -287,11 +391,51 @@ impl ParseUnit for Expr<'_> {
     type Target<'t> = Expr<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let start = p.parse::<UnaryExpr>()?;
+        let mut exprs = vec![p.parse::<AtomicExpr>()?.map::<Expr, _>(Expr::Atomic)];
+        let mut ops = vec![];
 
-        // loop {}
+        while let Ok(op) = p.try_once(|p| {
+            p.parse::<operators::Operators>()?
+                .which(|op| op.associativity() == OperatorAssociativity::Binary)
+        }) {
+            let expr = p
+                .parse_or::<AtomicExpr>("exprct AtomicExpr")?
+                .map(Expr::Atomic);
 
-        todo!()
+            exprs.push(expr);
+            ops.push(op);
+
+            while ops.len() >= 2 && ops[ops.len() - 1].priority() >= ops[ops.len() - 2].priority() {
+                let this_expr = exprs.pop().unwrap();
+                let this_op = ops.pop().unwrap();
+
+                let rhs = Box::new(exprs.pop().unwrap());
+                let op = ops.pop().unwrap();
+                let lhs = Box::new(exprs.pop().unwrap());
+
+                let selection = lhs.selection().merge(rhs.selection());
+
+                let binary = Expr::Binary { lhs, op, rhs };
+                exprs.push(Token::new(selection, binary));
+
+                exprs.push(this_expr);
+                ops.push(this_op);
+            }
+        }
+
+        while !ops.is_empty() {
+            let rhs = Box::new(exprs.pop().unwrap());
+            let op = ops.pop().unwrap();
+            let lhs = Box::new(exprs.pop().unwrap());
+
+            let selection = lhs.selection().merge(rhs.selection());
+
+            let binary = Expr::Binary { lhs, op, rhs };
+            exprs.push(Token::new(selection, binary));
+        }
+
+        // what jb
+        p.finish(exprs.pop().unwrap().take())
     }
 }
 
@@ -324,7 +468,7 @@ mod tests {
     #[test]
     fn number2() {
         parse_test("114514.", |p| {
-            assert!(dbg!(p.parse::<NumberLiteral>()).is_ok());
+            assert!(p.parse::<NumberLiteral>().is_ok());
         })
     }
 
@@ -361,5 +505,21 @@ mod tests {
         parse_test("fei1 fei1 fei1 fei1 191810", |p| {
             assert!(p.parse::<UnaryExpr>().is_ok());
         })
+    }
+
+    #[test]
+    fn bracket() {
+        // unary + bracket
+        parse_test("fei1 can1 114514 jie2", |p| {
+            assert!(p.parse::<UnaryExpr>().is_ok());
+        })
+    }
+
+    #[test]
+    fn complex_expr() {
+        // 119 + 810 * 114514 - 12
+        parse_test("1919 jia1 810 cheng2 114514 jian3 12", |p| {
+            assert!(p.parse::<Expr>().is_ok());
+        });
     }
 }

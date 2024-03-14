@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn fucking_type() {
         parse_test("yin3 zu3 114514 kuan1 32 wu2fu2 zheng3", |p| {
-            assert!(dbg!(p.parse::<TypeDeclare>()).is_ok())
+            assert!(p.parse::<TypeDeclare>().is_ok())
         })
     }
 }

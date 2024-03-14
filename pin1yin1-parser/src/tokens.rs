@@ -19,6 +19,18 @@ impl<'s> Selection<'s> {
         Self { src, start, len }
     }
 
+    pub fn merge(self, rhs: Selection<'s>) -> Self {
+        if !(self.src.as_ptr() == rhs.src.as_ptr() && self.src.len() == rhs.src.len()) {
+            panic!("invalid merge")
+        }
+        let start = self.start.min(rhs.start);
+        let end = (self.start + self.len).min(rhs.start + rhs.len);
+
+        let len = end - start;
+
+        Selection::new(self.src, start, len)
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -59,9 +71,18 @@ impl<'s, P: ParseUnit> Token<'s, P> {
         }
     }
 
+    #[cfg(feature = "ser")]
+    pub fn new_without_selection(inner: P::Target<'s>) -> Self {
+        Self::new(Selection::empty(), inner)
+    }
+
     /// take [Self::target] from [`Token`]
     pub fn take(self) -> P::Target<'s> {
         self.target
+    }
+
+    pub fn selection(&self) -> Selection<'s> {
+        self.selection
     }
 
     /// try to map the [Self::target]

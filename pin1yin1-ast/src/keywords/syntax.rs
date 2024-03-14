@@ -10,7 +10,7 @@ keywords! {
     keywords Symbol {
         "han2"   -> Block,
         "can1"   -> Parameter,
-        "zhu4"   -> Commnet,
+        "shi4"   -> Comment,
         "jie2"   -> EndOfBracket,
         "fen1"   -> Semicolon,
         "deng3"  -> Assign,

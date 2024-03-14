@@ -2,7 +2,9 @@ use std::marker::PhantomData;
 
 use pin1yin1_parser::*;
 
+pub mod controlflow;
 pub mod expr;
+pub mod statements;
 pub mod syntax;
 pub mod types;
 

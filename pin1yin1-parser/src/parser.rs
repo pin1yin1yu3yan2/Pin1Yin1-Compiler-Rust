@@ -96,6 +96,29 @@ impl<'s> Parser<'s> {
         result
     }
 
+    pub fn match_one<P: ParseUnit>(
+        &mut self,
+        be: P::Target<'s>,
+        or: impl Into<String> + Clone,
+    ) -> ParseResult<'s, P>
+    where
+        P::Target<'s>: PartialEq,
+    {
+        let reason = or.clone();
+        self.try_once(|p| {
+            p.parse::<P>()
+                .map_err(|e| e.or_else(|| Some(p.new_error(or))))?
+                .is_or(be, |t| t.throw(reason))
+        })
+    }
+
+    pub fn parse_or<P: ParseUnit>(&mut self, or: impl Into<String> + Clone) -> ParseResult<'s, P> {
+        self.try_once(|p| {
+            p.parse::<P>()
+                .map_err(|e| e.or_else(|| Some(p.new_error(or))))
+        })
+    }
+
     /// sync state with the parsing result from a temp sub parser
     pub(crate) fn sync_with<P>(&mut self, result: &ParseResult<'s, P>, tmp: &Parser<'s>)
     where

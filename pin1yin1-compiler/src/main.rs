@@ -1,14 +1,18 @@
-use pin1yin1_ast::ast::types::TypeDeclare;
+use pin1yin1_ast::ast::syntax::FunctionDefine;
 use pin1yin1_parser::Parser;
 
 fn main() {
-    let chars = "yin3 zu3 114514 kuan1 32 wu2fu2 zheng3"
-        .chars()
-        .collect::<Vec<_>>();
+    let src = std::fs::read_to_string("/home/twhice/Pin1Yin1-rustc/test.py1").unwrap();
+
+    let chars = src.chars().collect::<Vec<_>>();
     let mut parser = Parser::new(&chars);
 
-    let type_declare = parser.parse::<TypeDeclare>().unwrap();
-    let string = serde_json::to_string(&type_declare).unwrap();
+    type Target<'t> = FunctionDefine<'t>;
+
+    let pu = parser.parse::<Target>().unwrap();
+    let string = serde_json::to_string(&pu).unwrap();
+    let pu = serde_json::from_str::<Target>(&string).unwrap();
+    let string = serde_json::to_string(&pu).unwrap();
     println!("{}", string);
 
     std::fs::write("test.json", string).unwrap();
