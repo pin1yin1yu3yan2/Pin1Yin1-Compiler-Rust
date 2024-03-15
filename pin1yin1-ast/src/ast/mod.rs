@@ -2,19 +2,22 @@ use std::marker::PhantomData;
 
 use pin1yin1_parser::*;
 
-pub mod controlflow;
-pub mod expr;
-pub mod statements;
-pub mod syntax;
-pub mod types;
+mod controlflow;
+mod expr;
+mod statements;
+mod syntax;
+mod types;
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(into = "String"))]
-#[cfg_attr(feature = "ser", serde(from = "String"))]
+pub use controlflow::*;
+pub use expr::*;
+pub use statements::*;
+pub use syntax::*;
+pub use types::*;
+
 #[derive(Debug, Clone)]
 pub struct Ident<'s> {
     pub ident: String,
-    #[cfg_attr(feature = "ser", serde(skip))]
+
     _p: PhantomData<&'s ()>,
 }
 
@@ -59,6 +62,17 @@ impl ParseUnit for Ident<'_> {
             _p: PhantomData,
         })
     }
+}
+
+pub fn do_parse<'s>(parser: &mut Parser<'s>) -> Result<'s, Vec<PU<'s, Statement<'s>>>> {
+    let mut stmts = vec![];
+    while !parser.is_ending() {
+        let stmt = parser.parse::<Statement>()?;
+
+        stmts.push(stmt);
+    }
+
+    Ok(stmts)
 }
 
 #[cfg(test)]

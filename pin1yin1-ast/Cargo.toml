@@ -12,4 +12,4 @@ serde = { version = "1", features = ["serde_derive"], optional = true }
 
 [features]
 default = ["ser"]
-ser = ["serde", "pin1yin1-parser/ser"]
+ser = ["serde"]

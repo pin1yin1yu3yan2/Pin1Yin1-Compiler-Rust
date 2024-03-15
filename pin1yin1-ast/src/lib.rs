@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod keywords;
 pub mod macros;
+pub mod semantic;
 
 #[cfg(test)]
 fn parse_test(chars: &str, tester: impl FnOnce(&mut pin1yin1_parser::Parser)) {

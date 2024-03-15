@@ -9,34 +9,11 @@ use crate::{
     },
 };
 
-#[cfg(feature = "ser")]
-use crate::keywords::syntax::defaults::Symbol::*;
-
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(into = "char"))]
-#[cfg_attr(feature = "ser", serde(from = "char"))]
 #[derive(Debug, Clone)]
 pub struct CharLiteral<'s> {
     pub zi4: PU<'s, Symbol>,
     pub unparsed: PU<'s, String>,
     pub parsed: char,
-}
-
-#[cfg(feature = "ser")]
-impl From<char> for CharLiteral<'_> {
-    fn from(value: char) -> Self {
-        Self {
-            zi4: Char(),
-            unparsed: PU::new_without_selection(String::new()),
-            parsed: value,
-        }
-    }
-}
-#[cfg(feature = "ser")]
-impl From<CharLiteral<'_>> for char {
-    fn from(value: CharLiteral<'_>) -> Self {
-        value.parsed
-    }
 }
 
 fn escape<'s>(src: &PU<'s, String>, c: char) -> Result<'s, char> {
@@ -77,32 +54,11 @@ impl ParseUnit for CharLiteral<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(into = "String"))]
-#[cfg_attr(feature = "ser", serde(from = "String"))]
 #[derive(Debug, Clone)]
 pub struct StringLiteral<'s> {
     pub chuan4: PU<'s, Symbol>,
     pub unparsed: PU<'s, String>,
     pub parsed: String,
-}
-
-#[cfg(feature = "ser")]
-impl From<String> for StringLiteral<'_> {
-    fn from(value: String) -> Self {
-        Self {
-            chuan4: String(),
-            unparsed: PU::new_without_selection(String::default()),
-            parsed: value,
-        }
-    }
-}
-
-#[cfg(feature = "ser")]
-impl From<StringLiteral<'_>> for String {
-    fn from(value: StringLiteral<'_>) -> Self {
-        value.parsed
-    }
 }
 
 impl ParseUnit for StringLiteral<'_> {
@@ -136,18 +92,16 @@ impl ParseUnit for StringLiteral<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub enum NumberLiteral<'s> {
     Float {
         number: f64,
-        #[cfg_attr(feature = "ser", serde(skip))]
+
         _p: PhantomData<&'s ()>,
     },
     Digit {
         number: usize,
-        #[cfg_attr(feature = "ser", serde(skip))]
+
         _p: PhantomData<&'s ()>,
     },
 }
@@ -174,10 +128,6 @@ impl ParseUnit for NumberLiteral<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[cfg_attr(feature = "ser", serde(from = "Vec<PU<'s, Expr<'s>>>"))]
-#[cfg_attr(feature = "ser", serde(into = "Vec<PU<'s, Expr<'s>>>"))]
 #[derive(Debug, Clone)]
 pub struct Arguments<'s> {
     pub args: Vec<PU<'s, Expr<'s>>>,
@@ -229,10 +179,6 @@ impl ParseUnit for Arguments<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[cfg_attr(feature = "ser", serde(from = "Vec<PU<'s, AtomicExpr<'s>>>"))]
-#[cfg_attr(feature = "ser", serde(into = "Vec<PU<'s, AtomicExpr<'s>>>"))]
 #[derive(Debug, Clone)]
 pub struct Initialization<'s> {
     pub han2: PU<'s, Symbol>,
@@ -255,35 +201,11 @@ impl ParseUnit for Initialization<'_> {
     }
 }
 
-#[cfg(feature = "ser")]
-impl<'s> From<Vec<PU<'s, AtomicExpr<'s>>>> for Initialization<'s> {
-    fn from(value: Vec<PU<'s, AtomicExpr<'s>>>) -> Self {
-        Self {
-            han2: Block(),
-            args: value,
-            jie2: EndOfBracket(),
-        }
-    }
-}
-
-#[cfg(feature = "ser")]
-impl<'s> From<Initialization<'s>> for Vec<PU<'s, AtomicExpr<'s>>> {
-    fn from(val: Initialization<'s>) -> Self {
-        val.args
-    }
-}
-
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct FunctionCall<'s> {
     pub fn_name: PU<'s, Ident<'s>>,
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Parameter"))]
     pub han2: PU<'s, Symbol>,
     pub args: PU<'s, Arguments<'s>>,
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "EndOfBracket"))]
     pub jie2: PU<'s, Symbol>,
 }
 
@@ -307,8 +229,6 @@ impl ParseUnit for FunctionCall<'_> {
 
 pub type Variable<'s> = Ident<'s>;
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct UnaryExpr<'s> {
     pub operator: PU<'s, operators::Operators>,
@@ -328,33 +248,11 @@ impl ParseUnit for UnaryExpr<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[cfg_attr(feature = "ser", serde(from = "Expr"))]
-#[cfg_attr(feature = "ser", serde(into = "Expr"))]
 #[derive(Debug, Clone)]
 pub struct BracketExpr<'s> {
     pub can1: PU<'s, Symbol>,
     pub expr: Box<PU<'s, Expr<'s>>>,
     pub jie2: PU<'s, Symbol>,
-}
-
-#[cfg(feature = "ser")]
-impl<'s> From<Expr<'s>> for BracketExpr<'s> {
-    fn from(value: Expr<'s>) -> Self {
-        Self {
-            can1: Parameter(),
-            expr: Box::new(PU::new_without_selection(value)),
-            jie2: EndOfBracket(),
-        }
-    }
-}
-
-#[cfg(feature = "ser")]
-impl<'s> From<BracketExpr<'s>> for Expr<'s> {
-    fn from(value: BracketExpr<'s>) -> Self {
-        value.expr.take()
-    }
 }
 
 impl ParseUnit for BracketExpr<'_> {
@@ -382,9 +280,6 @@ complex_pu! {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[cfg_attr(feature = "ser", serde(untagged))]
 #[derive(Debug, Clone)]
 pub enum Expr<'s> {
     Atomic(AtomicExpr<'s>),
@@ -407,7 +302,7 @@ impl ParseUnit for Expr<'_> {
                 .which(|op| op.associativity() == OperatorAssociativity::Binary)
         }) {
             let expr = p
-                .parse_or::<AtomicExpr>("exprct AtomicExpr")?
+                .parse_or::<AtomicExpr>("expect AtomicExpr")?
                 .map(Expr::Atomic);
 
             if ops

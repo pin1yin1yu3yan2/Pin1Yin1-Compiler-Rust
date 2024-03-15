@@ -1,5 +1,5 @@
-use pin1yin1_ast::ast::syntax::FunctionDefine;
-use pin1yin1_parser::{Parser, Source};
+use pin1yin1_ast::{ast::*, semantic::check};
+use pin1yin1_parser::*;
 
 fn main() {
     let path = "/home/twhice/Pin1Yin1-rustc/test.py1";
@@ -8,13 +8,11 @@ fn main() {
     let source = Source::new(path, src.chars());
     let mut parser = Parser::<'_, char>::new(&source);
 
-    type Target<'t> = FunctionDefine<'t>;
+    type Target<'t> = Vec<PU<'t, Statement<'t>>>;
 
-    let pu = parser.parse::<Target>().unwrap();
-    let string = serde_json::to_string(&pu).unwrap();
-    println!("{}", string);
-    let pu = serde_json::from_str::<Target>(&string).unwrap();
-    let string = serde_json::to_string(&pu).unwrap();
+    let pus: Target = do_parse(&mut parser).unwrap();
 
-    std::fs::write("test.json", string).unwrap();
+    // std::fs::write("test.json", string).unwrap();
+
+    check(pus.into_iter().map(|pu| pu.take()));
 }

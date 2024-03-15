@@ -8,17 +8,8 @@ use crate::{
     keywords::syntax::{ControlFlow, Symbol},
 };
 
-#[cfg(feature = "ser")]
-use crate::keywords::syntax::defaults::ControlFlow::*;
-#[cfg(feature = "ser")]
-use crate::keywords::syntax::defaults::Symbol::*;
-
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct AtomicIf<'s> {
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "If"))]
     pub ruo4: PU<'s, ControlFlow>,
     pub conds: PU<'s, Arguments<'s>>,
     pub block: PU<'s, CodeBlock<'s>>,
@@ -35,12 +26,8 @@ impl ParseUnit for AtomicIf<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct AtomicElse<'s> {
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Else"))]
     pub ze2: PU<'s, ControlFlow>,
     pub block: PU<'s, CodeBlock<'s>>,
 }
@@ -55,12 +42,8 @@ impl ParseUnit for AtomicElse<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct AtomicElseIf<'s> {
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Else"))]
     pub ze2: PU<'s, ControlFlow>,
     pub ruo4: PU<'s, AtomicIf<'s>>,
 }
@@ -76,15 +59,13 @@ impl ParseUnit for AtomicElseIf<'_> {
 }
 
 complex_pu! {
-    #[cfg_attr(feature = "ser", serde(untagged))]
+
     cpu ChainIf {
         AtomicElseIf,
         AtomicElse
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct If<'s> {
     pub ruo4: PU<'s, AtomicIf<'s>>,
@@ -108,12 +89,8 @@ impl ParseUnit for If<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct While<'s> {
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Repeat"))]
     pub chong2: PU<'s, ControlFlow>,
     pub conds: PU<'s, Arguments<'s>>,
     pub block: PU<'s, CodeBlock<'s>>,
@@ -134,16 +111,11 @@ impl ParseUnit for While<'_> {
     }
 }
 
-#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct Return<'s> {
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Return"))]
     pub fan3: PU<'s, ControlFlow>,
-    pub val: PU<'s, Expr<'s>>,
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Semicolon"))]
+    pub val: Option<PU<'s, Expr<'s>>>,
+
     pub fen1: PU<'s, Symbol>,
 }
 
@@ -152,9 +124,27 @@ impl ParseUnit for Return<'_> {
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let fan3 = p.parse::<ControlFlow>()?.is(ControlFlow::Return)?;
-        let val = p.parse::<Expr>()?;
-        let fen1 = p.match_one(Symbol::Semicolon, "expect `fen1`")?;
-        p.finish(Return { fan3, val, fen1 })
+        let val = p.parse::<Expr>();
+
+        #[cfg(debug_assertions)]
+        let or = format!(
+            "expect `fen1` {{{}}}",
+            std::any::type_name_of_val(&Self::parse)
+        );
+        #[cfg(not(debug_assertions))]
+        let or = "expect `fen1`";
+        let fen1 = p.match_one(Symbol::Semicolon, or)?;
+
+        if val.as_ref().is_err_and(|e| e.is_some()) {
+            val?;
+            unreachable!()
+        } else {
+            p.finish(Return {
+                fan3,
+                val: val.ok(),
+                fen1,
+            })
+        }
     }
 }
 

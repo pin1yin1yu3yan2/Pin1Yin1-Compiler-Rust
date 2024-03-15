@@ -48,22 +48,14 @@ impl std::ops::Deref for Selection<'_> {
 
 /// a type which implemented [`ParseUnit<S>`] with source code it selected
 pub struct PU<'s, P: ParseUnit<S>, S: Copy = char> {
-    pub(crate) selection: Option<Selection<'s, S>>,
+    pub(crate) selection: Selection<'s, S>,
     pub(crate) target: P::Target<'s>,
 }
 
 impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
-    pub fn new(selection: impl Into<Option<Selection<'s, S>>>, inner: P::Target<'s>) -> Self {
+    pub fn new(selection: Selection<'s, S>, inner: P::Target<'s>) -> Self {
         Self {
-            selection: selection.into(),
-            target: inner,
-        }
-    }
-
-    #[cfg(feature = "ser")]
-    pub fn new_without_selection(inner: P::Target<'s>) -> Self {
-        Self {
-            selection: None,
+            selection,
             target: inner,
         }
     }
@@ -74,7 +66,7 @@ impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
     }
 
     pub fn selection(&self) -> Selection<'s, S> {
-        self.selection.unwrap()
+        self.selection
     }
 
     /// try to map the [Self::target]
@@ -179,32 +171,5 @@ impl<'s, S: Copy, P: ParseUnit<S>> std::ops::Deref for PU<'s, P, S> {
 impl<S: Copy, P: ParseUnit<S>> std::ops::DerefMut for PU<'_, P, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.target
-    }
-}
-
-#[cfg(feature = "ser")]
-impl<'s, S: Copy, P: ParseUnit<S>> serde::Serialize for PU<'s, P, S>
-where
-    P::Target<'s>: serde::Serialize,
-{
-    fn serialize<Se>(&self, serializer: Se) -> std::prelude::v1::Result<Se::Ok, Se::Error>
-    where
-        Se: serde::Serializer,
-    {
-        self.target.serialize(serializer)
-    }
-}
-
-#[cfg(feature = "ser")]
-impl<'s, S: Copy, P: ParseUnit<S>> serde::Deserialize<'s> for PU<'s, P, S>
-where
-    P::Target<'s>: serde::Deserialize<'s>,
-{
-    fn deserialize<D>(deserializer: D) -> std::prelude::v1::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'s>,
-    {
-        let taregt = P::Target::deserialize(deserializer)?;
-        Ok(Self::new(None, taregt))
     }
 }

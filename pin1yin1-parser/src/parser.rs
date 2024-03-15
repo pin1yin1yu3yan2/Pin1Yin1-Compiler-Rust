@@ -49,6 +49,10 @@ impl<S: Copy> Parser<'_, S> {
     pub(crate) fn start_idx(&self) -> usize {
         self.start_idx.unwrap()
     }
+
+    pub fn is_ending(&self) -> bool {
+        self.idx >= self.src.len()
+    }
 }
 
 impl<'s, S: Copy> Parser<'s, S> {

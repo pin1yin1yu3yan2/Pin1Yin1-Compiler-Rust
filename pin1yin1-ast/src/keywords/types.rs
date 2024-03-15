@@ -20,7 +20,6 @@ keywords! {
 }
 
 // PrimitiveType shouldn't be keeping keywords
-// #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 // #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 // pub enum PrimitiveTypes {
 //     Integer,

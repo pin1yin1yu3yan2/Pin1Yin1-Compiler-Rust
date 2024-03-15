@@ -12,8 +12,6 @@ macro_rules! statement_wrapper {
         )*
     ) => {
         $(
-        #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-        #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
         #[derive(Debug, Clone)]
         $(#[$metas])*
         pub struct $into<'s> {
@@ -26,57 +24,46 @@ macro_rules! statement_wrapper {
 
             fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
                 let inner = p.parse::<$from>()?;
-                let fen1 = p.match_one($crate::keywords::syntax::Symbol::Semicolon, "expect `fen1`")?;
+
+                #[cfg(debug_assertions)]
+                let or = format!(
+                    "expect `fen1` {{{}}}",
+                    std::any::type_name_of_val(&Self::parse)
+                );
+                #[cfg(not(debug_assertions))]
+                let or = "expect `fen1`";
+                let fen1 = p.match_one($crate::keywords::syntax::Symbol::Semicolon, or)?;
                 p.finish($into { inner, fen1 })
             }
         }
-
-        impl<'s> From<$from<'s>> for $into<'s> {
-            fn from(v: $from<'s>) -> Self {
-                Self {
-                    inner: pin1yin1_parser::PU::new_without_selection(v),
-                    fen1: $crate::keywords::syntax::defaults::Symbol::Semicolon()
-                }
-            }
-        }
-
-        impl<'s> From<$into<'s>> for $from<'s> {
-            fn from(v: $into<'s>) -> Self {
-                v.inner.take()
-            }
-        }
-
         )*
     };
 }
 
 statement_wrapper! {
-    #[cfg_attr(feature = "ser", serde(from = "FunctionDefine"))]
-    #[cfg_attr(feature = "ser", serde(into = "FunctionDefine"))]
-    FunctionDefine => VariableDefineStatement,
-    #[cfg_attr(feature = "ser", serde(from = "FunctionCall"))]
-    #[cfg_attr(feature = "ser", serde(into = "FunctionCall"))]
+    VariableDefine => VariableDefineStatement,
     FunctionCall => FunctionCallStatement,
-    #[cfg_attr(feature = "ser", serde(from = "VariableInit"))]
-    #[cfg_attr(feature = "ser", serde(into = "VariableInit"))]
     VariableInit => VariableInitStatement,
-    #[cfg_attr(feature = "ser", serde(from = "VariableReAssign"))]
-    #[cfg_attr(feature = "ser", serde(into = "VariableReAssign"))]
     VariableReAssign => VariableReAssignStatement,
 }
 
 complex_pu! {
     cpu Statement {
+        // $name (...)
         FunctionCallStatement,
-        VariableDefineStatement,
+        // $ty $name = $expr
         VariableInitStatement,
+        // $name = $expr
         VariableReAssignStatement,
+        // $ty $name (...)
         FunctionDefine,
+        // $ty $name
+        VariableDefineStatement,
         CodeBlock,
         If,
         While,
         Return,
-        #[cfg_attr(feature = "ser", serde(skip))]
+
         Comment
     }
 }

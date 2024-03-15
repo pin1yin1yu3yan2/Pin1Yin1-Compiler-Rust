@@ -11,16 +11,13 @@ pub type ParseResult<'s, P, S = char> = std::result::Result<PU<'s, P, S>, Option
 /// error type with a [`Selection`] and a [`String`] as reason
 #[derive(Clone)]
 pub struct Error<'s, S = char> {
-    selection: Option<Selection<'s, S>>,
+    selection: Selection<'s, S>,
     reason: String,
 }
 
 impl<'s, S> Error<'s, S> {
-    pub fn new(selection: impl Into<Option<Selection<'s, S>>>, reason: String) -> Self {
-        Self {
-            selection: selection.into(),
-            reason,
-        }
+    pub fn new(selection: Selection<'s, S>, reason: String) -> Self {
+        Self { selection, reason }
     }
 
     pub fn emit(mut self, reason: impl Into<String>) -> Self {
@@ -31,10 +28,7 @@ impl<'s, S> Error<'s, S> {
 
 impl Debug for Error<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.selection.is_none() {
-            return writeln!(f, "{}", self.reason);
-        }
-        let selection = self.selection.unwrap();
+        let selection = self.selection;
 
         let left = (0..selection.start)
             .rev()

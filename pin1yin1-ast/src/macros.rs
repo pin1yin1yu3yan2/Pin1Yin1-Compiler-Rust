@@ -11,7 +11,6 @@ macro_rules! keywords {
         )*}
     )*) => {
         $(
-        #[cfg_attr(feature = "ser", derive(serde::Serialize,serde::Deserialize))]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         $(#[$metas])*
         pub enum $enum_name {
@@ -41,21 +40,6 @@ macro_rules! keywords {
         }
 
         )*
-        pub mod defaults {
-            $(
-
-            #[allow(non_snake_case)]
-            pub mod $enum_name {
-                $(
-
-                pub fn $var<'s>() -> pin1yin1_parser::PU<'s, super::super::$enum_name> {
-                    pin1yin1_parser::PU::new_without_selection(super::super::$enum_name::$var)
-                }
-
-                )*
-            }
-            )*
-        }
 
 
         lazy_static::lazy_static! {
@@ -81,8 +65,6 @@ macro_rules! complex_pu {
             $variant:ident
         ),*
     }) => {
-        #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
-        #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
         #[derive(Debug, Clone)]
         $(#[$metas])*
         pub enum $enum_name<'s> {

@@ -7,14 +7,12 @@ macro_rules! Operators {
         )*
 
     ) => {
-        #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum OperatorAssociativity {
             Binary,
             Unary,
         }
 
-        #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum OperatorTypes {
             $($sub_class,)*
