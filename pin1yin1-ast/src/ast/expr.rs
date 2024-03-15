@@ -17,8 +17,8 @@ use crate::keywords::syntax::defaults::Symbol::*;
 #[cfg_attr(feature = "ser", serde(from = "char"))]
 #[derive(Debug, Clone)]
 pub struct CharLiteral<'s> {
-    pub zi4: Token<'s, Symbol>,
-    pub unparsed: Token<'s, String>,
+    pub zi4: PU<'s, Symbol>,
+    pub unparsed: PU<'s, String>,
     pub parsed: char,
 }
 
@@ -27,7 +27,7 @@ impl From<char> for CharLiteral<'_> {
     fn from(value: char) -> Self {
         Self {
             zi4: Char(),
-            unparsed: Token::new_without_selection(String::new()),
+            unparsed: PU::new_without_selection(String::new()),
             parsed: value,
         }
     }
@@ -39,7 +39,7 @@ impl From<CharLiteral<'_>> for char {
     }
 }
 
-fn escape<'s>(src: &Token<'s, String>, c: char) -> Result<'s, char> {
+fn escape<'s>(src: &PU<'s, String>, c: char) -> Result<'s, char> {
     Ok(match c {
         '_' => '_',
         't' => '\t',
@@ -82,8 +82,8 @@ impl ParseUnit for CharLiteral<'_> {
 #[cfg_attr(feature = "ser", serde(from = "String"))]
 #[derive(Debug, Clone)]
 pub struct StringLiteral<'s> {
-    pub chuan4: Token<'s, Symbol>,
-    pub unparsed: Token<'s, String>,
+    pub chuan4: PU<'s, Symbol>,
+    pub unparsed: PU<'s, String>,
     pub parsed: String,
 }
 
@@ -92,7 +92,7 @@ impl From<String> for StringLiteral<'_> {
     fn from(value: String) -> Self {
         Self {
             chuan4: String(),
-            unparsed: Token::new_without_selection(String::default()),
+            unparsed: PU::new_without_selection(String::default()),
             parsed: value,
         }
     }
@@ -176,16 +176,16 @@ impl ParseUnit for NumberLiteral<'_> {
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[cfg_attr(feature = "ser", serde(from = "Vec<Token<'s, AtomicExpr<'s>>>"))]
-#[cfg_attr(feature = "ser", serde(into = "Vec<Token<'s, AtomicExpr<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(from = "Vec<PU<'s, Expr<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(into = "Vec<PU<'s, Expr<'s>>>"))]
 #[derive(Debug, Clone)]
 pub struct Arguments<'s> {
-    pub args: Vec<Token<'s, AtomicExpr<'s>>>,
-    pub semicolons: Vec<Token<'s, Symbol>>,
+    pub args: Vec<PU<'s, Expr<'s>>>,
+    pub semicolons: Vec<PU<'s, Symbol>>,
 }
 
-impl<'s> From<Vec<Token<'s, AtomicExpr<'s>>>> for Arguments<'s> {
-    fn from(value: Vec<Token<'s, AtomicExpr<'s>>>) -> Self {
+impl<'s> From<Vec<PU<'s, Expr<'s>>>> for Arguments<'s> {
+    fn from(value: Vec<PU<'s, Expr<'s>>>) -> Self {
         Arguments {
             args: value,
             semicolons: Vec::new(),
@@ -193,7 +193,7 @@ impl<'s> From<Vec<Token<'s, AtomicExpr<'s>>>> for Arguments<'s> {
     }
 }
 
-impl<'s> From<Arguments<'s>> for Vec<Token<'s, AtomicExpr<'s>>> {
+impl<'s> From<Arguments<'s>> for Vec<PU<'s, Expr<'s>>> {
     fn from(value: Arguments<'s>) -> Self {
         value.args
     }
@@ -203,7 +203,7 @@ impl ParseUnit for Arguments<'_> {
     type Target<'t> = Arguments<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let Ok(arg) = p.parse::<AtomicExpr>() else {
+        let Ok(arg) = p.parse::<Expr>() else {
             return p.finish(Arguments {
                 args: vec![],
                 semicolons: vec![],
@@ -218,7 +218,7 @@ impl ParseUnit for Arguments<'_> {
             .finish()
         {
             semicolons.push(semicolon);
-            if let Ok(arg) = p.parse::<AtomicExpr>() {
+            if let Ok(arg) = p.parse::<Expr>() {
                 args.push(arg)
             } else {
                 break;
@@ -231,13 +231,13 @@ impl ParseUnit for Arguments<'_> {
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[cfg_attr(feature = "ser", serde(from = "Vec<Token<'s, AtomicExpr<'s>>>"))]
-#[cfg_attr(feature = "ser", serde(into = "Vec<Token<'s, AtomicExpr<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(from = "Vec<PU<'s, AtomicExpr<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(into = "Vec<PU<'s, AtomicExpr<'s>>>"))]
 #[derive(Debug, Clone)]
 pub struct Initialization<'s> {
-    pub han2: Token<'s, Symbol>,
-    pub args: Vec<Token<'s, AtomicExpr<'s>>>,
-    pub jie2: Token<'s, Symbol>,
+    pub han2: PU<'s, Symbol>,
+    pub args: Vec<PU<'s, AtomicExpr<'s>>>,
+    pub jie2: PU<'s, Symbol>,
 }
 
 impl ParseUnit for Initialization<'_> {
@@ -256,8 +256,8 @@ impl ParseUnit for Initialization<'_> {
 }
 
 #[cfg(feature = "ser")]
-impl<'s> From<Vec<Token<'s, AtomicExpr<'s>>>> for Initialization<'s> {
-    fn from(value: Vec<Token<'s, AtomicExpr<'s>>>) -> Self {
+impl<'s> From<Vec<PU<'s, AtomicExpr<'s>>>> for Initialization<'s> {
+    fn from(value: Vec<PU<'s, AtomicExpr<'s>>>) -> Self {
         Self {
             han2: Block(),
             args: value,
@@ -267,7 +267,7 @@ impl<'s> From<Vec<Token<'s, AtomicExpr<'s>>>> for Initialization<'s> {
 }
 
 #[cfg(feature = "ser")]
-impl<'s> From<Initialization<'s>> for Vec<Token<'s, AtomicExpr<'s>>> {
+impl<'s> From<Initialization<'s>> for Vec<PU<'s, AtomicExpr<'s>>> {
     fn from(val: Initialization<'s>) -> Self {
         val.args
     }
@@ -277,14 +277,14 @@ impl<'s> From<Initialization<'s>> for Vec<Token<'s, AtomicExpr<'s>>> {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct FunctionCall<'s> {
-    pub fn_name: Token<'s, Ident<'s>>,
+    pub fn_name: PU<'s, Ident<'s>>,
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "Parameter"))]
-    pub han2: Token<'s, Symbol>,
-    pub args: Token<'s, Arguments<'s>>,
+    pub han2: PU<'s, Symbol>,
+    pub args: PU<'s, Arguments<'s>>,
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "EndOfBracket"))]
-    pub jie2: Token<'s, Symbol>,
+    pub jie2: PU<'s, Symbol>,
 }
 
 impl ParseUnit for FunctionCall<'_> {
@@ -311,9 +311,9 @@ pub type Variable<'s> = Ident<'s>;
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct UnaryExpr<'s> {
-    pub operator: Token<'s, operators::Operators>,
+    pub operator: PU<'s, operators::Operators>,
     // using box, or cycle in AtomicExpr
-    pub expr: Box<Token<'s, AtomicExpr<'s>>>,
+    pub expr: Box<PU<'s, AtomicExpr<'s>>>,
 }
 
 impl ParseUnit for UnaryExpr<'_> {
@@ -334,9 +334,9 @@ impl ParseUnit for UnaryExpr<'_> {
 #[cfg_attr(feature = "ser", serde(into = "Expr"))]
 #[derive(Debug, Clone)]
 pub struct BracketExpr<'s> {
-    pub can1: Token<'s, Symbol>,
-    pub expr: Box<Token<'s, Expr<'s>>>,
-    pub jie2: Token<'s, Symbol>,
+    pub can1: PU<'s, Symbol>,
+    pub expr: Box<PU<'s, Expr<'s>>>,
+    pub jie2: PU<'s, Symbol>,
 }
 
 #[cfg(feature = "ser")]
@@ -344,7 +344,7 @@ impl<'s> From<Expr<'s>> for BracketExpr<'s> {
     fn from(value: Expr<'s>) -> Self {
         Self {
             can1: Parameter(),
-            expr: Box::new(Token::new_without_selection(value)),
+            expr: Box::new(PU::new_without_selection(value)),
             jie2: EndOfBracket(),
         }
     }
@@ -388,11 +388,11 @@ complex_pu! {
 #[derive(Debug, Clone)]
 pub enum Expr<'s> {
     Atomic(AtomicExpr<'s>),
-    Binary {
-        lhs: Box<Token<'s, Expr<'s>>>,
-        op: Token<'s, operators::Operators>,
-        rhs: Box<Token<'s, Expr<'s>>>,
-    },
+    Binary(
+        Box<PU<'s, Expr<'s>>>,
+        PU<'s, operators::Operators>,
+        Box<PU<'s, Expr<'s>>>,
+    ),
 }
 
 impl ParseUnit for Expr<'_> {
@@ -410,25 +410,22 @@ impl ParseUnit for Expr<'_> {
                 .parse_or::<AtomicExpr>("exprct AtomicExpr")?
                 .map(Expr::Atomic);
 
-            exprs.push(expr);
-            ops.push(op);
-
-            while ops.len() >= 2 && ops[ops.len() - 1].priority() >= ops[ops.len() - 2].priority() {
-                let this_expr = exprs.pop().unwrap();
-                let this_op = ops.pop().unwrap();
-
+            if ops
+                .last()
+                .is_some_and(|p: &PU<'_, operators::Operators>| p.priority() <= op.priority())
+            {
                 let rhs = Box::new(exprs.pop().unwrap());
                 let op = ops.pop().unwrap();
                 let lhs = Box::new(exprs.pop().unwrap());
 
                 let selection = lhs.selection().merge(rhs.selection());
 
-                let binary = Expr::Binary { lhs, op, rhs };
-                exprs.push(Token::new(selection, binary));
-
-                exprs.push(this_expr);
-                ops.push(this_op);
+                let binary = Expr::Binary(lhs, op, rhs);
+                exprs.push(PU::new(selection, binary));
             }
+
+            exprs.push(expr);
+            ops.push(op);
         }
 
         while !ops.is_empty() {
@@ -438,15 +435,14 @@ impl ParseUnit for Expr<'_> {
 
             let selection = lhs.selection().merge(rhs.selection());
 
-            let binary = Expr::Binary { lhs, op, rhs };
-            exprs.push(Token::new(selection, binary));
+            let binary = Expr::Binary(lhs, op, rhs);
+            exprs.push(PU::new(selection, binary));
         }
 
         // what jb
         p.finish(exprs.pop().unwrap().take())
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

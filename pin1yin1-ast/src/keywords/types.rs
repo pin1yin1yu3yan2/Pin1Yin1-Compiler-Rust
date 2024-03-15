@@ -14,7 +14,6 @@ keywords! {
         "you3fu2"  -> Signed,
         "wu2fu2"   -> Unsigned,
         "yin3"     -> Reference,
-        "you4yin3" -> RightReference,
         "she4"     -> Const,
         "zhi3"     -> Pointer,
     }

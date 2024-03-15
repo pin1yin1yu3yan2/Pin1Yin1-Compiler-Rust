@@ -19,9 +19,9 @@ use crate::keywords::syntax::defaults::Symbol::*;
 pub struct AtomicIf<'s> {
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "If"))]
-    pub ruo4: Token<'s, ControlFlow>,
-    pub conds: Token<'s, Arguments<'s>>,
-    pub block: Token<'s, CodeBlock<'s>>,
+    pub ruo4: PU<'s, ControlFlow>,
+    pub conds: PU<'s, Arguments<'s>>,
+    pub block: PU<'s, CodeBlock<'s>>,
 }
 
 impl ParseUnit for AtomicIf<'_> {
@@ -41,8 +41,8 @@ impl ParseUnit for AtomicIf<'_> {
 pub struct AtomicElse<'s> {
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "Else"))]
-    pub ze2: Token<'s, ControlFlow>,
-    pub block: Token<'s, CodeBlock<'s>>,
+    pub ze2: PU<'s, ControlFlow>,
+    pub block: PU<'s, CodeBlock<'s>>,
 }
 
 impl ParseUnit for AtomicElse<'_> {
@@ -61,8 +61,8 @@ impl ParseUnit for AtomicElse<'_> {
 pub struct AtomicElseIf<'s> {
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "Else"))]
-    pub ze2: Token<'s, ControlFlow>,
-    pub ruo4: Token<'s, AtomicIf<'s>>,
+    pub ze2: PU<'s, ControlFlow>,
+    pub ruo4: PU<'s, AtomicIf<'s>>,
 }
 
 impl ParseUnit for AtomicElseIf<'_> {
@@ -87,8 +87,8 @@ complex_pu! {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct If<'s> {
-    pub ruo4: Token<'s, AtomicIf<'s>>,
-    pub chains: Vec<Token<'s, ChainIf<'s>>>,
+    pub ruo4: PU<'s, AtomicIf<'s>>,
+    pub chains: Vec<PU<'s, ChainIf<'s>>>,
 }
 
 impl ParseUnit for If<'_> {
@@ -114,9 +114,9 @@ impl ParseUnit for If<'_> {
 pub struct While<'s> {
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "Repeat"))]
-    pub chong2: Token<'s, ControlFlow>,
-    pub conds: Token<'s, Arguments<'s>>,
-    pub block: Token<'s, CodeBlock<'s>>,
+    pub chong2: PU<'s, ControlFlow>,
+    pub conds: PU<'s, Arguments<'s>>,
+    pub block: PU<'s, CodeBlock<'s>>,
 }
 
 impl ParseUnit for While<'_> {
@@ -140,11 +140,11 @@ impl ParseUnit for While<'_> {
 pub struct Return<'s> {
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "Return"))]
-    pub fan3: Token<'s, ControlFlow>,
-    pub val: Token<'s, Expr<'s>>,
+    pub fan3: PU<'s, ControlFlow>,
+    pub val: PU<'s, Expr<'s>>,
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "Semicolon"))]
-    pub fen1: Token<'s, Symbol>,
+    pub fen1: PU<'s, Symbol>,
 }
 
 impl ParseUnit for Return<'_> {

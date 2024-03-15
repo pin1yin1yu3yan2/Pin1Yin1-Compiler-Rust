@@ -15,7 +15,7 @@ pub trait ParseUnit<S: Copy = char>: Sized {
 
 /// extract this function to make the addition of the UNICODE support much easier
 ///
-/// but, whether how easy to support UNICODE, i wont support it QWQ
+/// but, whether how easy support UNICODE is, i wont support it, QWQ
 pub(crate) const fn chars_taking_rule(c: char) -> bool {
     c.is_ascii_alphanumeric() || c.is_ascii_punctuation()
 }

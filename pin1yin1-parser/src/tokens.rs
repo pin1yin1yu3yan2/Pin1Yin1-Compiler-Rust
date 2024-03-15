@@ -47,12 +47,12 @@ impl std::ops::Deref for Selection<'_> {
 }
 
 /// a type which implemented [`ParseUnit<S>`] with source code it selected
-pub struct Token<'s, P: ParseUnit<S>, S: Copy = char> {
+pub struct PU<'s, P: ParseUnit<S>, S: Copy = char> {
     pub(crate) selection: Option<Selection<'s, S>>,
     pub(crate) target: P::Target<'s>,
 }
 
-impl<'s, S: Copy, P: ParseUnit<S>> Token<'s, P, S> {
+impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
     pub fn new(selection: impl Into<Option<Selection<'s, S>>>, inner: P::Target<'s>) -> Self {
         Self {
             selection: selection.into(),
@@ -68,7 +68,7 @@ impl<'s, S: Copy, P: ParseUnit<S>> Token<'s, P, S> {
         }
     }
 
-    /// take [Self::target] from [`Token`]
+    /// take [Self::target] from [`PU`]
     pub fn take(self) -> P::Target<'s> {
         self.target
     }
@@ -82,15 +82,15 @@ impl<'s, S: Copy, P: ParseUnit<S>> Token<'s, P, S> {
     where
         M: FnOnce(P::Target<'s>) -> Result<'s, P2::Target<'s>, S>,
     {
-        mapper(self.target).map(|target| Token::new(self.selection, target))
+        mapper(self.target).map(|target| PU::new(self.selection, target))
     }
 
     /// map [Self::target]
-    pub fn map<P2: ParseUnit<S>, M>(self, mapper: M) -> Token<'s, P2, S>
+    pub fn map<P2: ParseUnit<S>, M>(self, mapper: M) -> PU<'s, P2, S>
     where
         M: FnOnce(P::Target<'s>) -> P2::Target<'s>,
     {
-        Token::new(self.selection, mapper(self.target))
+        PU::new(self.selection, mapper(self.target))
     }
 
     /// Check if [Self::target] meets a certain criteria, or call error to generate an [`Error`]
@@ -142,19 +142,19 @@ impl<'s, S: Copy, P: ParseUnit<S>> Token<'s, P, S> {
     }
 }
 
-impl<'s, S: Copy, P: ParseUnit<S>> Debug for Token<'s, P, S>
+impl<'s, S: Copy, P: ParseUnit<S>> Debug for PU<'s, P, S>
 where
     P::Target<'s>: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Token")
+        f.debug_struct("PU")
             .field("selection", &"...")
             .field("target", &self.target)
             .finish()
     }
 }
 
-impl<'s, S: Copy, P: ParseUnit<S>> Clone for Token<'s, P, S>
+impl<'s, S: Copy, P: ParseUnit<S>> Clone for PU<'s, P, S>
 where
     P::Target<'s>: Clone,
 {
@@ -166,9 +166,9 @@ where
     }
 }
 
-impl<'s, S: Copy, P: ParseUnit<S>> Copy for Token<'s, P, S> where P::Target<'s>: Copy {}
+impl<'s, S: Copy, P: ParseUnit<S>> Copy for PU<'s, P, S> where P::Target<'s>: Copy {}
 
-impl<'s, S: Copy, P: ParseUnit<S>> std::ops::Deref for Token<'s, P, S> {
+impl<'s, S: Copy, P: ParseUnit<S>> std::ops::Deref for PU<'s, P, S> {
     type Target = P::Target<'s>;
 
     fn deref(&self) -> &Self::Target {
@@ -176,14 +176,14 @@ impl<'s, S: Copy, P: ParseUnit<S>> std::ops::Deref for Token<'s, P, S> {
     }
 }
 
-impl<S: Copy, P: ParseUnit<S>> std::ops::DerefMut for Token<'_, P, S> {
+impl<S: Copy, P: ParseUnit<S>> std::ops::DerefMut for PU<'_, P, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.target
     }
 }
 
 #[cfg(feature = "ser")]
-impl<'s, S: Copy, P: ParseUnit<S>> serde::Serialize for Token<'s, P, S>
+impl<'s, S: Copy, P: ParseUnit<S>> serde::Serialize for PU<'s, P, S>
 where
     P::Target<'s>: serde::Serialize,
 {
@@ -196,7 +196,7 @@ where
 }
 
 #[cfg(feature = "ser")]
-impl<'s, S: Copy, P: ParseUnit<S>> serde::Deserialize<'s> for Token<'s, P, S>
+impl<'s, S: Copy, P: ParseUnit<S>> serde::Deserialize<'s> for PU<'s, P, S>
 where
     P::Target<'s>: serde::Deserialize<'s>,
 {

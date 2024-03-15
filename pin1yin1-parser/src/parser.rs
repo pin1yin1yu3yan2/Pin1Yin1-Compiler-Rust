@@ -172,9 +172,9 @@ impl<'s, S: Copy> Parser<'s, S> {
         }
     }
 
-    /// make a new [`Token`] with the given value and parser's selection
-    pub fn new_token<I: Into<P::Target<'s>>, P: ParseUnit<S>>(&self, t: I) -> Token<'s, P, S> {
-        Token::new(self.selection(), t.into())
+    /// make a new [`PU`] with the given value and parser's selection
+    pub fn new_token<I: Into<P::Target<'s>>, P: ParseUnit<S>>(&self, t: I) -> PU<'s, P, S> {
+        PU::new(self.selection(), t.into())
     }
 
     /// finish the successful parsing, just using the this method to make return easier
@@ -231,7 +231,7 @@ impl<'s> Parser<'s, char> {
 /// or successfully parse a [`ParseUnit`]
 pub struct Try<'p, 's, S: Copy, P: ParseUnit<S>> {
     parser: &'p mut Parser<'s, S>,
-    state: Option<std::result::Result<Token<'s, P, S>, Error<'s, S>>>,
+    state: Option<std::result::Result<PU<'s, P, S>, Error<'s, S>>>,
 }
 
 impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
@@ -256,7 +256,7 @@ impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
         }
 
         self.state = match self.parser.try_once(parser) {
-            Ok(tk) => Some(Ok(Token::new(tk.selection, tk.target))),
+            Ok(tk) => Some(Ok(PU::new(tk.selection, tk.target))),
             Err(Some(e)) => Some(Err(e)),
             _ => self.state,
         };

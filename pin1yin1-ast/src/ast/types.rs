@@ -1,21 +1,23 @@
 use super::*;
 use crate::{complex_pu, keywords::types::BasicExtenWord};
 
-#[cfg(feature = "ser")]
-use crate::keywords::types::defaults::BasicExtenWord::*;
 /// Decorators
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(from = "bool"))]
 #[cfg_attr(feature = "ser", serde(into = "bool"))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeConstExtend<'s> {
-    pub keyword: Token<'s, BasicExtenWord>,
+    pub keyword: BasicExtenWord,
+    _p: PhantomData<&'s ()>,
 }
 
 #[cfg(feature = "ser")]
 impl From<bool> for TypeConstExtend<'_> {
     fn from(_: bool) -> Self {
-        Self { keyword: Const() }
+        Self {
+            keyword: BasicExtenWord::Const,
+            _p: PhantomData,
+        }
     }
 }
 
@@ -30,16 +32,22 @@ impl ParseUnit for TypeConstExtend<'_> {
     type Target<'t> = TypeConstExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<BasicExtenWord>()?.is(BasicExtenWord::Const)?;
-        p.finish(TypeConstExtend { keyword })
+        let keyword = p
+            .parse::<BasicExtenWord>()?
+            .is(BasicExtenWord::Const)?
+            .take();
+        p.finish(TypeConstExtend {
+            keyword,
+            _p: PhantomData,
+        })
     }
 }
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
 pub struct TypeArrayExtend<'s> {
-    pub keyword: Token<'s, BasicExtenWord>,
-    pub size: Option<Token<'s, usize>>,
+    pub keyword: PU<'s, BasicExtenWord>,
+    pub size: Option<PU<'s, usize>>,
 }
 
 impl ParseUnit for TypeArrayExtend<'_> {
@@ -56,39 +64,53 @@ impl ParseUnit for TypeArrayExtend<'_> {
 /// Decorators
 #[derive(Debug, Clone, Copy)]
 pub struct TypeReferenceExtend<'s> {
-    pub keyword: Token<'s, BasicExtenWord>,
+    pub keyword: BasicExtenWord,
+    _p: PhantomData<&'s ()>,
 }
 
 impl ParseUnit for TypeReferenceExtend<'_> {
     type Target<'t> = TypeReferenceExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<BasicExtenWord>()?.is(BasicExtenWord::Reference)?;
+        let keyword = p
+            .parse::<BasicExtenWord>()?
+            .is(BasicExtenWord::Reference)?
+            .take();
 
-        p.finish(TypeReferenceExtend { keyword })
+        p.finish(TypeReferenceExtend {
+            keyword,
+            _p: PhantomData,
+        })
     }
 }
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
 pub struct TypePointerExtend<'s> {
-    pub keyword: Token<'s, BasicExtenWord>,
+    pub keyword: BasicExtenWord,
+    _p: PhantomData<&'s ()>,
 }
 
 impl ParseUnit for TypePointerExtend<'_> {
     type Target<'t> = TypePointerExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<BasicExtenWord>()?.is(BasicExtenWord::Pointer)?;
+        let keyword = p
+            .parse::<BasicExtenWord>()?
+            .is(BasicExtenWord::Pointer)?
+            .take();
 
-        p.finish(TypePointerExtend { keyword })
+        p.finish(TypePointerExtend {
+            keyword,
+            _p: PhantomData,
+        })
     }
 }
 
 #[cfg(feature = "ser")]
 mod serde_ {
 
-    use pin1yin1_parser::Token;
+    use pin1yin1_parser::PU;
 
     pub enum TypeDecoratorExtends {
         Array,
@@ -145,43 +167,45 @@ mod serde_ {
         }
     }
 
-    impl From<super::TypeDecoratorExtends<'_>> for TypeDecoratorExtends {
-        fn from(value: super::TypeDecoratorExtends) -> Self {
+    impl From<super::TypeDecorators<'_>> for TypeDecoratorExtends {
+        fn from(value: super::TypeDecorators) -> Self {
             match value {
-                super::TypeDecoratorExtends::TypeArrayExtend(a) => match a.size {
+                super::TypeDecorators::TypeArrayExtend(a) => match a.size {
                     Some(size) => Self::SizedArray(*size),
                     None => Self::Array,
                 },
-                super::TypeDecoratorExtends::TypeReferenceExtend(_) => Self::Reference,
-                super::TypeDecoratorExtends::TypePointerExtend(_) => Self::Pointer,
+                super::TypeDecorators::TypeReferenceExtend(_) => Self::Reference,
+                super::TypeDecorators::TypePointerExtend(_) => Self::Pointer,
             }
         }
     }
 
-    impl<'s> From<TypeDecoratorExtends> for super::TypeDecoratorExtends<'s> {
+    impl<'s> From<TypeDecoratorExtends> for super::TypeDecorators<'s> {
         fn from(value: TypeDecoratorExtends) -> Self {
-            use crate::keywords::types::defaults::BasicExtenWord::{Array, Pointer, Reference};
+            use crate::keywords::types::defaults::BasicExtenWord::Array;
             match value {
                 TypeDecoratorExtends::Array => {
-                    super::TypeDecoratorExtends::TypeArrayExtend(super::TypeArrayExtend {
+                    super::TypeDecorators::TypeArrayExtend(super::TypeArrayExtend {
                         keyword: Array(),
                         size: None,
                     })
                 }
                 TypeDecoratorExtends::SizedArray(size) => {
-                    super::TypeDecoratorExtends::TypeArrayExtend(super::TypeArrayExtend {
+                    super::TypeDecorators::TypeArrayExtend(super::TypeArrayExtend {
                         keyword: Array(),
-                        size: Some(Token::new_without_selection(size)),
+                        size: Some(PU::new_without_selection(size)),
                     })
                 }
                 TypeDecoratorExtends::Reference => {
-                    super::TypeDecoratorExtends::TypeReferenceExtend(super::TypeReferenceExtend {
-                        keyword: Reference(),
+                    super::TypeDecorators::TypeReferenceExtend(super::TypeReferenceExtend {
+                        keyword: crate::keywords::types::BasicExtenWord::Reference,
+                        _p: std::marker::PhantomData,
                     })
                 }
                 TypeDecoratorExtends::Pointer => {
-                    super::TypeDecoratorExtends::TypePointerExtend(super::TypePointerExtend {
-                        keyword: Pointer(),
+                    super::TypeDecorators::TypePointerExtend(super::TypePointerExtend {
+                        keyword: crate::keywords::types::BasicExtenWord::Pointer,
+                        _p: std::marker::PhantomData,
                     })
                 }
             }
@@ -192,7 +216,7 @@ mod serde_ {
 complex_pu! {
     #[cfg_attr(feature = "ser", serde(from = "serde_::TypeDecoratorExtends"))]
     #[cfg_attr(feature = "ser", serde(into = "serde_::TypeDecoratorExtends"))]
-    cpu TypeDecoratorExtends {
+    cpu TypeDecorators {
         TypeArrayExtend,
         TypeReferenceExtend,
         TypePointerExtend
@@ -204,8 +228,8 @@ complex_pu! {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeWidthExtend<'s> {
-    pub keyword: Token<'s, BasicExtenWord>,
-    pub width: Token<'s, usize>,
+    pub keyword: PU<'s, BasicExtenWord>,
+    pub width: PU<'s, usize>,
 }
 
 impl ParseUnit for TypeWidthExtend<'_> {
@@ -228,7 +252,7 @@ impl ParseUnit for TypeWidthExtend<'_> {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone, Copy)]
 pub struct TypeSignExtend<'s> {
-    pub keyword: Token<'s, BasicExtenWord>,
+    pub keyword: PU<'s, BasicExtenWord>,
     pub sign: bool,
 }
 
@@ -256,17 +280,18 @@ pub struct TypeDeclare<'s> {
     #[cfg_attr(feature = "ser", serde(rename = "const"))]
     #[cfg_attr(feature = "ser", serde(default))]
     #[cfg_attr(feature = "ser", serde(skip_serializing_if = "Option::is_none"))]
-    pub const_: Option<Token<'s, TypeConstExtend<'s>>>,
+    pub const_: Option<PU<'s, TypeConstExtend<'s>>>,
     #[cfg_attr(feature = "ser", serde(default))]
     #[cfg_attr(feature = "ser", serde(skip_serializing_if = "Vec::is_empty"))]
-    pub decorators: Vec<Token<'s, TypeDecoratorExtends<'s>>>,
+    pub decorators: Vec<PU<'s, TypeDecorators<'s>>>,
     #[cfg_attr(feature = "ser", serde(default))]
     #[cfg_attr(feature = "ser", serde(skip_serializing_if = "Option::is_none"))]
-    pub width: Option<Token<'s, TypeWidthExtend<'s>>>,
+    pub width: Option<PU<'s, TypeWidthExtend<'s>>>,
     #[cfg_attr(feature = "ser", serde(default))]
     #[cfg_attr(feature = "ser", serde(skip_serializing_if = "Option::is_none"))]
-    pub sign: Option<Token<'s, TypeSignExtend<'s>>>,
-    pub real_type: Token<'s, Ident<'s>>,
+    pub sign: Option<PU<'s, TypeSignExtend<'s>>>,
+    #[cfg_attr(feature = "ser", serde(rename = "type"))]
+    pub real_type: PU<'s, Ident<'s>>,
 }
 
 impl ParseUnit for TypeDeclare<'_> {
@@ -275,7 +300,7 @@ impl ParseUnit for TypeDeclare<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let const_ = p.parse::<TypeConstExtend>().ok();
         let mut decorators = vec![];
-        while let Ok(decorator) = p.parse::<TypeDecoratorExtends>() {
+        while let Ok(decorator) = p.parse::<TypeDecorators>() {
             decorators.push(decorator);
         }
         let width = p.parse::<TypeWidthExtend>().ok();

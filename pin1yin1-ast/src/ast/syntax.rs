@@ -8,8 +8,8 @@ use crate::keywords::syntax::defaults::Symbol::*;
 
 #[derive(Debug, Clone)]
 pub struct Comment<'s> {
-    pub shi4: Token<'s, Symbol>,
-    pub jie2: Token<'s, Symbol>,
+    pub shi4: PU<'s, Symbol>,
+    pub jie2: PU<'s, Symbol>,
 }
 
 impl ParseUnit for Comment<'_> {
@@ -36,8 +36,8 @@ impl ParseUnit for Comment<'_> {
 #[derive(Debug, Clone)]
 pub struct VariableDefine<'s> {
     #[cfg_attr(feature = "ser", serde(rename = "type"))]
-    pub type_: Token<'s, types::TypeDeclare<'s>>,
-    pub name: Token<'s, Ident<'s>>,
+    pub type_: PU<'s, types::TypeDeclare<'s>>,
+    pub name: PU<'s, Ident<'s>>,
 }
 
 impl ParseUnit for VariableDefine<'_> {
@@ -52,12 +52,29 @@ impl ParseUnit for VariableDefine<'_> {
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[cfg_attr(feature = "ser", serde(from = "Expr"))]
+#[cfg_attr(feature = "ser", serde(into = "Expr"))]
 #[derive(Debug, Clone)]
 pub struct VariableAssign<'s> {
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Assign"))]
-    pub deng3: Token<'s, Symbol>,
-    pub value: Token<'s, Expr<'s>>,
+    pub deng3: PU<'s, Symbol>,
+    pub value: PU<'s, Expr<'s>>,
+}
+
+#[cfg(feature = "ser")]
+impl<'s> From<Expr<'s>> for VariableAssign<'s> {
+    fn from(value: Expr<'s>) -> Self {
+        Self {
+            deng3: Assign(),
+            value: PU::new_without_selection(value),
+        }
+    }
+}
+
+#[cfg(feature = "ser")]
+impl<'s> From<VariableAssign<'s>> for Expr<'s> {
+    fn from(value: VariableAssign<'s>) -> Self {
+        value.value.take()
+    }
 }
 
 impl ParseUnit for VariableAssign<'_> {
@@ -74,11 +91,8 @@ impl ParseUnit for VariableAssign<'_> {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct VariableInit<'s> {
-    pub define: Token<'s, VariableDefine<'s>>,
-    pub init: Token<'s, VariableAssign<'s>>,
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Semicolon"))]
-    pub fen1: Token<'s, Symbol>,
+    pub define: PU<'s, VariableDefine<'s>>,
+    pub init: PU<'s, VariableAssign<'s>>,
 }
 
 impl ParseUnit for VariableInit<'_> {
@@ -87,8 +101,7 @@ impl ParseUnit for VariableInit<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let define = p.parse::<VariableDefine>()?;
         let init = p.parse::<VariableAssign>()?;
-        let fen1 = p.match_one(Symbol::Semicolon, "expect `fen1`")?;
-        p.finish(VariableInit { define, init, fen1 })
+        p.finish(VariableInit { define, init })
     }
 }
 
@@ -96,11 +109,8 @@ impl ParseUnit for VariableInit<'_> {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct VariableReAssign<'s> {
-    pub name: Token<'s, Ident<'s>>,
-    pub assign: Token<'s, VariableAssign<'s>>,
-    #[cfg_attr(feature = "ser", serde(skip))]
-    #[cfg_attr(feature = "ser", serde(default = "Semicolon"))]
-    pub fen1: Token<'s, Symbol>,
+    pub name: PU<'s, Ident<'s>>,
+    pub assign: PU<'s, VariableAssign<'s>>,
 }
 
 impl ParseUnit for VariableReAssign<'_> {
@@ -109,25 +119,24 @@ impl ParseUnit for VariableReAssign<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let name = p.parse::<Ident>()?;
         let assign = p.parse::<VariableAssign>()?;
-        let fen1 = p.match_one(Symbol::Semicolon, "expect `fen1`")?;
-        p.finish(VariableReAssign { name, assign, fen1 })
+        p.finish(VariableReAssign { name, assign })
     }
 }
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[cfg_attr(feature = "ser", serde(from = "Vec<Token<'s, Statement<'s>>>"))]
-#[cfg_attr(feature = "ser", serde(into = "Vec<Token<'s, Statement<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(from = "Vec<PU<'s, Statement<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(into = "Vec<PU<'s, Statement<'s>>>"))]
 #[derive(Debug, Clone)]
 pub struct CodeBlock<'s> {
-    pub han2: Token<'s, Symbol>,
-    pub stmts: Vec<Token<'s, Statement<'s>>>,
-    pub jie2: Token<'s, Symbol>,
+    pub han2: PU<'s, Symbol>,
+    pub stmts: Vec<PU<'s, Statement<'s>>>,
+    pub jie2: PU<'s, Symbol>,
 }
 
 #[cfg(feature = "ser")]
-impl<'s> From<Vec<Token<'s, Statement<'s>>>> for CodeBlock<'s> {
-    fn from(value: Vec<Token<'s, Statement<'s>>>) -> Self {
+impl<'s> From<Vec<PU<'s, Statement<'s>>>> for CodeBlock<'s> {
+    fn from(value: Vec<PU<'s, Statement<'s>>>) -> Self {
         CodeBlock {
             han2: Block(),
             stmts: value,
@@ -137,7 +146,7 @@ impl<'s> From<Vec<Token<'s, Statement<'s>>>> for CodeBlock<'s> {
 }
 
 #[cfg(feature = "ser")]
-impl<'s> From<CodeBlock<'s>> for Vec<Token<'s, Statement<'s>>> {
+impl<'s> From<CodeBlock<'s>> for Vec<PU<'s, Statement<'s>>> {
     fn from(value: CodeBlock<'s>) -> Self {
         value.stmts
     }
@@ -174,8 +183,8 @@ impl ParseUnit for CodeBlock<'_> {
 #[derive(Debug, Clone)]
 pub struct Parameter<'s> {
     #[cfg_attr(feature = "ser", serde(rename = "type"))]
-    pub type_: Token<'s, types::TypeDeclare<'s>>,
-    pub name: Token<'s, Ident<'s>>,
+    pub type_: PU<'s, types::TypeDeclare<'s>>,
+    pub name: PU<'s, Ident<'s>>,
 }
 
 impl ParseUnit for Parameter<'_> {
@@ -190,16 +199,16 @@ impl ParseUnit for Parameter<'_> {
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
-#[cfg_attr(feature = "ser", serde(from = "Vec<Token<'s, Parameter<'s>>>"))]
-#[cfg_attr(feature = "ser", serde(into = "Vec<Token<'s, Parameter<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(from = "Vec<PU<'s, Parameter<'s>>>"))]
+#[cfg_attr(feature = "ser", serde(into = "Vec<PU<'s, Parameter<'s>>>"))]
 #[derive(Debug, Clone)]
 pub struct Parameters<'s> {
-    pub params: Vec<Token<'s, Parameter<'s>>>,
-    pub semicolons: Vec<Token<'s, Symbol>>,
+    pub params: Vec<PU<'s, Parameter<'s>>>,
+    pub semicolons: Vec<PU<'s, Symbol>>,
 }
 
-impl<'s> From<Vec<Token<'s, Parameter<'s>>>> for Parameters<'s> {
-    fn from(value: Vec<Token<'s, Parameter<'s>>>) -> Self {
+impl<'s> From<Vec<PU<'s, Parameter<'s>>>> for Parameters<'s> {
+    fn from(value: Vec<PU<'s, Parameter<'s>>>) -> Self {
         Self {
             params: value,
             semicolons: Vec::new(),
@@ -207,7 +216,7 @@ impl<'s> From<Vec<Token<'s, Parameter<'s>>>> for Parameters<'s> {
     }
 }
 
-impl<'s> From<Parameters<'s>> for Vec<Token<'s, Parameter<'s>>> {
+impl<'s> From<Parameters<'s>> for Vec<PU<'s, Parameter<'s>>> {
     fn from(value: Parameters<'s>) -> Self {
         value.params
     }
@@ -248,15 +257,15 @@ impl ParseUnit for Parameters<'_> {
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
 #[derive(Debug, Clone)]
 pub struct FunctionDefine<'s> {
-    pub function: Token<'s, VariableDefine<'s>>,
+    pub function: PU<'s, VariableDefine<'s>>,
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "Parameter"))]
-    pub can1: Token<'s, Symbol>,
+    pub can1: PU<'s, Symbol>,
+    pub params: PU<'s, Parameters<'s>>,
     #[cfg_attr(feature = "ser", serde(skip))]
     #[cfg_attr(feature = "ser", serde(default = "EndOfBracket"))]
-    pub jie2: Token<'s, Symbol>,
-    pub params: Token<'s, Parameters<'s>>,
-    pub codes: Token<'s, CodeBlock<'s>>,
+    pub jie2: PU<'s, Symbol>,
+    pub codes: PU<'s, CodeBlock<'s>>,
 }
 
 impl ParseUnit for FunctionDefine<'_> {

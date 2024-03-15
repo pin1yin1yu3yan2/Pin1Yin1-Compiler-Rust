@@ -48,8 +48,8 @@ macro_rules! keywords {
             pub mod $enum_name {
                 $(
 
-                pub fn $var<'s>() -> pin1yin1_parser::Token<'s, super::super::$enum_name> {
-                    pin1yin1_parser::Token::new_without_selection(super::super::$enum_name::$var)
+                pub fn $var<'s>() -> pin1yin1_parser::PU<'s, super::super::$enum_name> {
+                    pin1yin1_parser::PU::new_without_selection(super::super::$enum_name::$var)
                 }
 
                 )*

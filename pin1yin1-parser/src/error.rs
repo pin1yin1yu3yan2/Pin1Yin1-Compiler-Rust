@@ -6,7 +6,7 @@ use crate::*;
 pub type Result<'s, T, S = char> = std::result::Result<T, Option<Error<'s, S>>>;
 
 /// normally parse result, storage [`T::Target`] in token
-pub type ParseResult<'s, P, S = char> = std::result::Result<Token<'s, P, S>, Option<Error<'s, S>>>;
+pub type ParseResult<'s, P, S = char> = std::result::Result<PU<'s, P, S>, Option<Error<'s, S>>>;
 
 /// error type with a [`Selection`] and a [`String`] as reason
 #[derive(Clone)]
@@ -51,11 +51,15 @@ impl Debug for Error<'_> {
             .count()
             + 1;
 
+        let row_num = selection.start - left;
+
         let line = selection.src[left..right].iter().collect::<String>();
+
+        let location = format!("[{}:{}:{}]", selection.src.file_name(), line_num, row_num,);
 
         writeln!(f)?;
         // there is an error happend
-        writeln!(f, "Error: {}", self.reason)?;
+        writeln!(f, "{location}Error: {}", self.reason)?;
         // at line {line_num}
         let head = format!("at line {line_num} | ");
         writeln!(f, "{head}{line}")?;
