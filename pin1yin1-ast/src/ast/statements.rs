@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::complex_pu;
 
 use crate::keywords::syntax::Symbol;
@@ -26,7 +28,7 @@ impl ParseUnit for FunctionCallStatement<'_> {
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let inner = p.parse::<FunctionCall>()?;
-        let fen1 = p.match_one(Symbol::Semicolon, "missing `fen1`")?;
+        let fen1 = p.match_one(Symbol::Semicolon, "expect `fen1`")?;
         p.finish(FunctionCallStatement { inner, fen1 })
     }
 }
@@ -48,16 +50,32 @@ impl<'s> From<FunctionCallStatement<'s>> for FunctionCall<'s> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Invalid<'s>(PhantomData<&'s ()>);
+
+impl ParseUnit for Invalid<'_> {
+    type Target<'t> = Invalid<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        p.throw("invalid statement")
+    }
+}
+
 complex_pu! {
     cpu Statement {
-        #[cfg_attr(feature = "ser", serde(skip))]
-        Comment,
+
         FunctionCallStatement,
         VariableInit,
         VariableReAssign,
         CodeBlock,
         FunctionDefine,
         If,
-        While
+        While,
+        Return,
+        #[cfg_attr(feature = "ser", serde(skip))]
+        Comment
+        // ,
+        // #[cfg_attr(feature = "ser", serde(skip))]
+        // Invalid
     }
 }

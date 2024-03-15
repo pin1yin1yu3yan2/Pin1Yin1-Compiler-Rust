@@ -5,10 +5,12 @@ use crate::*;
 /// implement for a type and make it parseable
 ///
 /// [`ParseUnit::Target`] measn the actual type of the parse result
-pub trait ParseUnit: Sized {
+///
+/// [`S`] is the type of source
+pub trait ParseUnit<S: Copy = char>: Sized {
     type Target<'t>: Debug;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self>;
+    fn parse<'s>(p: &mut Parser<'s, S>) -> ParseResult<'s, Self, S>;
 }
 
 /// extract this function to make the addition of the UNICODE support much easier
@@ -72,6 +74,7 @@ impl ParseUnit for char {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         p.start_taking();
         let next = p.next();
-        p.finish(next.ok_or(None)?)
+        let char = *next.ok_or(None)?;
+        p.finish(char)
     }
 }

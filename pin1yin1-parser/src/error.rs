@@ -3,21 +3,24 @@ use std::fmt::Debug;
 use crate::*;
 
 /// normally result, with an optional [`Error`]
-pub type Result<'s, T> = std::result::Result<T, Option<Error<'s>>>;
+pub type Result<'s, T, S = char> = std::result::Result<T, Option<Error<'s, S>>>;
 
 /// normally parse result, storage [`T::Target`] in token
-pub type ParseResult<'s, T> = std::result::Result<Token<'s, T>, Option<Error<'s>>>;
+pub type ParseResult<'s, P, S = char> = std::result::Result<Token<'s, P, S>, Option<Error<'s, S>>>;
 
 /// error type with a [`Selection`] and a [`String`] as reason
 #[derive(Clone)]
-pub struct Error<'s> {
-    selection: Selection<'s>,
+pub struct Error<'s, S = char> {
+    selection: Option<Selection<'s, S>>,
     reason: String,
 }
 
-impl<'s> Error<'s> {
-    pub fn new(selection: Selection<'s>, reason: String) -> Self {
-        Self { selection, reason }
+impl<'s, S> Error<'s, S> {
+    pub fn new(selection: impl Into<Option<Selection<'s, S>>>, reason: String) -> Self {
+        Self {
+            selection: selection.into(),
+            reason,
+        }
     }
 
     pub fn emit(mut self, reason: impl Into<String>) -> Self {
@@ -28,7 +31,10 @@ impl<'s> Error<'s> {
 
 impl Debug for Error<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let selection = self.selection;
+        if self.selection.is_none() {
+            return writeln!(f, "{}", self.reason);
+        }
+        let selection = self.selection.unwrap();
 
         let left = (0..selection.start)
             .rev()
@@ -49,14 +55,14 @@ impl Debug for Error<'_> {
 
         writeln!(f)?;
         // there is an error happend
-        writeln!(f, "fa1sheng1le1yi1ge4cuo4wu4: {}", self.reason)?;
+        writeln!(f, "Error: {}", self.reason)?;
         // at line {line_num}
-        let head = format!("zai4di4 {line_num} hang2\t| ");
+        let head = format!("at line {line_num} | ");
         writeln!(f, "{head}{line}")?;
-        let ahead = (0..head.len() + self.selection.start - left)
+        let ahead = (0..head.len() + selection.start - left)
             .map(|_| ' ')
             .collect::<String>();
-        let point = (0..self.selection.len()).map(|_| '^').collect::<String>();
+        let point = (0..selection.len()).map(|_| '^').collect::<String>();
         writeln!(f, "{ahead}{point}")
     }
 }

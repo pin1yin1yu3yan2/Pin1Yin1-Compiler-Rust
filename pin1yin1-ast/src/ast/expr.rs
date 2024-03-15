@@ -44,6 +44,7 @@ fn escape<'s>(src: &Token<'s, String>, c: char) -> Result<'s, char> {
         '_' => '_',
         't' => '\t',
         'n' => '\n',
+        's' => ' ',
         _ => {
             return Err(Some(src.new_error(format!(
                 "Invalid or unsupported escape character: {}",

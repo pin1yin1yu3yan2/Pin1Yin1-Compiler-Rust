@@ -1,9 +1,17 @@
-use self::{expr::Arguments, syntax::CodeBlock};
-use crate::{complex_pu, keywords::syntax::ControlFlow};
-
+use self::{
+    expr::{Arguments, Expr},
+    syntax::CodeBlock,
+};
 use super::*;
+use crate::{
+    complex_pu,
+    keywords::syntax::{ControlFlow, Symbol},
+};
+
 #[cfg(feature = "ser")]
 use crate::keywords::syntax::defaults::ControlFlow::*;
+#[cfg(feature = "ser")]
+use crate::keywords::syntax::defaults::Symbol::*;
 
 #[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
@@ -126,6 +134,30 @@ impl ParseUnit for While<'_> {
     }
 }
 
+#[cfg_attr(feature = "ser", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ser", serde(bound(deserialize = "'s: 'de, 'de: 's")))]
+#[derive(Debug, Clone)]
+pub struct Return<'s> {
+    #[cfg_attr(feature = "ser", serde(skip))]
+    #[cfg_attr(feature = "ser", serde(default = "Return"))]
+    pub fan3: Token<'s, ControlFlow>,
+    pub val: Token<'s, Expr<'s>>,
+    #[cfg_attr(feature = "ser", serde(skip))]
+    #[cfg_attr(feature = "ser", serde(default = "Semicolon"))]
+    pub fen1: Token<'s, Symbol>,
+}
+
+impl ParseUnit for Return<'_> {
+    type Target<'t> = Return<'t>;
+
+    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+        let fan3 = p.parse::<ControlFlow>()?.is(ControlFlow::Return)?;
+        let val = p.parse::<Expr>()?;
+        let fen1 = p.match_one(Symbol::Semicolon, "expect `fen1`")?;
+        p.finish(Return { fan3, val, fen1 })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::parse_test;
@@ -133,12 +165,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn if_() {
-        parse_test(
-            "ruo4 can1 can1 1 da4 0 jie2 huo4 can1 2 xiao3 3 jie2 yu3 fei1 fo3 jie2
-                    han2 jie2
-                    ze2 han2 jie2",
-            |p| assert!(p.parse::<If>().is_ok()),
-        );
+    fn r#if() {
+        let src = "
+        ruo4 can1 can1 1 da4 0 jie2 huo4 can1 2 xiao3 3 jie2 yu3 fei1 fo3 jie2 han2
+        
+        jie2 ze2 han2
+        
+        jie2";
+
+        parse_test(src, |p| assert!(p.parse::<If>().is_ok()));
+    }
+
+    #[test]
+    fn r#while() {
+        let src = "
+        chong2 can1 i xiao3 5 jie2 han2 
+            i deng3 i jia1 1 fen1 
+        jie2";
+        parse_test(src, |p| assert!(p.parse::<While>().is_ok()));
     }
 }

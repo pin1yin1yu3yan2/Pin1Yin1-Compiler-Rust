@@ -87,7 +87,7 @@ impl ParseUnit for VariableInit<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let define = p.parse::<VariableDefine>()?;
         let init = p.parse::<VariableAssign>()?;
-        let fen1 = p.match_one(Symbol::Semicolon, "missing `fen1`")?;
+        let fen1 = p.match_one(Symbol::Semicolon, "expect `fen1`")?;
         p.finish(VariableInit { define, init, fen1 })
     }
 }
@@ -109,7 +109,7 @@ impl ParseUnit for VariableReAssign<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let name = p.parse::<Ident>()?;
         let assign = p.parse::<VariableAssign>()?;
-        let fen1 = p.match_one(Symbol::Semicolon, "missing `fen1`")?;
+        let fen1 = p.match_one(Symbol::Semicolon, "expect `fen1`")?;
         p.finish(VariableReAssign { name, assign, fen1 })
     }
 }
@@ -149,11 +149,21 @@ impl ParseUnit for CodeBlock<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let han2 = p.parse::<Symbol>()?.is(Symbol::Block)?;
         let mut stmts = vec![];
-        while let Ok(stmt) = p.parse::<Statement>() {
-            if !matches!(*stmt, Statement::Comment(..)) {
-                stmts.push(stmt);
+        loop {
+            let stmt = p.parse::<Statement>();
+            match stmt {
+                Ok(stmt) => {
+                    if !matches!(*stmt, Statement::Comment(..)) {
+                        stmts.push(stmt);
+                    }
+                }
+                Err(e) => match e {
+                    Some(e) => return Err(Some(e)),
+                    None => break,
+                },
             }
         }
+
         let jie2 = p.match_one::<Symbol>(Symbol::EndOfBracket, "expect `jie2` {CodeBlock}")?;
         p.finish(CodeBlock { han2, stmts, jie2 })
     }
