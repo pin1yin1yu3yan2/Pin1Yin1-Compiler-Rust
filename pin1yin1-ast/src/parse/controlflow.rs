@@ -115,7 +115,6 @@ impl ParseUnit for While<'_> {
 pub struct Return<'s> {
     pub fan3: PU<'s, ControlFlow>,
     pub val: Option<PU<'s, Expr<'s>>>,
-
     pub fen1: PU<'s, Symbol>,
 }
 
@@ -150,9 +149,8 @@ impl ParseUnit for Return<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::parse_test;
-
     use super::*;
+    use crate::parse_test;
 
     #[test]
     fn r#if() {

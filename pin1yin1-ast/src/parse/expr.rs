@@ -313,7 +313,7 @@ impl ParseUnit for Expr<'_> {
                 let op = ops.pop().unwrap();
                 let lhs = Box::new(exprs.pop().unwrap());
 
-                let selection = lhs.selection().merge(rhs.selection());
+                let selection = lhs.selection().merge(*rhs.selection());
 
                 let binary = Expr::Binary(lhs, op, rhs);
                 exprs.push(PU::new(selection, binary));
@@ -328,7 +328,7 @@ impl ParseUnit for Expr<'_> {
             let op = ops.pop().unwrap();
             let lhs = Box::new(exprs.pop().unwrap());
 
-            let selection = lhs.selection().merge(rhs.selection());
+            let selection = lhs.selection().merge(*rhs.selection());
 
             let binary = Expr::Binary(lhs, op, rhs);
             exprs.push(PU::new(selection, binary));

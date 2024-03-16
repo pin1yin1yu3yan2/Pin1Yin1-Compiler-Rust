@@ -22,11 +22,7 @@ keywords! {
 // PrimitiveType shouldn't be keeping keywords
 // #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 // pub enum PrimitiveTypes {
-//     Integer,
-//     Float,
-//     Char,
-//     Bool,
-//     Complex,
+
 // }
 // impl pin1yin1_parser::ParseUnit for PrimitiveTypes {
 //     type Target<'t> = PrimitiveTypes;

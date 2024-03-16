@@ -29,22 +29,6 @@ impl ParseUnit for Comment<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableDefine<'s> {
-    pub type_: PU<'s, types::TypeDeclare<'s>>,
-    pub name: PU<'s, Ident<'s>>,
-}
-
-impl ParseUnit for VariableDefine<'_> {
-    type Target<'t> = VariableDefine<'t>;
-
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let type_ = p.parse::<types::TypeDeclare>()?;
-        let name = p.parse::<Ident>()?;
-        p.finish(VariableDefine { type_, name })
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct VariableAssign<'s> {
     pub deng3: PU<'s, Symbol>,
     pub value: PU<'s, Expr<'s>>,
@@ -61,34 +45,36 @@ impl ParseUnit for VariableAssign<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableInit<'s> {
-    pub define: PU<'s, VariableDefine<'s>>,
-    pub init: PU<'s, VariableAssign<'s>>,
+pub struct VariableDefine<'s> {
+    pub type_: PU<'s, types::TypeDeclare<'s>>,
+    pub name: PU<'s, Ident<'s>>,
+    pub init: Option<PU<'s, VariableAssign<'s>>>,
 }
 
-impl ParseUnit for VariableInit<'_> {
-    type Target<'t> = VariableInit<'t>;
+impl ParseUnit for VariableDefine<'_> {
+    type Target<'t> = VariableDefine<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let define = p.parse::<VariableDefine>()?;
-        let init = p.parse::<VariableAssign>()?;
-        p.finish(VariableInit { define, init })
+        let type_ = p.parse::<types::TypeDeclare>()?;
+        let name = p.parse::<Ident>()?;
+        let init = p.parse::<VariableAssign>().ok();
+        p.finish(VariableDefine { type_, name, init })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableReAssign<'s> {
+pub struct VariableStore<'s> {
     pub name: PU<'s, Ident<'s>>,
     pub assign: PU<'s, VariableAssign<'s>>,
 }
 
-impl ParseUnit for VariableReAssign<'_> {
-    type Target<'t> = VariableReAssign<'t>;
+impl ParseUnit for VariableStore<'_> {
+    type Target<'t> = VariableStore<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let name = p.parse::<Ident>()?;
         let assign = p.parse::<VariableAssign>()?;
-        p.finish(VariableReAssign { name, assign })
+        p.finish(VariableStore { name, assign })
     }
 }
 
@@ -240,7 +226,7 @@ mod tests {
             assert!(dbg!(p.parse::<Statement>()).is_ok())
         });
         parse_test("kuan1 32 zheng3 a deng3 114514 fen1", |p| {
-            assert!(dbg!(p.parse::<VariableInit>()).is_ok())
+            assert!(dbg!(p.parse::<VariableDefine>()).is_ok())
         });
     }
 
@@ -250,7 +236,7 @@ mod tests {
             assert!(p.parse::<Statement>().is_ok())
         });
         parse_test("a deng3 114514 fen1", |p| {
-            assert!(p.parse::<VariableReAssign>().is_ok())
+            assert!(p.parse::<VariableStore>().is_ok())
         });
     }
 

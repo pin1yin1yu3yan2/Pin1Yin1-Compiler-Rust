@@ -135,7 +135,7 @@ impl ParseUnit for TypeSignExtend<'_> {
             BasicExtenWord::Signed => true,
             BasicExtenWord::Unsigned => false,
             _ => {
-                return keyword.throw::<Self>("should be `you3fu2` or `wu2fu2`");
+                return keyword.throw("should be `you3fu2` or `wu2fu2`");
             }
         };
 

@@ -11,7 +11,7 @@ macro_rules! keywords {
         )*}
     )*) => {
         $(
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
         $(#[$metas])*
         pub enum $enum_name {
             $(
@@ -19,6 +19,7 @@ macro_rules! keywords {
             )*
         }
 
+        #[cfg(feature = "parser")]
         impl pin1yin1_parser::ParseUnit for $enum_name {
             type Target<'t> = $enum_name;
 
@@ -55,7 +56,9 @@ macro_rules! keywords {
 }
 
 /// use to define a complex parse unit which could be one of its variants
+
 #[macro_export]
+#[cfg(feature = "parser")]
 macro_rules! complex_pu {
     (
         $(#[$metas:meta])*

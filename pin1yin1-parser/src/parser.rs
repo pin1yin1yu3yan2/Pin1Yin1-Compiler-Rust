@@ -197,7 +197,7 @@ impl<'s, S: Copy> Parser<'s, S> {
     /// finish the faild parsing, just using the this method to make return easier
     ///
     /// **you should return this method's return value to throw an error!!!**
-    pub fn throw<P: ParseUnit<S>>(&mut self, reason: impl Into<String>) -> ParseResult<'s, P, S> {
+    pub fn throw<T>(&mut self, reason: impl Into<String>) -> Result<'s, T, S> {
         Err(Some(self.new_error(reason)))
     }
 }

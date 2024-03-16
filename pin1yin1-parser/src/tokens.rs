@@ -36,6 +36,14 @@ impl<'s, S> Selection<'s, S> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    pub fn to_error(self, reason: impl Into<String>) -> Error<'s, S> {
+        Error::new(self, reason.into())
+    }
+
+    pub fn throw<T>(self, reason: impl Into<String>) -> Result<'s, T, S> {
+        Err(Some(self.to_error(reason)))
+    }
 }
 
 impl std::ops::Deref for Selection<'_> {
@@ -65,8 +73,8 @@ impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
         self.target
     }
 
-    pub fn selection(&self) -> Selection<'s, S> {
-        self.selection
+    pub fn selection(&self) -> &Selection<'s, S> {
+        &self.selection
     }
 
     /// try to map the [Self::target]
@@ -129,7 +137,7 @@ impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
     }
 
     /// generate an [`Result`] with an actual [`Error`] in it
-    pub fn throw<P1: ParseUnit<S>>(&self, reason: impl Into<String>) -> ParseResult<'s, P1, S> {
+    pub fn throw<T>(&self, reason: impl Into<String>) -> Result<'s, T, S> {
         Err(Some(self.new_error(reason)))
     }
 }

@@ -11,6 +11,7 @@ pub type ParseResult<'s, P, S = char> = std::result::Result<PU<'s, P, S>, Option
 /// error type with a [`Selection`] and a [`String`] as reason
 #[derive(Clone)]
 pub struct Error<'s, S = char> {
+    // TODO: multiple selections, multiple reasons for more friendlier error messages
     selection: Selection<'s, S>,
     reason: String,
 }

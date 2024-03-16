@@ -1,7 +1,6 @@
 use super::controlflow::*;
 use super::expr::*;
 use super::syntax::*;
-use crate::complex_pu;
 
 /// however, this is the "best" way
 macro_rules! statement_wrapper {
@@ -36,6 +35,7 @@ macro_rules! statement_wrapper {
                 p.finish($into { inner, fen1 })
             }
         }
+
         )*
     };
 }
@@ -43,18 +43,60 @@ macro_rules! statement_wrapper {
 statement_wrapper! {
     VariableDefine => VariableDefineStatement,
     FunctionCall => FunctionCallStatement,
-    VariableInit => VariableInitStatement,
-    VariableReAssign => VariableReAssignStatement,
+    VariableStore => VariableStoreStatement,
 }
 
-complex_pu! {
+/// be different from [`crate::complex_pu`], this version using box to make [`Statement`] enum smaller
+macro_rules! statements {
+    (
+        $(#[$metas:meta])*
+        cpu $enum_name:ident {
+        $(
+            $(#[$v_metas:meta])*
+            $variant:ident
+        ),*
+    }) => {
+        #[derive(Debug, Clone)]
+        $(#[$metas])*
+        pub enum $enum_name<'s> {
+            $(
+                $(#[$v_metas])*
+                $variant(Box<$variant<'s>>),
+            )*
+        }
+
+        $(
+        impl<'s> From<$variant<'s>> for $enum_name<'s> {
+             fn from(v: $variant<'s>) -> $enum_name<'s> {
+                <$enum_name>::$variant(Box::new(v))
+            }
+        }
+        )*
+
+        impl pin1yin1_parser::ParseUnit for $enum_name<'_> {
+            type Target<'t> = $enum_name<'t>;
+
+            fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self>
+            {
+                pin1yin1_parser::Try::new(p)
+                $(
+                    .or_try::<Self, _>(|p| {
+                        p.parse::<$variant>()
+                            .map(|t| t.map(|t| <$enum_name>::$variant(Box::new(t))))
+                    })
+                )*
+                .finish()
+            }
+        }
+    };
+}
+
+statements! {
     cpu Statement {
         // $name (...)
         FunctionCallStatement,
-        // $ty $name = $expr
-        VariableInitStatement,
         // $name = $expr
-        VariableReAssignStatement,
+        VariableStoreStatement,
         // $ty $name (...)
         FunctionDefine,
         // $ty $name
@@ -63,7 +105,6 @@ complex_pu! {
         If,
         While,
         Return,
-
         Comment
     }
 }

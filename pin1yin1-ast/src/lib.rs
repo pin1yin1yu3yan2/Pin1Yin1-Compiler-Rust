@@ -1,9 +1,11 @@
 pub mod ast;
 pub mod keywords;
 pub mod macros;
+#[cfg(feature = "parser")]
+pub mod parse;
 pub mod semantic;
 
-#[cfg(test)]
+#[cfg(all(feature = "parser", test))]
 fn parse_test(chars: &str, tester: impl FnOnce(&mut pin1yin1_parser::Parser)) {
     use pin1yin1_parser::Source;
 

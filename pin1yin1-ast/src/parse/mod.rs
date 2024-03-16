@@ -17,7 +17,6 @@ pub use types::*;
 #[derive(Debug, Clone)]
 pub struct Ident<'s> {
     pub ident: String,
-
     _p: PhantomData<&'s ()>,
 }
 
@@ -33,6 +32,14 @@ impl From<String> for Ident<'_> {
 impl From<Ident<'_>> for String {
     fn from(value: Ident<'_>) -> Self {
         value.ident
+    }
+}
+
+impl std::ops::Deref for Ident<'_> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ident
     }
 }
 
