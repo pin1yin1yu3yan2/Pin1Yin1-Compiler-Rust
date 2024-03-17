@@ -22,7 +22,7 @@ jobs:
 
     - name: install nightly rust
       run : rustup install nightly;
-        rustup defalut nightly
+        rustup default nightly
 
     - name: Build
       run: cargo build --verbose
