@@ -12,10 +12,7 @@ impl ParseUnit for TypeConstExtend<'_> {
     type Target<'t> = TypeConstExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p
-            .parse::<BasicExtenWord>()?
-            .is(BasicExtenWord::Const)?
-            .take();
+        let keyword = BasicExtenWord::Const.parse_or_unmatch(p)?.take();
         p.finish(TypeConstExtend {
             keyword,
             _p: PhantomData,
@@ -34,9 +31,12 @@ impl ParseUnit for TypeArrayExtend<'_> {
     type Target<'t> = TypeArrayExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<BasicExtenWord>()?.is(BasicExtenWord::Array)?;
+        let keyword = BasicExtenWord::Array.parse_or_unmatch(p)?;
 
-        let size = p.parse::<usize>().ok();
+        let size = match p.try_parse::<usize>() {
+            Some(s) => Some(s?),
+            None => None,
+        };
         p.finish(TypeArrayExtend { keyword, size })
     }
 }
@@ -52,10 +52,7 @@ impl ParseUnit for TypeReferenceExtend<'_> {
     type Target<'t> = TypeReferenceExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p
-            .parse::<BasicExtenWord>()?
-            .is(BasicExtenWord::Reference)?
-            .take();
+        let keyword = BasicExtenWord::Reference.parse_or_unmatch(p)?.take();
 
         p.finish(TypeReferenceExtend {
             keyword,
@@ -75,11 +72,7 @@ impl ParseUnit for TypePointerExtend<'_> {
     type Target<'t> = TypePointerExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p
-            .parse::<BasicExtenWord>()?
-            .is(BasicExtenWord::Pointer)?
-            .take();
-
+        let keyword = BasicExtenWord::Pointer.parse_or_unmatch(p)?.take();
         p.finish(TypePointerExtend {
             keyword,
             _p: PhantomData,
@@ -107,13 +100,10 @@ impl ParseUnit for TypeWidthExtend<'_> {
     type Target<'t> = TypeWidthExtend<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let keyword = p.parse::<BasicExtenWord>()?;
-        if *keyword != BasicExtenWord::Width {
-            return Err(None);
-        }
+        let keyword = BasicExtenWord::Width.parse_or_unmatch(p)?;
         let width = p
             .parse::<usize>()
-            .map_err(|_| Some(p.new_error("usage: kaun1 <width> ")))?;
+            .map_err(|e| e.unmatch("usage: kaun1 <width> "))?;
         p.finish(TypeWidthExtend { keyword, width })
     }
 }
@@ -156,13 +146,13 @@ impl ParseUnit for TypeDeclare<'_> {
     type Target<'t> = TypeDeclare<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let const_ = p.parse::<TypeConstExtend>().ok();
+        let const_ = p.parse::<TypeConstExtend>().success();
         let mut decorators = vec![];
-        while let Ok(decorator) = p.parse::<TypeDecorators>() {
-            decorators.push(decorator);
+        while let Some(decorator) = p.try_parse::<TypeDecorators>() {
+            decorators.push(decorator?);
         }
-        let width = p.parse::<TypeWidthExtend>().ok();
-        let sign = p.parse::<TypeSignExtend>().ok();
+        let width = p.parse::<TypeWidthExtend>().success();
+        let sign = p.parse::<TypeSignExtend>().success();
         let real_type = p.parse::<Ident>()?;
         p.finish(TypeDeclare {
             const_,
@@ -183,7 +173,7 @@ mod tests {
     #[test]
     fn fucking_type() {
         parse_test("yin3 zu3 114514 kuan1 32 wu2fu2 zheng3", |p| {
-            assert!(p.parse::<TypeDeclare>().is_ok())
+            assert!(p.parse::<TypeDeclare>().is_success())
         })
     }
 }

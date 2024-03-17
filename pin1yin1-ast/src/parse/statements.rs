@@ -22,6 +22,7 @@ macro_rules! statement_wrapper {
             type Target<'t> = $into<'t>;
 
             fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
+                use pin1yin1_parser::WithSelection;
                 let inner = p.parse::<$from>()?;
 
                 #[cfg(debug_assertions)]
@@ -31,7 +32,8 @@ macro_rules! statement_wrapper {
                 );
                 #[cfg(not(debug_assertions))]
                 let or = "expect `fen1`";
-                let fen1 = p.match_one($crate::keywords::syntax::Symbol::Semicolon, or)?;
+                let fen1 = p.parse::<$crate::keywords::syntax::Symbol>()
+                    .eq_or($crate::keywords::syntax::Symbol::Semicolon, |t| t.unmatch(or))?;
                 p.finish($into { inner, fen1 })
             }
         }
@@ -80,9 +82,9 @@ macro_rules! statements {
             {
                 pin1yin1_parser::Try::new(p)
                 $(
-                    .or_try::<Self, _>(|p| {
+                     .or_try::<Self, _>(|p| {
                         p.parse::<$variant>()
-                            .map(|t| t.map(|t| <$enum_name>::$variant(Box::new(t))))
+                            .map(|s| <$enum_name>::$variant(Box::new(s)))
                     })
                 )*
                 .finish()
@@ -101,10 +103,10 @@ statements! {
         FunctionDefine,
         // $ty $name
         VariableDefineStatement,
-        CodeBlock,
         If,
         While,
         Return,
-        Comment
+        Comment,
+        CodeBlock
     }
 }

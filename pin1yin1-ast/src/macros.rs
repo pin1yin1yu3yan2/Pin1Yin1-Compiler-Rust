@@ -19,12 +19,34 @@ macro_rules! keywords {
             )*
         }
 
+        impl $enum_name {
+            pub fn parse_or_unmatch<'s>(self, p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
+                use pin1yin1_parser::WithSelection;
+                p.parse::<Self>().eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
+            }
+
+            pub fn parse_or_failed<'s>(self, p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
+                use pin1yin1_parser::WithSelection;
+                p.parse::<Self>().eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
+            }
+        }
+
+        impl std::fmt::Display for $enum_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+                match self {
+                    $(Self::$var => write!(f, "{}", $string),)*
+                }
+            }
+        }
+
         #[cfg(feature = "parser")]
         impl pin1yin1_parser::ParseUnit for $enum_name {
             type Target<'t> = $enum_name;
 
             fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
                 use std::collections::HashMap;
+                use pin1yin1_parser::WithSelection;
+
                 lazy_static::lazy_static! {
                     static ref MAP: HashMap<Vec<char>, $enum_name> = {
                         let mut _map = HashMap::new();
@@ -36,7 +58,8 @@ macro_rules! keywords {
                 }
 
                 let s: &[char] = &p.parse::<&[char]>()?;
-                MAP.get(s).copied().map(|t| p.new_token(t)).ok_or(None)
+                let opt = MAP.get(s).copied().map(|t| p.make_token(t));
+                pin1yin1_parser::ParseResult::from_option(opt,|| p.unmatch(format!("non of {} matched", stringify!($enum_name))))
             }
         }
 
@@ -85,17 +108,19 @@ macro_rules! complex_pu {
         }
         )*
 
+
         impl pin1yin1_parser::ParseUnit for $enum_name<'_> {
             type Target<'t> = $enum_name<'t>;
 
             fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self>
             {
                 pin1yin1_parser::Try::new(p)
+                //TODO: optimize chain calling, make less Parser::once call
                 $(
-                    // whats the meaning of `tae` ???
+
                     .or_try::<Self, _>(|p| {
                         p.parse::<$variant>()
-                            .map(|tae| tae.map(<$enum_name>::$variant))
+                            .map(<$enum_name>::$variant)
                     })
                 )*
                 .finish()

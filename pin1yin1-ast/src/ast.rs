@@ -3,7 +3,6 @@ use crate::keywords::operators::Operators;
 pub type Statements = Vec<Statement>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub enum Statement {
     FnDefine(FnDefine),
     VarDefine(VarDefine),
@@ -13,15 +12,12 @@ pub enum Statement {
     If(If),
     While(While),
     Return(Return),
-    // comment
-    Empty,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub struct FnDefine {
     #[serde(rename = "type")]
-    pub type_: TypeDefine,
+    pub ty: TypeDefine,
     pub name: String,
     pub args: Parameters,
     pub body: Statements,
@@ -30,21 +26,20 @@ pub struct FnDefine {
 // TODO: devied this into two ast...
 // may ast should be abstract enough to means multiple instructions?
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub struct VarDefine {
     #[serde(rename = "type")]
-    pub type_: TypeDefine,
+    pub ty: TypeDefine,
     pub name: String,
     /// TODO: `init` must be an `atomic expr`
     pub init: Option<Expr>,
 }
 
 impl VarDefine {
-    pub fn new_alloc(type_: TypeDefine, init: impl Into<Option<Expr>>) -> Self {
+    pub fn new_alloc(ty: TypeDefine, init: impl Into<Option<Expr>>) -> Self {
         use std::sync::atomic::AtomicUsize;
         static ALLOC_NAME: AtomicUsize = AtomicUsize::new(0);
         Self {
-            type_,
+            ty,
             init: init.into(),
             name: format!(
                 ".{}",
@@ -58,28 +53,31 @@ pub type Variable = String;
 pub type Variables = Vec<String>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub struct VarStore {
     pub name: String,
     pub value: Variable,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub struct FnCall {
     pub name: String,
     pub args: Variables,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
+pub struct Condition {
+    // the final value of the condition
+    pub value: String,
+    pub compute: Statements,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct IfBranch {
-    pub conds: Vec<Expr>,
+    pub cond: Condition,
     pub body: Statements,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub struct If {
     pub branches: Vec<IfBranch>,
     #[serde(rename = "else")]
@@ -87,29 +85,31 @@ pub struct If {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub struct While {
-    pub conds: Vec<Expr>,
+    pub cond: Condition,
     pub body: Statements,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub struct Return {
-    pub val: Option<Expr>,
+    pub val: Option<Variable>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub enum Expr {
+    // atomic(both on lex and parse)
     Char(char),
     String(String),
     Integer(usize),
     Float(f64),
     Variable(String),
+
+    // complex
     FuncionCall(FnCall),
     Unary(Operators, Box<Expr>),
     Binary(Operators, Box<Expr>, Box<Expr>),
+
+    // unsupport :)
     Initialization(Vec<Expr>),
 }
 
@@ -132,52 +132,51 @@ impl Expr {
 pub type Parameters = Vec<Parameter>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[repr(C)]
 pub struct Parameter {
     #[serde(rename = "type")]
-    pub type_: TypeDefine,
+    pub ty: TypeDefine,
     pub name: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-#[repr(C)]
+
 pub struct TypeDefine {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub decorators: Vec<TypeDecorators>,
     #[serde(rename = "type")]
-    pub type_: String,
+    pub ty: String,
 }
 
 impl TypeDefine {
     pub fn integer() -> Self {
         Self {
             decorators: vec![],
-            type_: "zheng3".into(),
+            ty: "zheng3".into(),
         }
     }
     pub fn float() -> Self {
         Self {
             decorators: vec![],
-            type_: "fu2".into(),
+            ty: "fu2".into(),
         }
     }
     pub fn char() -> Self {
         Self {
             decorators: vec![],
-            type_: "zi4".into(),
+            ty: "zi4".into(),
         }
     }
     pub fn string() -> Self {
         Self {
             decorators: vec![TypeDecorators::Array],
-            type_: "zi4".into(),
+            ty: "zi4".into(),
         }
     }
     pub fn bool() -> Self {
         Self {
             decorators: vec![],
-            type_: "bu4".into(),
+            ty: "bu4".into(),
         }
     }
 
@@ -186,7 +185,7 @@ impl TypeDefine {
     pub fn complex() -> Self {
         Self {
             decorators: vec![],
-            type_: "xu1".into(),
+            ty: "xu1".into(),
         }
     }
 }
@@ -204,7 +203,7 @@ impl std::fmt::Display for TypeDefine {
                 TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
             }?;
         }
-        write!(f, "{}", self.type_)
+        write!(f, "{}", self.ty)
     }
 }
 
@@ -288,6 +287,7 @@ mod serde_ {
     }
 }
 
+#[cfg(feature = "parser")]
 impl From<crate::parse::TypeDeclare<'_>> for TypeDefine {
     fn from(value: crate::parse::TypeDeclare) -> Self {
         let mut decorators = vec![];
@@ -305,7 +305,7 @@ impl From<crate::parse::TypeDeclare<'_>> for TypeDefine {
         }
         Self {
             decorators,
-            type_: value.real_type.take().ident,
+            ty: value.real_type.take().ident,
         }
     }
 }

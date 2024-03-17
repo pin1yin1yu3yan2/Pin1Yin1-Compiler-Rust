@@ -3,20 +3,20 @@ use std::fmt::Debug;
 use crate::*;
 
 /// normally result, with an optional [`Error`]
-pub type Result<'s, T, S = char> = std::result::Result<T, Option<Error<'s, S>>>;
+pub type Result<'s, T, S = char> = std::result::Result<T, ParseError<'s, S>>;
 
-/// normally parse result, storage [`T::Target`] in token
-pub type ParseResult<'s, P, S = char> = std::result::Result<PU<'s, P, S>, Option<Error<'s, S>>>;
+// /// normally parse result, storage [`T::Target`] in token
+// pub type ParseResult<'s, P, S = char> = std::result::Result<PU<'s, P, S>, Option<Error<'s, S>>>;
 
 /// error type with a [`Selection`] and a [`String`] as reason
 #[derive(Clone)]
-pub struct Error<'s, S = char> {
+pub struct Error<'s, S: Copy = char> {
     // TODO: multiple selections, multiple reasons for more friendlier error messages
     selection: Selection<'s, S>,
     reason: String,
 }
 
-impl<'s, S> Error<'s, S> {
+impl<'s, S: Copy> Error<'s, S> {
     pub fn new(selection: Selection<'s, S>, reason: String) -> Self {
         Self { selection, reason }
     }
@@ -63,5 +63,30 @@ impl Debug for Error<'_> {
             .collect::<String>();
         let point = (0..selection.len()).map(|_| '^').collect::<String>();
         writeln!(f, "{ahead}{point}")
+    }
+}
+
+pub trait WithSelection<'s, S: Copy = char> {
+    fn get_selection(&self) -> Selection<'s, S>;
+
+    /// make a new [`Error`] with the given value and parser's selection
+    fn make_error(&self, reason: impl Into<String>) -> Error<'s, S> {
+        Error::new(self.get_selection(), reason.into())
+    }
+
+    fn unmatch<P: ParseUnit<S>>(&self, reason: impl Into<String>) -> ParseResult<'s, P, S> {
+        ParseResult::Unmatch(self.make_error(reason))
+    }
+
+    fn unmatch_error(&self, reason: impl Into<String>) -> ParseError<'s, S> {
+        ParseError::Unmatch(self.make_error(reason))
+    }
+
+    fn throw<P: ParseUnit<S>>(&self, reason: impl Into<String>) -> ParseResult<'s, P, S> {
+        ParseResult::Failed(self.make_error(reason))
+    }
+
+    fn failed_error(&self, reason: impl Into<String>) -> ParseError<'s, S> {
+        ParseError::Unmatch(self.make_error(reason))
     }
 }

@@ -1,7 +1,3 @@
-use self::{
-    expr::{Arguments, Expr},
-    syntax::CodeBlock,
-};
 use super::*;
 use crate::{
     complex_pu,
@@ -19,9 +15,11 @@ impl ParseUnit for AtomicIf<'_> {
     type Target<'t> = AtomicIf<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let ruo4 = p.parse::<ControlFlow>()?.is(ControlFlow::If)?;
+        let ruo4 = p
+            .parse::<ControlFlow>()
+            .eq_or(ControlFlow::If, |t| t.unmatch("expect `ruo4`"))?;
         let conds = p.parse::<Arguments>()?;
-        let block = p.parse_or::<CodeBlock>("`ruo4` without a code block")?;
+        let block = p.parse::<CodeBlock>()?;
         p.finish(AtomicIf { ruo4, conds, block })
     }
 }
@@ -36,8 +34,10 @@ impl ParseUnit for AtomicElse<'_> {
     type Target<'t> = AtomicElse<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let ze2 = p.parse::<ControlFlow>()?.is(ControlFlow::Else)?;
-        let block = p.parse_or::<CodeBlock>("`ze2` without a code block")?;
+        let ze2 = p
+            .parse::<ControlFlow>()
+            .eq_or(ControlFlow::Else, |t| t.unmatch("expect `else`"))?;
+        let block = p.parse::<CodeBlock>()?;
         p.finish(AtomicElse { ze2, block })
     }
 }
@@ -52,7 +52,9 @@ impl ParseUnit for AtomicElseIf<'_> {
     type Target<'t> = AtomicElseIf<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let ze2 = p.parse::<ControlFlow>()?.is(ControlFlow::Else)?;
+        let ze2 = p
+            .parse::<ControlFlow>()
+            .eq_or(ControlFlow::If, |t| t.unmatch("expect `ruo4`"))?;
         let ruo4 = p.parse::<AtomicIf>()?;
         p.finish(AtomicElseIf { ze2, ruo4 })
     }
@@ -78,7 +80,8 @@ impl ParseUnit for If<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let ruo4 = p.parse::<AtomicIf>()?;
         let mut chains = vec![];
-        while let Ok(chain) = p.parse::<ChainIf>() {
+        while let Some(chain) = p.try_parse::<ChainIf>() {
+            let chain = chain?;
             let is_atomic_else = matches!(*chain, ChainIf::AtomicElse(..));
             chains.push(chain);
             if is_atomic_else {
@@ -100,9 +103,11 @@ impl ParseUnit for While<'_> {
     type Target<'t> = While<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let chong2 = p.parse::<ControlFlow>()?.is(ControlFlow::Repeat)?;
+        let chong2 = p
+            .parse::<ControlFlow>()
+            .eq_or(ControlFlow::Repeat, |t| t.unmatch("expect `chong2`"))?;
         let conds = p.parse::<Arguments>()?;
-        let block = p.parse_or::<CodeBlock>("`chong2` without a code block")?;
+        let block = p.parse::<CodeBlock>()?;
         p.finish(While {
             chong2,
             conds,
@@ -122,8 +127,13 @@ impl ParseUnit for Return<'_> {
     type Target<'t> = Return<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let fan3 = p.parse::<ControlFlow>()?.is(ControlFlow::Return)?;
-        let val = p.parse::<Expr>();
+        let fan3 = p
+            .parse::<ControlFlow>()
+            .eq_or(ControlFlow::Return, |t| t.unmatch("expect `fan3`"))?;
+        let val = match p.try_parse::<Expr>() {
+            Some(val) => Some(val?),
+            None => None,
+        };
 
         #[cfg(debug_assertions)]
         let or = format!(
@@ -132,18 +142,11 @@ impl ParseUnit for Return<'_> {
         );
         #[cfg(not(debug_assertions))]
         let or = "expect `fen1`";
-        let fen1 = p.match_one(Symbol::Semicolon, or)?;
+        let fen1 = p
+            .parse::<Symbol>()
+            .eq_or(Symbol::Semicolon, |t| t.unmatch(or))?;
 
-        if val.as_ref().is_err_and(|e| e.is_some()) {
-            val?;
-            unreachable!()
-        } else {
-            p.finish(Return {
-                fan3,
-                val: val.ok(),
-                fen1,
-            })
-        }
+        p.finish(Return { fan3, val, fen1 })
     }
 }
 
@@ -161,7 +164,7 @@ mod tests {
         
         jie2";
 
-        parse_test(src, |p| assert!(p.parse::<If>().is_ok()));
+        parse_test(src, |p| assert!(dbg!(p.parse::<If>()).is_success()));
     }
 
     #[test]
@@ -170,6 +173,6 @@ mod tests {
         chong2 can1 i xiao3 5 jie2 han2 
             i deng3 i jia1 1 fen1 
         jie2";
-        parse_test(src, |p| assert!(p.parse::<While>().is_ok()));
+        parse_test(src, |p| assert!(p.parse::<While>().is_success()));
     }
 }

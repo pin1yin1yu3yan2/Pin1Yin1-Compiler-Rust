@@ -56,7 +56,7 @@ impl ParseUnit for usize {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let chars = p.skip_whitespace().take_while(|c| c.is_ascii_digit());
         if chars.is_empty() {
-            return Err(None);
+            return p.unmatch("no chars found");
         }
         let num = chars
             .iter()
@@ -74,7 +74,9 @@ impl ParseUnit for char {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         p.start_taking();
         let next = p.next();
-        let char = *next.ok_or(None)?;
+        let Some(char) = next.copied() else {
+            return p.unmatch("no character rest");
+        };
         p.finish(char)
     }
 }

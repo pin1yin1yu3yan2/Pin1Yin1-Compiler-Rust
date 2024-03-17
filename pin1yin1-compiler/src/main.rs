@@ -1,3 +1,5 @@
+pub mod compile;
+
 use pin1yin1_ast::{
     ast::Statements, parse::do_parse, semantic::definition_pool::GlobalDefinitions,
 };
@@ -21,15 +23,4 @@ fn main() {
     let ast: Statements = serde_json::from_str(&str).unwrap();
     let str = serde_json::to_string(&ast).unwrap();
     std::fs::write("test.json", str).unwrap();
-
-    // compiler(pus).unwrap();
 }
-
-// use inkwell::context::Context;
-// fn compiler(stmts: Statements) -> std::result::Result<(), Box<dyn std::error::Error>> {
-//     let context = Context::create();
-//     let module = context.create_module("pin1yin1");
-//     let execution_engine = module.create_jit_execution_engine(inkwell::OptimizationLevel::None)?;
-
-//     todo!()
-// }

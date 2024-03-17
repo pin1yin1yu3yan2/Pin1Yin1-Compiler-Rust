@@ -8,13 +8,13 @@ use std::fmt::Debug;
 ///
 /// as for [`serde`],,, we skip [`Selection`] now
 #[derive(Debug, Clone, Copy)]
-pub struct Selection<'s, S = char> {
+pub struct Selection<'s, S: Copy = char> {
     pub(crate) src: &'s Source<S>,
     pub(crate) start: usize,
     pub(crate) end: usize,
 }
 
-impl<'s, S> Selection<'s, S> {
+impl<'s, S: Copy> Selection<'s, S> {
     pub fn new(src: &'s Source<S>, start: usize, end: usize) -> Self {
         Self { src, start, end }
     }
@@ -36,14 +36,6 @@ impl<'s, S> Selection<'s, S> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
-    pub fn to_error(self, reason: impl Into<String>) -> Error<'s, S> {
-        Error::new(self, reason.into())
-    }
-
-    pub fn throw<T>(self, reason: impl Into<String>) -> Result<'s, T, S> {
-        Err(Some(self.to_error(reason)))
-    }
 }
 
 impl std::ops::Deref for Selection<'_> {
@@ -54,10 +46,22 @@ impl std::ops::Deref for Selection<'_> {
     }
 }
 
+impl<'s, S: Copy> WithSelection<'s, S> for Selection<'s, S> {
+    fn get_selection(&self) -> Selection<'s, S> {
+        *self
+    }
+}
+
 /// a type which implemented [`ParseUnit<S>`] with source code it selected
 pub struct PU<'s, P: ParseUnit<S>, S: Copy = char> {
     pub(crate) selection: Selection<'s, S>,
     pub(crate) target: P::Target<'s>,
+}
+
+impl<'s, P: ParseUnit<S>, S: Copy> WithSelection<'s, S> for PU<'s, P, S> {
+    fn get_selection(&self) -> Selection<'s, S> {
+        self.selection
+    }
 }
 
 impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
@@ -73,72 +77,12 @@ impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
         self.target
     }
 
-    pub fn selection(&self) -> &Selection<'s, S> {
-        &self.selection
-    }
-
-    /// try to map the [Self::target]
-    pub fn try_map<P2: ParseUnit<S>, M>(self, mapper: M) -> ParseResult<'s, P2, S>
-    where
-        M: FnOnce(P::Target<'s>) -> Result<'s, P2::Target<'s>, S>,
-    {
-        mapper(self.target).map(|target| PU::new(self.selection, target))
-    }
-
     /// map [Self::target]
     pub fn map<P2: ParseUnit<S>, M>(self, mapper: M) -> PU<'s, P2, S>
     where
         M: FnOnce(P::Target<'s>) -> P2::Target<'s>,
     {
         PU::new(self.selection, mapper(self.target))
-    }
-
-    /// Check if [Self::target] meets a certain criteria, or call error to generate an [`Error`]
-    pub fn which_or<C, E>(self, criteria: C, error: E) -> ParseResult<'s, P, S>
-    where
-        C: FnOnce(&P::Target<'s>) -> bool,
-        E: FnOnce(Self) -> ParseResult<'s, P, S>,
-    {
-        if criteria(&*self) {
-            Ok(self)
-        } else {
-            error(self)
-        }
-    }
-
-    /// Check if [Self::target] meets a certain criteria, or generate an [`Err`] with [`None`] in it
-    pub fn which<C>(self, criteria: C) -> ParseResult<'s, P, S>
-    where
-        C: FnOnce(&P::Target<'s>) -> bool,
-    {
-        self.which_or(criteria, |_| Err(None))
-    }
-
-    /// Check if [Self::target] equals to the given value, or call error to generate an [`Error`]
-    pub fn is_or<E>(self, rhs: P::Target<'s>, e: E) -> ParseResult<'s, P, S>
-    where
-        P::Target<'s>: PartialEq,
-        E: FnOnce(Self) -> ParseResult<'s, P, S>,
-    {
-        self.which_or(|t| t == &rhs, e)
-    }
-
-    /// Check if [Self::target] equals to the given value, or generate an [`Err`] with [`None`] in it
-    pub fn is(self, rhs: P::Target<'s>) -> ParseResult<'s, P, S>
-    where
-        P::Target<'s>: PartialEq,
-    {
-        self.which(|t| t == &rhs)
-    }
-
-    /// generate an [`Error`] with [`Self::selection`]
-    pub fn new_error(&self, reason: impl Into<String>) -> Error<'s, S> {
-        Error::new(self.selection, reason.into())
-    }
-
-    /// generate an [`Result`] with an actual [`Error`] in it
-    pub fn throw<T>(&self, reason: impl Into<String>) -> Result<'s, T, S> {
-        Err(Some(self.new_error(reason)))
     }
 }
 

@@ -11,5 +11,5 @@ lazy_static = "1.4.0"
 serde = { version = "1", features = ["serde_derive"] }
 
 [features]
-default = []
+default = ["parser"]
 parser = ["pin1yin1-parser"]

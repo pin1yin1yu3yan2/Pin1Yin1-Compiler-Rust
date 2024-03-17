@@ -20,21 +20,6 @@ pub struct Ident<'s> {
     _p: PhantomData<&'s ()>,
 }
 
-impl From<String> for Ident<'_> {
-    fn from(value: String) -> Self {
-        Self {
-            ident: value,
-            _p: PhantomData,
-        }
-    }
-}
-
-impl From<Ident<'_>> for String {
-    fn from(value: Ident<'_>) -> Self {
-        value.ident
-    }
-}
-
 impl std::ops::Deref for Ident<'_> {
     type Target = str;
 
@@ -48,9 +33,9 @@ impl ParseUnit for Ident<'_> {
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let ident = p
-            .parse::<&[char]>()?
-            .which_or(|s| !s.is_empty(), |s| s.throw("empty ident!"))?
-            .which_or(|s| !s[0].is_ascii_digit(), |s| s.throw("bad ident"))?;
+            .parse::<&[char]>()
+            .which_or(|s| !s.is_empty(), |s| s.unmatch("empty ident!"))
+            .which_or(|s| !s[0].is_ascii_digit(), |s| s.unmatch("bad ident"))?;
 
         use crate::keywords::*;
 
@@ -61,7 +46,7 @@ impl ParseUnit for Ident<'_> {
             || syntax::KEPPING_KEYWORDS.contains(*ident)
             || types::KEPPING_KEYWORDS.contains(*ident)
         {
-            return Err(None);
+            return p.unmatch("keeping keywords could not be ident");
         }
 
         p.finish(Ident {
@@ -73,9 +58,8 @@ impl ParseUnit for Ident<'_> {
 
 pub fn do_parse<'s>(parser: &mut Parser<'s>) -> Result<'s, Vec<PU<'s, Statement<'s>>>> {
     let mut stmts = vec![];
-    while !parser.is_ending() {
-        let stmt = parser.parse::<Statement>()?;
-
+    while let Some(result) = parser.try_parse::<Statement>() {
+        let stmt = result.to_result()?;
         stmts.push(stmt);
     }
 
@@ -91,21 +75,21 @@ mod tests {
     #[test]
     fn good_ident() {
         parse_test("*)(&%^&*a(*&^%", |p| {
-            assert!((p.parse::<Ident>()).is_ok());
+            assert!((p.parse::<Ident>()).is_success());
         })
     }
 
     #[test]
     fn bad_ident() {
         parse_test("1*)(&%^&*a(*&^%", |p| {
-            assert!(p.parse::<Ident>().is_err());
+            assert!(p.parse::<Ident>().is_unmatch());
         })
     }
 
     #[test]
     fn e4chou4de1_ident() {
         fn is_e4chou4de1<P: ParseUnit>(r: ParseResult<'_, P>) -> bool {
-            r.is_err()
+            r.is_unmatch()
         }
 
         parse_test("114514", |p| {

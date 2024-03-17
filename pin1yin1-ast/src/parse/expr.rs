@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use super::*;
 use crate::{
     complex_pu,
@@ -23,10 +21,7 @@ fn escape<'s>(src: &PU<'s, String>, c: char) -> Result<'s, char> {
         'n' => '\n',
         's' => ' ',
         _ => {
-            return Err(Some(src.new_error(format!(
-                "Invalid or unsupported escape character: {}",
-                c
-            ))))
+            return Err(src.failed_error(format!("Invalid or unsupported escape character: {}", c)))
         }
     })
 }
@@ -35,8 +30,8 @@ impl ParseUnit for CharLiteral<'_> {
     type Target<'t> = CharLiteral<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let zi4 = p.parse::<Symbol>()?.is(Symbol::Char)?;
-        let unparsed = p.parse::<String>()?.which_or(
+        let zi4 = Symbol::Char.parse_or_unmatch(p)?;
+        let unparsed = p.parse::<String>().which_or(
             |s| s.len() == 1 || s.len() == 2 && s.starts_with('_'),
             |token| token.throw(format!("Invalid CharLiteral {}", *token)),
         )?;
@@ -65,7 +60,9 @@ impl ParseUnit for StringLiteral<'_> {
     type Target<'t> = StringLiteral<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let chuan4 = p.parse::<Symbol>()?.is(Symbol::String)?;
+        let chuan4 = p
+            .parse::<Symbol>()
+            .eq_or(Symbol::String, |t| t.unmatch("expect `chuan4`"))?;
         let unparsed = p.parse::<String>()?;
 
         let mut next_escape = false;
@@ -112,8 +109,10 @@ impl ParseUnit for NumberLiteral<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let number = *p.parse::<usize>()?;
 
-        if p.parse::<char>().is_ok_and(|c| *c == '.') {
-            let decimal = p.parse::<usize>().map(|t| *t).unwrap_or(0) as f64;
+        if p.try_once(|p| p.parse::<char>().eq_or('.', |t| t.unmatch("")))
+            .is_some()
+        {
+            let decimal = p.parse::<usize>().to_result().map(|t| *t).unwrap_or(0) as f64;
             let decimal = decimal / 10f64.powi(decimal.log10().ceil() as _);
             p.finish(NumberLiteral::Float {
                 number: number as f64 + decimal,
@@ -153,26 +152,19 @@ impl ParseUnit for Arguments<'_> {
     type Target<'t> = Arguments<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let Ok(arg) = p.parse::<Expr>() else {
+        let Some(arg) = p.try_parse::<Expr>() else {
             return p.finish(Arguments {
                 args: vec![],
                 semicolons: vec![],
             });
         };
 
-        let mut args = vec![arg];
+        let mut args = vec![arg?];
         let mut semicolons = vec![];
 
-        while let Ok(semicolon) = p
-            .r#try(|p| p.parse::<Symbol>()?.is(Symbol::Semicolon))
-            .finish()
-        {
-            semicolons.push(semicolon);
-            if let Ok(arg) = p.parse::<Expr>() {
-                args.push(arg)
-            } else {
-                break;
-            }
+        while let Some(semicolon) = p.try_once(|p| Symbol::Semicolon.parse_or_unmatch(p)) {
+            semicolons.push(semicolon?);
+            args.push(p.parse::<Expr>()?);
         }
 
         p.finish(Arguments { args, semicolons })
@@ -190,12 +182,14 @@ impl ParseUnit for Initialization<'_> {
     type Target<'t> = Initialization<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let han2 = p.parse::<Symbol>()?.is(Symbol::Block)?;
+        let han2 = Symbol::Block.parse_or_unmatch(p)?;
         let mut args = vec![];
-        while let Ok(expr) = p.parse::<AtomicExpr>() {
-            args.push(expr);
+        while let Some(expr) = p.try_parse::<AtomicExpr>() {
+            args.push(expr?);
         }
-        let jie2 = p.match_one::<Symbol>(Symbol::EndOfBracket, "invalid Initialization Expr")?;
+        let jie2 = Symbol::EndOfBracket
+            .parse_or_failed(p)
+            .map_err(|e| e.error("Invalid Initialization expr!"))?;
 
         p.finish(Initialization { han2, args, jie2 })
     }
@@ -214,9 +208,9 @@ impl ParseUnit for FunctionCall<'_> {
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let fn_name = p.parse::<Ident>()?;
-        let han2 = p.parse::<Symbol>()?.is(Symbol::Parameter)?;
+        let han2 = Symbol::Parameter.parse_or_unmatch(p)?;
         let args = p.parse::<Arguments>()?;
-        let jie2 = p.match_one(Symbol::EndOfBracket, "should be `jie2`")?;
+        let jie2 = Symbol::EndOfBracket.parse_or_unmatch(p)?;
 
         p.finish(FunctionCall {
             fn_name,
@@ -240,9 +234,10 @@ impl ParseUnit for UnaryExpr<'_> {
     type Target<'t> = UnaryExpr<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let operator = p
-            .parse::<operators::Operators>()?
-            .which(|op| op.associativity() == OperatorAssociativity::Unary)?;
+        let operator = p.parse::<operators::Operators>().which_or(
+            |op| op.associativity() == OperatorAssociativity::Unary,
+            |t| t.failed_error("unary expr must start with an unary operator!"),
+        )?;
         let expr = Box::new(p.parse::<AtomicExpr>()?);
         p.finish(UnaryExpr { operator, expr })
     }
@@ -259,9 +254,9 @@ impl ParseUnit for BracketExpr<'_> {
     type Target<'t> = BracketExpr<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let can1 = p.parse::<Symbol>()?.is(Symbol::Parameter)?;
+        let can1 = Symbol::Parameter.parse_or_unmatch(p)?;
         let expr = Box::new(p.parse::<Expr>()?);
-        let jie2 = p.match_one::<Symbol>(Symbol::EndOfBracket, "expect `jie2` {BracketExpr}")?;
+        let jie2 = Symbol::EndOfBracket.parse_or_failed(p)?;
 
         p.finish(BracketExpr { can1, expr, jie2 })
     }
@@ -297,13 +292,14 @@ impl ParseUnit for Expr<'_> {
         let mut exprs = vec![p.parse::<AtomicExpr>()?.map::<Expr, _>(Expr::Atomic)];
         let mut ops = vec![];
 
-        while let Ok(op) = p.try_once(|p| {
-            p.parse::<operators::Operators>()?
-                .which(|op| op.associativity() == OperatorAssociativity::Binary)
+        while let Some(op) = p.try_once(|p| {
+            p.parse::<operators::Operators>().which_or(
+                |op| op.associativity() == OperatorAssociativity::Binary,
+                |t| t.unmatch("exprs should be connect with binary operators"),
+            )
         }) {
-            let expr = p
-                .parse_or::<AtomicExpr>("expect AtomicExpr")?
-                .map(Expr::Atomic);
+            let op = op?;
+            let expr = p.parse::<AtomicExpr>()?.map(Expr::Atomic);
 
             if ops
                 .last()
@@ -313,7 +309,7 @@ impl ParseUnit for Expr<'_> {
                 let op = ops.pop().unwrap();
                 let lhs = Box::new(exprs.pop().unwrap());
 
-                let selection = lhs.selection().merge(*rhs.selection());
+                let selection = lhs.get_selection().merge(rhs.get_selection());
 
                 let binary = Expr::Binary(lhs, op, rhs);
                 exprs.push(PU::new(selection, binary));
@@ -328,7 +324,7 @@ impl ParseUnit for Expr<'_> {
             let op = ops.pop().unwrap();
             let lhs = Box::new(exprs.pop().unwrap());
 
-            let selection = lhs.selection().merge(*rhs.selection());
+            let selection = lhs.get_selection().merge(rhs.get_selection());
 
             let binary = Expr::Binary(lhs, op, rhs);
             exprs.push(PU::new(selection, binary));
@@ -338,6 +334,7 @@ impl ParseUnit for Expr<'_> {
         p.finish(exprs.pop().unwrap().take())
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,63 +343,63 @@ mod tests {
     #[test]
     fn char() {
         parse_test("wen2 _t", |p| {
-            assert!(p.parse::<CharLiteral>().is_ok());
+            assert!(p.parse::<CharLiteral>().is_success());
         });
     }
 
     #[test]
     fn string() {
         parse_test("chuan4 _t11514___na", |p| {
-            assert!(p.parse::<StringLiteral>().is_ok());
+            assert!(p.parse::<StringLiteral>().is_success());
         })
     }
 
     #[test]
     fn number1() {
         parse_test("114514", |p| {
-            assert!(p.parse::<NumberLiteral>().is_ok());
+            assert!(p.parse::<NumberLiteral>().is_success());
         })
     }
 
     #[test]
     fn number2() {
         parse_test("114514.", |p| {
-            assert!(p.parse::<NumberLiteral>().is_ok());
+            assert!(p.parse::<NumberLiteral>().is_success());
         })
     }
 
     #[test]
     fn number3() {
         parse_test("1919.810", |p| {
-            assert!(p.parse::<NumberLiteral>().is_ok());
+            assert!(p.parse::<NumberLiteral>().is_success());
         })
     }
 
     #[test]
     fn initialization() {
         parse_test("han2 1 1 4 5 1 4 jie2", |p| {
-            assert!(p.parse::<Initialization>().is_ok());
+            assert!(p.parse::<Initialization>().is_success());
         })
     }
 
     #[test]
     fn function_call() {
         parse_test("han2shu41 can1 1919810 fen1 chuan4 acminoac jie2", |p| {
-            assert!(p.parse::<FunctionCall>().is_ok());
+            assert!(dbg!(p.parse::<FunctionCall>()).is_success());
         })
     }
 
     #[test]
     fn unary() {
         parse_test("fei1 191810", |p| {
-            assert!(p.parse::<UnaryExpr>().is_ok());
+            assert!(p.parse::<UnaryExpr>().is_success());
         })
     }
 
     #[test]
     fn nested_unary() {
         parse_test("fei1 fei1 fei1 fei1 191810", |p| {
-            assert!(p.parse::<UnaryExpr>().is_ok());
+            assert!(p.parse::<UnaryExpr>().is_success());
         })
     }
 
@@ -410,7 +407,7 @@ mod tests {
     fn bracket() {
         // unary + bracket
         parse_test("fei1 can1 114514 jie2", |p| {
-            assert!(p.parse::<UnaryExpr>().is_ok());
+            assert!(dbg!(p.parse::<UnaryExpr>()).is_success());
         })
     }
 
@@ -418,7 +415,7 @@ mod tests {
     fn complex_expr() {
         // 119 + 810 * 114514 - 12
         parse_test("1919 jia1 810 cheng2 114514 jian3 12", |p| {
-            assert!(p.parse::<Expr>().is_ok());
+            assert!(p.parse::<Expr>().is_success());
         });
     }
 }

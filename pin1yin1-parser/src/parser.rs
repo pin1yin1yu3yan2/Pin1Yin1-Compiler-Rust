@@ -27,6 +27,18 @@ pub struct Parser<'s, S: Copy = char> {
     pub(crate) cache: ParserCache<'s>,
 }
 
+impl<'s, S: Copy> WithSelection<'s, S> for Parser<'s, S> {
+    fn get_selection(&self) -> Selection<'s, S> {
+        if self.start_idx.is_some() {
+            Selection::new(self.src, self.start_idx(), self.idx)
+        } else {
+            // while finishing parsing or throwing an error, the taking may not ever be started
+            // so, match the case to make error reporting easier&better
+            Selection::new(self.src, self.idx, self.idx + 1)
+        }
+    }
+}
+
 impl<S: Copy> Parser<'_, S> {
     /// get the next character
     #[allow(clippy::should_implement_trait)]
@@ -81,10 +93,12 @@ impl<'s, S: Copy> Parser<'s, S> {
         Try::new(self).or_try(p)
     }
 
-    /// the internal implementation of [`Try::or_try`]
+    /// try to parse, mean that [`ParseResult::Unmatch`] is allowed
     ///
-    /// a little bit tinier than [`Try::or_try`] because this will only try once
-    pub fn try_once<P, F>(&mut self, parser: F) -> ParseResult<'s, P, S>
+    /// in this case, [`ParseResult::Unmatch`] will be transformed into [`None`]
+    ///
+    /// so that you can use `?` as usual after using match / if let ~
+    pub fn once<P, F>(&mut self, parser: F) -> ParseResult<'s, P, S>
     where
         P: ParseUnit<S>,
         F: FnOnce(&mut Parser<'s, S>) -> ParseResult<'s, P, S>,
@@ -93,36 +107,56 @@ impl<'s, S: Copy> Parser<'s, S> {
         let mut tmp = *self;
         tmp.start_idx = None;
 
+        #[cfg(feature = "parser_calling_tree")]
+        let p_name = std::any::type_name::<P>();
+        #[cfg(feature = "parser_calling_tree")]
+        use std::sync::atomic::AtomicUsize;
+        #[cfg(feature = "parser_calling_tree")]
+        static DEPTH: AtomicUsize = AtomicUsize::new(0);
+        #[cfg(feature = "parser_calling_tree")]
+        if p_name.starts_with("pin1yin1_ast::parse") {
+            for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
+                print!(" ")
+            }
+            println!("start {p_name}");
+            DEPTH.fetch_add(1, std::sync::atomic::Ordering::Release);
+        }
+
         // do parsing
         let result = parser(&mut tmp);
+
+        #[cfg(feature = "parser_calling_tree")]
+        if p_name.starts_with("pin1yin1_ast::parse") {
+            DEPTH.fetch_sub(1, std::sync::atomic::Ordering::Release);
+            for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
+                print!(" ")
+            }
+            if result.is_success() {
+                println!("success: {p_name}",)
+            }
+            if result.is_error() {
+                println!("error  : {p_name}")
+            }
+            if result.is_unmatch() {
+                println!("unmatch: {p_name}")
+            }
+        }
         self.sync_with(&result, &tmp);
         result
     }
 
-    pub fn match_one<P: ParseUnit<S>>(
-        &mut self,
-        be: P::Target<'s>,
-        or: impl Into<String> + Clone,
-    ) -> ParseResult<'s, P, S>
+    /// try to parse,
+    pub fn try_once<P, F>(&mut self, parser: F) -> Option<ParseResult<'s, P, S>>
     where
-        P::Target<'s>: PartialEq,
+        P: ParseUnit<S>,
+        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<'s, P, S>,
     {
-        let reason = or.clone();
-        self.try_once(|p| {
-            p.parse::<P>()
-                .map_err(|e| e.or_else(|| Some(p.new_error(or))))?
-                .is_or(be, |t| t.throw(reason))
-        })
-    }
-
-    pub fn parse_or<P: ParseUnit<S>>(
-        &mut self,
-        or: impl Into<String> + Clone,
-    ) -> ParseResult<'s, P, S> {
-        self.try_once(|p| {
-            p.parse::<P>()
-                .map_err(|e| e.or_else(|| Some(p.new_error(or))))
-        })
+        let result = self.once(parser);
+        if result.is_unmatch() {
+            None
+        } else {
+            Some(result)
+        }
     }
 
     /// sync state with the parsing result from a temp sub parser
@@ -132,26 +166,29 @@ impl<'s, S: Copy> Parser<'s, S> {
     {
         match result {
             // if success,
-            Ok(..) => {
+            ParseResult::Success(..) => {
                 // foward tmp parser's work to main parser
                 self.idx = tmp.idx;
                 self.start_idx = self.start_idx.or(tmp.start_idx);
             }
-            Err(opte) => {
-                // fault
-                if opte.is_some() {
-                    // foward tmp parser's work to main parser
-                    self.idx = tmp.idx;
-                } else {
-                    // synchron try cache (for &[char]::parse)
-                    self.cache = tmp.cache;
-                }
+            _ => {
+                self.cache = tmp.cache;
             }
         }
     }
 
     /// make effort if success or return [`Error`], make no effort if failure
+    /// this kind of try...
     pub fn parse<P: ParseUnit<S>>(&mut self) -> ParseResult<'s, P, S> {
+        self.once(P::parse)
+    }
+
+    /// try to parse, mean that [`ParseResult::Unmatch`] is allowed
+    ///
+    /// in this case, [`ParseResult::Unmatch`] will be transformed into [`None`]
+    ///
+    /// so that you can use `?` as usual after using match / if let ~
+    pub fn try_parse<P: ParseUnit<S>>(&mut self) -> Option<ParseResult<'s, P, S>> {
         self.try_once(P::parse)
     }
 
@@ -165,20 +202,9 @@ impl<'s, S: Copy> Parser<'s, S> {
         self.start_idx = Some(self.start_idx.unwrap_or(self.idx));
     }
 
-    /// return a [`Selection`]: the selected code in this [`ParseUnit`]
-    pub(crate) fn selection(&self) -> Selection<'s, S> {
-        if self.start_idx.is_some() {
-            Selection::new(self.src, self.start_idx(), self.idx)
-        } else {
-            // while finishing parsing or throwing an error, the taking may not ever be started
-            // so, match the case to make error reporting easier&better
-            Selection::new(self.src, self.idx, self.idx + 1)
-        }
-    }
-
     /// make a new [`PU`] with the given value and parser's selection
-    pub fn new_token<I: Into<P::Target<'s>>, P: ParseUnit<S>>(&self, t: I) -> PU<'s, P, S> {
-        PU::new(self.selection(), t.into())
+    pub fn make_token<I: Into<P::Target<'s>>, P: ParseUnit<S>>(&self, t: I) -> PU<'s, P, S> {
+        PU::new(self.get_selection(), t.into())
     }
 
     /// finish the successful parsing, just using the this method to make return easier
@@ -186,19 +212,7 @@ impl<'s, S: Copy> Parser<'s, S> {
         &mut self,
         t: I,
     ) -> ParseResult<'s, P, S> {
-        Ok(self.new_token(t))
-    }
-
-    /// make a new [`Error`] with the given value and parser's selection
-    pub fn new_error(&mut self, reason: impl Into<String>) -> Error<'s, S> {
-        Error::new(self.selection(), reason.into())
-    }
-
-    /// finish the faild parsing, just using the this method to make return easier
-    ///
-    /// **you should return this method's return value to throw an error!!!**
-    pub fn throw<T>(&mut self, reason: impl Into<String>) -> Result<'s, T, S> {
-        Err(Some(self.new_error(reason)))
+        ParseResult::Success(self.make_token(t))
     }
 }
 
@@ -235,7 +249,7 @@ impl<'s> Parser<'s, char> {
 /// or successfully parse a [`ParseUnit`]
 pub struct Try<'p, 's, S: Copy, P: ParseUnit<S>> {
     parser: &'p mut Parser<'s, S>,
-    state: Option<std::result::Result<PU<'s, P, S>, Error<'s, S>>>,
+    state: Option<ParseResult<'s, P, S>>,
 }
 
 impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
@@ -255,24 +269,20 @@ impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
         P1: ParseUnit<S, Target<'s> = P::Target<'s>>,
         F: FnOnce(&mut Parser<'s, S>) -> ParseResult<'s, P1, S>,
     {
-        if self.state.is_some() {
-            return self;
+        if self.state.is_none()
+            || self
+                .state
+                .as_ref()
+                .is_some_and(|result| result.is_unmatch())
+        {
+            self.state = Some(parser(self.parser).map(|t| t));
         }
-
-        self.state = match self.parser.try_once(parser) {
-            Ok(tk) => Some(Ok(PU::new(tk.selection, tk.target))),
-            Err(Some(e)) => Some(Err(e)),
-            _ => self.state,
-        };
-
         self
     }
 
     /// set the default error
     pub fn or_error(mut self, reason: impl Into<String>) -> Self {
-        self.state = self
-            .state
-            .or_else(|| Some(Err(self.parser.new_error(reason))));
+        self.state = self.state.or_else(|| Some(self.parser.unmatch(reason)));
         self
     }
 
@@ -283,9 +293,6 @@ impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
     /// there should be at least one [`Self::or_try`] return [`Err`] with [`Some`] in,
     /// or the parser will throw a message with very bad readability
     pub fn finish(self) -> ParseResult<'s, P, S> {
-        match self.state {
-            Some(r) => r.map_err(Some),
-            None => Err(None),
-        }
+        self.state.unwrap()
     }
 }
