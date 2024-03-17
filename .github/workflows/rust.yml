@@ -16,6 +16,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+
+    - name: install llvm
+      run: sudo apt install llvm
+
+    - name: install nightly rust
+      run : rustup install nightly
+        rustup defalut nightly
+        
     - name: Build
       run: cargo build --verbose
     - name: Run tests
