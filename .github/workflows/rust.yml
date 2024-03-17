@@ -21,9 +21,9 @@ jobs:
       run: sudo apt install llvm
 
     - name: install nightly rust
-      run : rustup install nightly
+      run : rustup install nightly;
         rustup defalut nightly
-        
+
     - name: Build
       run: cargo build --verbose
     - name: Run tests
