@@ -22,12 +22,16 @@ macro_rules! keywords {
         impl $enum_name {
             pub fn parse_or_unmatch<'s>(self, p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
                 use pin1yin1_parser::WithSelection;
-                p.parse::<Self>().eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
+                p.parse::<Self>()
+                    .match_or(|e| e.unmatch(format!("expect `{self}`, but non {} matched", stringify!($enum_name))))
+                    .eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
             }
 
             pub fn parse_or_failed<'s>(self, p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
                 use pin1yin1_parser::WithSelection;
-                p.parse::<Self>().eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
+                p.parse::<Self>()
+                    .match_or(|e| e.unmatch(format!("expect `{self}`, but non {} matched", stringify!($enum_name))))
+                    .eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
             }
         }
 
@@ -120,7 +124,7 @@ macro_rules! complex_pu {
 
                     .or_try::<Self, _>(|p| {
                         p.parse::<$variant>()
-                            .map(<$enum_name>::$variant)
+                            .map_pu(<$enum_name>::$variant)
                     })
                 )*
                 .finish()

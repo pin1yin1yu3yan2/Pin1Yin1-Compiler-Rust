@@ -29,52 +29,52 @@ impl ParseUnit for Comment<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableAssign<'s> {
+pub struct VarAssign<'s> {
     pub deng3: PU<'s, Symbol>,
     pub value: PU<'s, Expr<'s>>,
 }
 
-impl ParseUnit for VariableAssign<'_> {
-    type Target<'t> = VariableAssign<'t>;
+impl ParseUnit for VarAssign<'_> {
+    type Target<'t> = VarAssign<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let deng3 = Symbol::Assign.parse_or_unmatch(p)?;
         let value = p.parse::<Expr>()?;
-        p.finish(VariableAssign { deng3, value })
+        p.finish(VarAssign { deng3, value })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableDefine<'s> {
-    pub ty: PU<'s, types::TypeDeclare<'s>>,
+pub struct VarDefine<'s> {
+    pub ty: PU<'s, types::TypeDefine<'s>>,
     pub name: PU<'s, Ident<'s>>,
-    pub init: Option<PU<'s, VariableAssign<'s>>>,
+    pub init: Option<Box<PU<'s, VarAssign<'s>>>>,
 }
 
-impl ParseUnit for VariableDefine<'_> {
-    type Target<'t> = VariableDefine<'t>;
+impl ParseUnit for VarDefine<'_> {
+    type Target<'t> = VarDefine<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let ty = p.parse::<types::TypeDeclare>()?;
+        let ty = p.parse::<types::TypeDefine>()?;
         let name = p.parse::<Ident>()?;
-        let init = p.parse::<VariableAssign>().success();
-        p.finish(VariableDefine { ty, name, init })
+        let init = p.parse::<VarAssign>().success().map(Box::new);
+        p.finish(VarDefine { ty, name, init })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableStore<'s> {
+pub struct VarStore<'s> {
     pub name: PU<'s, Ident<'s>>,
-    pub assign: PU<'s, VariableAssign<'s>>,
+    pub assign: PU<'s, VarAssign<'s>>,
 }
 
-impl ParseUnit for VariableStore<'_> {
-    type Target<'t> = VariableStore<'t>;
+impl ParseUnit for VarStore<'_> {
+    type Target<'t> = VarStore<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let name = p.parse::<Ident>()?;
-        let assign = p.parse::<VariableAssign>()?;
-        p.finish(VariableStore { name, assign })
+        let assign = p.parse::<VarAssign>()?;
+        p.finish(VarStore { name, assign })
     }
 }
 
@@ -105,17 +105,22 @@ impl ParseUnit for CodeBlock<'_> {
 
 #[derive(Debug, Clone)]
 pub struct Parameter<'s> {
-    pub ty: PU<'s, types::TypeDeclare<'s>>,
-    pub name: PU<'s, Ident<'s>>,
+    /// so to make semantic cheaking easier
+    pub inner: VarDefine<'s>,
 }
 
 impl ParseUnit for Parameter<'_> {
     type Target<'t> = Parameter<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let ty = p.parse::<types::TypeDeclare>()?;
+        let ty = p.parse::<types::TypeDefine>()?;
         let name = p.parse::<Ident>()?;
-        p.finish(Parameter { ty, name })
+        let inner = VarDefine {
+            ty,
+            name,
+            init: None,
+        };
+        p.finish(Parameter { inner })
     }
 }
 
@@ -165,24 +170,24 @@ impl ParseUnit for Parameters<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionDefine<'s> {
-    pub function: PU<'s, VariableDefine<'s>>,
+pub struct FnDefine<'s> {
+    pub function: PU<'s, VarDefine<'s>>,
     pub can1: PU<'s, Symbol>,
     pub params: PU<'s, Parameters<'s>>,
     pub jie2: PU<'s, Symbol>,
     pub codes: PU<'s, CodeBlock<'s>>,
 }
 
-impl ParseUnit for FunctionDefine<'_> {
-    type Target<'t> = FunctionDefine<'t>;
+impl ParseUnit for FnDefine<'_> {
+    type Target<'t> = FnDefine<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let function = p.parse::<VariableDefine>()?;
+        let function = p.parse::<VarDefine>()?;
         let can1 = Symbol::Parameter.parse_or_unmatch(p)?;
         let params = p.parse::<Parameters>()?;
         let jie2 = Symbol::EndOfBracket.parse_or_failed(p)?;
-        let codes = p.parse::<CodeBlock>()?;
-        p.finish(FunctionDefine {
+        let codes = p.parse::<CodeBlock>().must_match()?;
+        p.finish(FnDefine {
             function,
             can1,
             params,
@@ -201,7 +206,7 @@ mod tests {
     #[test]
     fn variable_define() {
         parse_test("kuan1 32 zheng3 a", |p| {
-            assert!(p.parse::<VariableDefine>().is_success())
+            assert!(p.parse::<VarDefine>().is_success())
         })
     }
 
@@ -211,7 +216,7 @@ mod tests {
             assert!(dbg!(p.parse::<Statement>()).is_success())
         });
         parse_test("kuan1 32 zheng3 a deng3 114514 fen1", |p| {
-            assert!(dbg!(p.parse::<VariableDefine>()).is_success())
+            assert!(dbg!(p.parse::<VarDefine>()).is_success())
         });
     }
 
@@ -221,7 +226,7 @@ mod tests {
             assert!(p.parse::<Statement>().is_success())
         });
         parse_test("a deng3 114514 fen1", |p| {
-            assert!(p.parse::<VariableStore>().is_success())
+            assert!(p.parse::<VarStore>().is_success())
         });
     }
 
@@ -238,7 +243,7 @@ mod tests {
             "zheng3 zhu3 can1 zheng3 argc fen1 zhi3 zhi3 zi4 argv jie2
                     han2
                     jie2",
-            |p| assert!((p.parse::<FunctionDefine>()).is_success()),
+            |p| assert!((p.parse::<FnDefine>()).is_success()),
         );
     }
 
@@ -254,7 +259,7 @@ mod tests {
 
                         jie2
                     jie2",
-            |p| assert!(p.parse::<FunctionDefine>().is_success()),
+            |p| assert!(p.parse::<FnDefine>().is_success()),
         )
     }
 

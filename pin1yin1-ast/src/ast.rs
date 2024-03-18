@@ -19,7 +19,7 @@ pub struct FnDefine {
     #[serde(rename = "type")]
     pub ty: TypeDefine,
     pub name: String,
-    pub args: Parameters,
+    pub params: Parameters,
     pub body: Statements,
 }
 
@@ -152,13 +152,13 @@ impl TypeDefine {
     pub fn integer() -> Self {
         Self {
             decorators: vec![],
-            ty: "zheng3".into(),
+            ty: "i64".into(),
         }
     }
     pub fn float() -> Self {
         Self {
             decorators: vec![],
-            ty: "fu2".into(),
+            ty: "f32".into(),
         }
     }
     pub fn char() -> Self {
@@ -180,8 +180,7 @@ impl TypeDefine {
         }
     }
 
-    /// this is not going to be implemented in pin1yin1
-    #[deprecated]
+    #[deprecated = "this is not going to be implemented in pin1yin1"]
     pub fn complex() -> Self {
         Self {
             decorators: vec![],
@@ -195,9 +194,7 @@ impl std::fmt::Display for TypeDefine {
         for dec in &self.decorators {
             match dec {
                 TypeDecorators::Const => write!(f, "const "),
-                TypeDecorators::Unsigned => write!(f, "unsigned "),
                 TypeDecorators::Array => write!(f, "[] "),
-                TypeDecorators::Width(w) => write!(f, "[{w}] "),
                 TypeDecorators::Reference => write!(f, "& "),
                 TypeDecorators::Pointer => write!(f, "* "),
                 TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
@@ -209,11 +206,10 @@ impl std::fmt::Display for TypeDefine {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeDecorators {
+    // #[deprecated = "unclear semantics"]
     Const,
-    Unsigned,
     // TODO: remove this varient
     Array,
-    Width(usize),
     Reference,
     Pointer,
     SizedArray(usize),
@@ -236,26 +232,13 @@ mod serde_ {
         {
             match v {
                 "Const" => Ok(TypeDecorators::Const),
-                "Unsigned" => Ok(TypeDecorators::Unsigned),
                 "Array" => Ok(TypeDecorators::Array),
                 "Reference" => Ok(TypeDecorators::Reference),
                 "Pointer" => Ok(TypeDecorators::Pointer),
-                a if a.starts_with("Array") => a
-                    .split_ascii_whitespace()
-                    .nth(1)
-                    .ok_or_else(|| E::custom("invalid decorators"))?
+                a => a
                     .parse::<usize>()
                     .map(TypeDecorators::SizedArray)
                     .map_err(E::custom),
-                w if w.starts_with("Width") => w
-                    .split_ascii_whitespace()
-                    .nth(1)
-                    .ok_or_else(|| E::custom("invalid decorators"))?
-                    .parse::<usize>()
-                    .map(TypeDecorators::SizedArray)
-                    .map_err(E::custom),
-
-                _ => Err(E::custom("invalid decorators")),
             }
         }
     }
@@ -267,8 +250,6 @@ mod serde_ {
         {
             match self {
                 TypeDecorators::Const => serializer.serialize_str("Const"),
-                TypeDecorators::Unsigned => serializer.serialize_str("Unsigned"),
-                TypeDecorators::Width(v) => serializer.serialize_str(&format!("Width {v}")),
                 TypeDecorators::Array => serializer.serialize_str("Array"),
                 TypeDecorators::Reference => serializer.serialize_str("Reference"),
                 TypeDecorators::Pointer => serializer.serialize_str("Pointer"),
@@ -288,24 +269,94 @@ mod serde_ {
 }
 
 #[cfg(feature = "parser")]
-impl From<crate::parse::TypeDeclare<'_>> for TypeDefine {
-    fn from(value: crate::parse::TypeDeclare) -> Self {
+impl<'s> TryFrom<crate::parse::TypeDefine<'s>> for TypeDefine {
+    type Error = pin1yin1_parser::ParseError<'s>;
+
+    fn try_from(value: crate::parse::TypeDefine<'s>) -> Result<Self, Self::Error> {
+        use pin1yin1_parser::{ErrorKind, WithSelection};
+        /*
+           int: sign, width
+           float: width
+        */
+
+        let ty = if &**value.ty == "zheng3" {
+            // default to be i64
+            let sign = value.sign.map(|pu| pu.sign).unwrap_or(true);
+            let sign_char = if sign { 'i' } else { 'u' };
+            let width = if let Some(width) = value.width {
+                if !width.width.is_power_of_two() || *width.width > 64 {
+                    return Err(width.make_error(
+                        format!("`zheng3` with width {} is not suppert now", *width.width),
+                        ErrorKind::Semantic,
+                    ));
+                }
+                *width.width
+            } else {
+                64
+            };
+            value.width.map(|pu| *pu.width).unwrap_or(64);
+
+            format!("{sign_char}{width}")
+        } else if &**value.ty == "fu2" {
+            // default to be f32
+            if let Some(sign) = value.sign {
+                return Err(sign.make_error(
+                    "`fu2` type cant be decorated with `you3fu2` or `wu2fu2`",
+                    ErrorKind::Semantic,
+                ));
+            }
+            let width = if let Some(width) = value.width {
+                if *width.width == 32 || *width.width == 64 {
+                    *width.width
+                } else {
+                    return Err(width.make_error(
+                        format!("`fu2` with width {} is not supperted now", *width.width),
+                        ErrorKind::Semantic,
+                    ));
+                }
+            } else {
+                32
+            };
+            format!("f{width}")
+        } else {
+            if let Some(sign) = value.sign {
+                return Err(sign.make_error(
+                    format!(
+                        "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
+                        value.ty.ident
+                    ),
+                    ErrorKind::Semantic,
+                ));
+            }
+            if let Some(width) = value.width {
+                return Err(width.make_error(
+                    format!(
+                        "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
+                        value.ty.ident
+                    ),
+                    ErrorKind::Semantic,
+                ));
+            }
+            value.ty.take().ident
+        };
+
         let mut decorators = vec![];
-        decorators.extend(value.const_.map(|_| TypeDecorators::Const));
-        decorators.extend(value.decorators.into_iter().map(|d| match d.take() {
-            crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
-                Some(size) => TypeDecorators::SizedArray(size.take()),
-                None => TypeDecorators::Array,
-            },
-            crate::parse::TypeDecorators::TypeReferenceExtend(_) => TypeDecorators::Reference,
-            crate::parse::TypeDecorators::TypePointerExtend(_) => TypeDecorators::Pointer,
-        }));
-        if value.sign.is_some_and(|sign| !sign.sign) {
-            decorators.push(TypeDecorators::Unsigned);
+        if value.const_.is_some() {
+            decorators.push(TypeDecorators::Const);
         }
-        Self {
-            decorators,
-            ty: value.real_type.take().ident,
+
+        for decorator in value.decorators {
+            let decorator = match decorator.take() {
+                crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
+                    Some(size) => TypeDecorators::SizedArray(size.take()),
+                    None => TypeDecorators::Array,
+                },
+                crate::parse::TypeDecorators::TypeReferenceExtend(_) => TypeDecorators::Reference,
+                crate::parse::TypeDecorators::TypePointerExtend(_) => TypeDecorators::Pointer,
+            };
+            decorators.push(decorator);
         }
+
+        Ok(Self { decorators, ty })
     }
 }

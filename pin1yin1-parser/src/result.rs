@@ -1,13 +1,14 @@
 use crate::*;
 
-pub enum ParseResult<'s, P: ParseUnit<S>, S: Copy = char> {
-    Success(PU<'s, P, S>),
-    Unmatch(Error<'s, S>),
-    Failed(Error<'s, S>),
+pub type ParseResult<'s, P, S = char> = Result<'s, PU<'s, P, S>, S>;
+
+pub enum Result<'s, T, S: Copy = char> {
+    Success(T),
+    Failed(ParseError<'s, S>),
 }
 
-impl<'s, P: ParseUnit<S>, S: Copy> ParseResult<'s, P, S> {
-    pub fn from_option<Se>(opt: Option<PU<'s, P, S>>, or: impl FnOnce() -> Se) -> Self
+impl<'s, T, S: Copy> Result<'s, T, S> {
+    pub fn from_option<Se>(opt: Option<T>, or: impl FnOnce() -> Se) -> Self
     where
         Se: Into<Self>,
     {
@@ -17,46 +18,43 @@ impl<'s, P: ParseUnit<S>, S: Copy> ParseResult<'s, P, S> {
         }
     }
 
-    pub fn to_result(self) -> Result<'s, PU<'s, P, S>, S> {
+    pub fn to_result(self) -> std::result::Result<T, ParseError<'s, S>> {
         match self {
-            ParseResult::Success(ok) => Ok(ok),
-            ParseResult::Unmatch(e) => Err(ParseError::Unmatch(e)),
-            ParseResult::Failed(e) => Err(ParseError::Error(e)),
+            Result::Success(ok) => Ok(ok),
+            Result::Failed(e) => Err(e),
         }
     }
 
-    pub fn from_result(result: Result<'s, PU<'s, P, S>, S>) -> Self {
+    pub fn from_result(result: std::result::Result<T, ParseError<'s, S>>) -> Self {
         match result {
             Ok(ok) => Self::Success(ok),
             Err(e) => e.into(),
         }
     }
 
-    /// Returns `true` if the  parse result is [`Success`].
-    ///
-    /// [`Success`]: _ParseResult::Success
+    pub fn is_failed_and(&self, cond: impl FnOnce(&ParseError<'s, S>) -> bool) -> bool {
+        match self {
+            Result::Success(_) => false,
+            Result::Failed(e) => cond(e),
+        }
+    }
+
     #[must_use]
     pub fn is_success(&self) -> bool {
         matches!(self, Self::Success(..))
     }
 
-    /// Returns `true` if the  parse result is [`Unmatch`].
-    ///
-    /// [`Unmatch`]: _ParseResult::Unmatch
     #[must_use]
     pub fn is_unmatch(&self) -> bool {
-        matches!(self, Self::Unmatch(..))
+        self.is_failed_and(|e| e.kind() == &ErrorKind::Unmatch)
     }
 
-    /// Returns `true` if the  parse result is [`Error`].
-    ///
-    /// [`Error`]: _ParseResult::Error
     #[must_use]
     pub fn is_error(&self) -> bool {
-        matches!(self, Self::Failed(..))
+        self.is_failed_and(|e| e.kind() == &ErrorKind::OtherError)
     }
 
-    pub fn try_into_success(self) -> std::result::Result<PU<'s, P, S>, Self> {
+    pub fn try_into_success(self) -> std::result::Result<T, Self> {
         if let Self::Success(v) = self {
             Ok(v)
         } else {
@@ -64,41 +62,28 @@ impl<'s, P: ParseUnit<S>, S: Copy> ParseResult<'s, P, S> {
         }
     }
 
-    pub fn success(self) -> Option<PU<'s, P, S>> {
+    pub fn success(self) -> Option<T> {
         self.try_into_success().ok()
     }
 
-    pub fn try_into_unmatch(self) -> std::result::Result<Error<'s, S>, Self> {
-        if let Self::Unmatch(v) = self {
-            Ok(v)
-        } else {
-            Err(self)
+    pub fn map<T1, M>(self, mapper: M) -> Result<'s, T1, S>
+    where
+        M: FnOnce(T) -> T1,
+    {
+        match self {
+            Result::Success(success) => Result::Success(mapper(success)),
+            Result::Failed(e) => Result::Failed(e),
         }
     }
-
-    pub fn try_into_error(self) -> std::result::Result<Error<'s, S>, Self> {
-        if let Self::Failed(v) = self {
-            Ok(v)
-        } else {
-            Err(self)
-        }
-    }
-
-    pub fn match_or(self, or: impl Into<String>) -> Self {
-        match self.try_into_unmatch() {
-            Ok(e) => Self::Failed(e.emit(or)),
-            Err(s) => s,
-        }
-    }
-
-    pub fn map<P1: ParseUnit<S>, M>(self, mapper: M) -> ParseResult<'s, P1, S>
+}
+impl<'s, P: ParseUnit<S>, S: Copy> Result<'s, PU<'s, P, S>, S> {
+    pub fn map_pu<P1: ParseUnit<S>, M>(self, mapper: M) -> ParseResult<'s, P1, S>
     where
         M: FnOnce(P::Target<'s>) -> P1::Target<'s>,
     {
         match self {
-            ParseResult::Success(success) => ParseResult::Success(success.map(mapper)),
-            ParseResult::Unmatch(e) => ParseResult::Unmatch(e),
-            ParseResult::Failed(e) => ParseResult::Failed(e),
+            Result::Success(success) => Result::Success(success.map(mapper)),
+            Result::Failed(e) => Result::Failed(e),
         }
     }
 
@@ -147,62 +132,96 @@ impl<'s, P: ParseUnit<S>, S: Copy> ParseResult<'s, P, S> {
             }
         })
     }
+
+    pub fn must_match(self) -> Self {
+        self.map_err(|e| e.to_error())
+    }
+
+    pub fn match_or<Se: Into<Self>>(self, or: impl FnOnce(Selection<'s, S>) -> Se) -> Self {
+        match ParseError::try_from(self) {
+            Ok(error) => {
+                if error.kind() == &ErrorKind::Unmatch {
+                    or(error.inner.get_selection()).into()
+                } else {
+                    Self::Failed(error)
+                }
+            }
+            Err(ok) => Self::Success(ok),
+        }
+    }
 }
 
-pub enum ParseError<'s, S: Copy = char> {
-    Unmatch(Error<'s, S>),
-    Error(Error<'s, S>),
+pub struct ParseError<'s, S: Copy = char> {
+    pub(crate) inner: Error<'s, S>,
+    pub(crate) kind: ErrorKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    Unmatch,
+    Semantic,
+    OtherError,
 }
 
 impl<'s, S: Copy> ParseError<'s, S> {
+    pub fn new(inner: Error<'s, S>, kind: ErrorKind) -> Self {
+        Self { inner, kind }
+    }
+
+    pub fn to_error(mut self) -> Self {
+        self.kind = ErrorKind::OtherError;
+        self
+    }
+
+    pub fn to_unmatch(mut self) -> Self {
+        self.kind = ErrorKind::Unmatch;
+        self
+    }
+
     pub fn error(self, reason: impl Into<String>) -> Self {
-        match self {
-            ParseError::Unmatch(e) | ParseError::Error(e) => Self::Error(e.emit(reason)),
+        Self {
+            inner: self.inner.emit(reason),
+            kind: ErrorKind::OtherError,
         }
     }
 
     pub fn unmatch(self, reason: impl Into<String>) -> Self {
-        match self {
-            ParseError::Unmatch(e) | ParseError::Error(e) => Self::Unmatch(e.emit(reason)),
+        Self {
+            inner: self.inner.emit(reason),
+            kind: ErrorKind::Unmatch,
         }
+    }
+
+    pub fn kind(&self) -> &ErrorKind {
+        &self.kind
     }
 }
 
-impl<'s, P: ParseUnit<S>, S: Copy> From<ParseError<'s, S>> for ParseResult<'s, P, S> {
+impl<'s, T, S: Copy> From<ParseError<'s, S>> for Result<'s, T, S> {
     fn from(value: ParseError<'s, S>) -> Self {
-        match value {
-            ParseError::Unmatch(e) => Self::Unmatch(e),
-            ParseError::Error(e) => Self::Failed(e),
-        }
+        Result::Failed(value)
     }
 }
 
-impl<'s, P: ParseUnit<S>, S: Copy> TryFrom<ParseResult<'s, P, S>> for ParseError<'s, S> {
-    type Error = PU<'s, P, S>;
+impl<'s, T, S: Copy> TryFrom<Result<'s, T, S>> for ParseError<'s, S> {
+    type Error = T;
 
     fn try_from(
-        value: ParseResult<'s, P, S>,
+        value: Result<'s, T, S>,
     ) -> std::prelude::v1::Result<
         Self,
-        <result::ParseError<'s, S> as TryFrom<ParseResult<'s, P, S>>>::Error,
+        <result::ParseError<'s, S> as TryFrom<Result<'s, T, S>>>::Error,
     > {
         match value {
-            ParseResult::Success(pu) => Err(pu),
-            ParseResult::Unmatch(e) => Ok(Self::Unmatch(e)),
-            ParseResult::Failed(e) => Ok(Self::Error(e)),
+            Result::Success(success) => Err(success),
+            Result::Failed(e) => Ok(e),
         }
     }
 }
 
-impl<'s, P: ParseUnit<S>, S: Copy> std::ops::FromResidual for ParseResult<'s, P, S> {
-    fn from_residual(residual: <Self as std::ops::Try>::Residual) -> Self {
-        residual.into()
-    }
-}
-
-impl<'s, P: ParseUnit<S>, S: Copy>
+impl<'s, T, S: Copy>
     std::ops::FromResidual<std::result::Result<std::convert::Infallible, ParseError<'s, S>>>
-    for ParseResult<'s, P, S>
+    for Result<'s, T, S>
 {
     fn from_residual(
         residual: std::result::Result<std::convert::Infallible, ParseError<'s, S>>,
@@ -211,8 +230,14 @@ impl<'s, P: ParseUnit<S>, S: Copy>
     }
 }
 
-impl<'s, P: ParseUnit<S>, S: Copy> std::ops::Try for ParseResult<'s, P, S> {
-    type Output = PU<'s, P, S>;
+impl<'s, T, S: Copy> std::ops::FromResidual for Result<'s, T, S> {
+    fn from_residual(residual: <Self as std::ops::Try>::Residual) -> Self {
+        residual.into()
+    }
+}
+
+impl<'s, T, S: Copy> std::ops::Try for Result<'s, T, S> {
+    type Output = T;
 
     type Residual = ParseError<'s, S>;
 
@@ -222,17 +247,16 @@ impl<'s, P: ParseUnit<S>, S: Copy> std::ops::Try for ParseResult<'s, P, S> {
 
     fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
         match self {
-            ParseResult::Success(ok) => std::ops::ControlFlow::Continue(ok),
-            _ => std::ops::ControlFlow::Break(self.try_into().unwrap()),
+            Result::Success(ok) => std::ops::ControlFlow::Continue(ok),
+            _ => std::ops::ControlFlow::Break(self.try_into().unwrap_or_else(|_| unreachable!())),
         }
     }
 }
 
-impl<'s, P: ParseUnit> std::fmt::Debug for ParseResult<'s, P, char> {
+impl<'s, T: std::fmt::Debug> std::fmt::Debug for Result<'s, T, char> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Success(arg0) => f.debug_tuple("Success").field(arg0).finish(),
-            Self::Unmatch(arg0) => f.debug_tuple("Unmatch").field(arg0).finish(),
             Self::Failed(arg0) => f.debug_tuple("Failed").field(arg0).finish(),
         }
     }
@@ -240,9 +264,9 @@ impl<'s, P: ParseUnit> std::fmt::Debug for ParseResult<'s, P, char> {
 
 impl<'s> std::fmt::Debug for ParseError<'s, char> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unmatch(arg0) => f.debug_tuple("Unmatch").field(arg0).finish(),
-            Self::Error(arg0) => f.debug_tuple("Error").field(arg0).finish(),
-        }
+        f.debug_struct("ParseError")
+            .field("inner", &self.inner)
+            .field("kind", &self.kind)
+            .finish()
     }
 }

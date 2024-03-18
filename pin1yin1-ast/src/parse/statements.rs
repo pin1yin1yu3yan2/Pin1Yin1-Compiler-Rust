@@ -43,9 +43,9 @@ macro_rules! statement_wrapper {
 }
 
 statement_wrapper! {
-    VariableDefine => VariableDefineStatement,
-    FunctionCall => FunctionCallStatement,
-    VariableStore => VariableStoreStatement,
+    VarDefine => VarDefineStmt,
+    FunctionCall => FnCallStmt,
+    VarStore => VarStoreStmt,
 }
 
 /// be different from [`crate::complex_pu`], this version using box to make [`Statement`] enum smaller
@@ -84,7 +84,7 @@ macro_rules! statements {
                 $(
                      .or_try::<Self, _>(|p| {
                         p.parse::<$variant>()
-                            .map(|s| <$enum_name>::$variant(Box::new(s)))
+                            .map_pu(|s| <$enum_name>::$variant(Box::new(s)))
                     })
                 )*
                 .finish()
@@ -96,13 +96,13 @@ macro_rules! statements {
 statements! {
     cpu Statement {
         // $name (...)
-        FunctionCallStatement,
+        FnCallStmt,
         // $name = $expr
-        VariableStoreStatement,
+        VarStoreStmt,
         // $ty $name (...)
-        FunctionDefine,
+        FnDefine,
         // $ty $name
-        VariableDefineStatement,
+        VarDefineStmt,
         If,
         While,
         Return,

@@ -12,10 +12,10 @@ fn main() {
     let source = Source::new(path, src.chars());
     let mut parser = Parser::<'_, char>::new(&source);
 
-    let pus = do_parse(&mut parser).unwrap();
+    let pus = do_parse(&mut parser).to_result().unwrap();
 
     let mut global = GlobalDefinitions::new();
-    global.load(&pus).unwrap();
+    global.load(&pus).to_result().unwrap();
 
     let ast = global.finish();
 

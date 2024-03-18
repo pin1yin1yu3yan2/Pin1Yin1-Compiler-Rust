@@ -16,14 +16,14 @@ pub struct FnDefinition<'ast, 's> {
     /// unsupport now
     pub overdrives: Vec<FnSign>,
     #[cfg(feature = "parser")]
-    pub raw_defines: Vec<&'ast parse::FunctionDefine<'s>>,
+    pub raw_defines: Vec<&'ast parse::FnDefine<'s>>,
     _p: PhantomData<&'ast &'s ()>,
 }
 
 impl<'ast, 's> FnDefinition<'ast, 's> {
     pub fn new(
         overdrives: Vec<FnSign>,
-        #[cfg(feature = "parser")] raw_defines: Vec<&'ast parse::FunctionDefine<'s>>,
+        #[cfg(feature = "parser")] raw_defines: Vec<&'ast parse::FnDefine<'s>>,
     ) -> Self {
         Self {
             overdrives,
@@ -55,14 +55,14 @@ pub struct VarDefinitions<'ast, 's> {
 pub struct VarDefinition<'ast, 's> {
     pub ty: ast::TypeDefine,
     #[cfg(feature = "parser")]
-    pub raw_define: &'ast parse::VariableDefine<'s>,
+    pub raw_define: &'ast parse::VarDefine<'s>,
     _p: PhantomData<&'ast &'s ()>,
 }
 
 impl<'ast, 's> VarDefinition<'ast, 's> {
     pub fn new(
         ty: ast::TypeDefine,
-        #[cfg(feature = "parser")] raw_define: &'ast parse::VariableDefine<'s>,
+        #[cfg(feature = "parser")] raw_define: &'ast parse::VarDefine<'s>,
     ) -> Self {
         Self {
             ty,

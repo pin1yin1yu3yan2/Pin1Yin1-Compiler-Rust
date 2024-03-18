@@ -19,7 +19,7 @@ impl ParseUnit for AtomicIf<'_> {
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::If, |t| t.unmatch("expect `ruo4`"))?;
         let conds = p.parse::<Arguments>()?;
-        let block = p.parse::<CodeBlock>()?;
+        let block = p.parse::<CodeBlock>().must_match()?;
         p.finish(AtomicIf { ruo4, conds, block })
     }
 }
@@ -37,7 +37,7 @@ impl ParseUnit for AtomicElse<'_> {
         let ze2 = p
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::Else, |t| t.unmatch("expect `else`"))?;
-        let block = p.parse::<CodeBlock>()?;
+        let block = p.parse::<CodeBlock>().must_match()?;
         p.finish(AtomicElse { ze2, block })
     }
 }
@@ -107,7 +107,7 @@ impl ParseUnit for While<'_> {
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::Repeat, |t| t.unmatch("expect `chong2`"))?;
         let conds = p.parse::<Arguments>()?;
-        let block = p.parse::<CodeBlock>()?;
+        let block = p.parse::<CodeBlock>().must_match()?;
         p.finish(While {
             chong2,
             conds,

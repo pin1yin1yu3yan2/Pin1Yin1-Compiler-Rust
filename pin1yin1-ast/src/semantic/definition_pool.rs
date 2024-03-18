@@ -11,7 +11,6 @@ impl<'ast, 's> GlobalDefinitions<'ast, 's> {
     pub fn new() -> Self {
         let mut s = Self {
             pools: vec![],
-
             this: 0,
         };
         s.new_local();
@@ -29,6 +28,7 @@ impl<'ast, 's> GlobalDefinitions<'ast, 's> {
             subs: vec![],
             vars: Default::default(),
             fns: Default::default(),
+            params: Default::default(),
         });
         &mut self.pools[new_id]
     }
@@ -60,7 +60,7 @@ impl<'ast, 's> GlobalDefinitions<'ast, 's> {
 ///
 /// * take [`Statement`]'s ownership to avoid copying string
 ///
-/// * let [`Parser`] output a better [`TypeDeclare`], like [`ast::TypeDefine`]
+/// * let [`Parser`] output a better [`TypeDefine`], like [`ast::TypeDefine`]
 ///
 /// * ...
 ///
@@ -106,49 +106,86 @@ mod parse {
         ) -> Result<'s, ()> {
             for stmt in stmts {
                 match &**stmt {
-                    Statement::FunctionCallStatement(fn_call) => {
-                        self.fn_call(&fn_call.inner).map(|_| ())
+                    Statement::VarStoreStmt(re_assign) => self.var_store(&re_assign.inner)?,
+                    Statement::VarDefineStmt(var_def) => self.var_define(&var_def.inner)?,
+                    Statement::CodeBlock(code_block) => self.code_block(&code_block.stmts)?,
+                    Statement::FnDefine(fn_def) => self.fn_define(fn_def)?,
+                    Statement::If(if_) => self.if_(if_)?,
+                    Statement::While(while_) => self.while_(while_)?,
+                    Statement::Return(return_) => self.return_(return_)?,
+                    Statement::Comment(..) => {}
+                    Statement::FnCallStmt(fn_call) => {
+                        self.fn_call(&fn_call.inner);
                     }
-                    Statement::VariableStoreStatement(re_assign) => {
-                        self.var_store(&re_assign.inner)
-                    }
-
-                    Statement::VariableDefineStatement(var_def) => self.var_define(&var_def.inner),
-                    Statement::CodeBlock(code_block) => self.code_block(&code_block.stmts),
-                    Statement::FunctionDefine(fn_def) => self.fn_define(fn_def),
-                    Statement::If(if_) => self.if_(if_),
-                    Statement::While(while_) => self.while_(while_),
-                    Statement::Return(return_) => self.return_(return_),
-                    Statement::Comment(..) => Ok(()),
-                }?;
+                };
             }
-            Ok(())
+            Result::Success(())
         }
 
-        fn fn_define(&mut self, fn_define: &'ast FunctionDefine<'s>) -> Result<'s, ()> {
+        fn fn_define(&mut self, fn_define: &'ast FnDefine<'s>) -> Result<'s, ()> {
             let fn_name = fn_define.function.name.ident.clone();
 
             if let Some(exist) = self.search_fn(&fn_name) {
-                return Err(exist.raw_defines[0]
+                return exist.raw_defines[0]
                     .function
-                    .failed_error("overdrive is not supported now..."));
+                    .throw("overdrive is not supported now...");
             }
 
-            let ret_t = (*fn_define.function.ty).clone().into();
+            // register function
+            let ret_t = ast::TypeDefine::try_from((*fn_define.function.ty).clone())?;
+
             let params = fn_define
                 .params
                 .params
                 .iter()
-                .map(|pu| (*pu.ty).clone().into())
-                .collect::<Vec<_>>();
-            let fn_sign = definition::FnSign::new(ret_t, params);
+                .try_fold(Vec::new(), |mut vec, pu| {
+                    vec.push(ast::TypeDefine::try_from((*pu.inner.ty).clone())?);
+                    Result::Success(vec)
+                })?;
+
+            let fn_sign = definition::FnSign::new(ret_t.clone(), params);
 
             self.this_pool().fns.map.insert(
-                fn_name,
+                fn_name.clone(),
                 definition::FnDefinition::new(vec![fn_sign], vec![fn_define]),
             );
 
-            Ok(())
+            // generate ast
+            let ty = ret_t;
+            let name = fn_name;
+
+            let params = fn_define
+                .params
+                .params
+                .iter()
+                .try_fold(Vec::new(), |mut vec, pu| {
+                    let ty = ast::TypeDefine::try_from((*pu.inner.ty).clone())?;
+                    let name = pu.inner.name.ident.clone();
+                    vec.push(ast::Parameter { ty, name });
+                    Result::Success(vec)
+                })?;
+
+            // regist parameters
+            for (idx, param) in params.iter().enumerate() {
+                self.regist_var(
+                    param.name.clone(),
+                    definition::VarDefinition::new(
+                        param.ty.clone(),
+                        &fn_define.params.params[idx].inner,
+                    ),
+                )
+            }
+
+            let body = self.spoce(|s| s.load(&fn_define.codes.stmts))?.0;
+            self.this_pool()
+                .push_stmt(ast::Statement::FnDefine(ast::FnDefine {
+                    ty,
+                    name,
+                    params,
+                    body,
+                }));
+
+            Result::Success(())
         }
 
         fn return_(&mut self, return_: &Return<'s>) -> Result<'s, ()> {
@@ -158,7 +195,7 @@ mod parse {
             };
             self.this_pool()
                 .push_stmt(ast::Statement::Return(ast::Return { val }));
-            Ok(())
+            Result::Success(())
         }
 
         fn while_(&mut self, while_: &'ast While<'s>) -> Result<'s, ()> {
@@ -166,7 +203,7 @@ mod parse {
             let body = self.spoce(|s| s.load(&while_.block.stmts))?.0;
             self.this_pool()
                 .push_stmt(ast::Statement::While(ast::While { cond, body }));
-            Ok(())
+            Result::Success(())
         }
 
         fn if_(&mut self, if_: &'ast If<'s>) -> Result<'s, ()> {
@@ -183,7 +220,7 @@ mod parse {
                             branches,
                             else_: Some(else_),
                         }));
-                        return Ok(());
+                        return Result::Success(());
                     }
                 }
             }
@@ -192,7 +229,7 @@ mod parse {
                 branches,
                 else_: None,
             }));
-            Ok(())
+            Result::Success(())
         }
 
         fn atomic_if(
@@ -201,7 +238,7 @@ mod parse {
         ) -> Result<'s, ast::IfBranch> {
             let cond = self.condition(&atomic_if.conds)?;
             let body = self.spoce(|s| s.load(&atomic_if.block.stmts))?.0;
-            Ok(ast::IfBranch { cond, body })
+            Result::Success(ast::IfBranch { cond, body })
         }
 
         // TODO: condition`s`
@@ -218,16 +255,16 @@ mod parse {
             self.this = this;
 
             if last_cond.ty != ast::TypeDefine::bool() {
-                return Err(cond
+                return cond
                     .args
                     .last()
                     .unwrap()
-                    .failed_error("condition must be a boolen!"));
+                    .throw("condition must be a boolen!");
             }
 
             let stmts = self.pools[new].stmts.drain(..).collect::<Vec<_>>();
 
-            Ok(ast::Condition {
+            Result::Success(ast::Condition {
                 value: last_cond.value,
                 compute: stmts,
             })
@@ -240,7 +277,7 @@ mod parse {
             let stmts = self.spoce(|s| s.load(code_block))?;
             let stmt = ast::Statement::Block(stmts.0);
             self.this_pool().push_stmt(stmt);
-            Ok(())
+            Result::Success(())
         }
 
         fn spoce<T, F>(&mut self, f: F) -> Result<'s, (ast::Statements, T)>
@@ -254,52 +291,58 @@ mod parse {
             let stmts = std::mem::take(&mut self.this_pool().stmts);
 
             self.this = this;
-            Ok((stmts, t))
+            Result::Success((stmts, t))
         }
 
-        fn var_define(&mut self, var_define: &'ast PU<'s, VariableDefine<'s>>) -> Result<'s, ()> {
-            let ty = (*var_define.ty).clone().into();
+        fn var_define(&mut self, var_define: &'ast PU<'s, VarDefine<'s>>) -> Result<'s, ()> {
+            // TODO: using Ast trait to replace this fucking cast
+            let ty = ast::TypeDefine::try_from((*var_define.ty).clone())?;
             let name = var_define.name.ident.clone();
             let init = match &var_define.init {
                 Some(init) => {
                     let init = self.expr(&init.value)?;
                     if init.ty != ty {
-                        return Err(var_define.failed_error(format!(
+                        return var_define.throw(format!(
                             "tring to define a variable with type {} from type {}",
                             ty, init.ty
-                        )));
+                        ));
                     }
                     Some(ast::Expr::Variable(init.value))
                 }
                 None => None,
             };
 
-            self.this_pool().vars.map.insert(
+            self.regist_var(
                 name.clone(),
                 definition::VarDefinition::new(ty.clone(), var_define),
             );
+
             self.this_pool()
                 .push_define(ast::VarDefine { ty, name, init });
 
-            Ok(())
+            Result::Success(())
         }
 
-        fn var_store(&mut self, var_store: &PU<'s, VariableStore<'s>>) -> Result<'s, ()> {
+        fn regist_var(&mut self, name: String, def: definition::VarDefinition<'ast, 's>) {
+            self.this_pool().vars.map.insert(name.clone(), def);
+        }
+
+        fn var_store(&mut self, var_store: &PU<'s, VarStore<'s>>) -> Result<'s, ()> {
             let name = var_store.name.ident.clone();
             let value = self.expr(&var_store.assign.value)?;
             let Some(var_def) = self.search_var(&name) else {
-                return Err(var_store.failed_error(format!("undefined variable {}", name)));
+                return var_store.throw(format!("use of undefined variable {}", name));
             };
             if var_def.ty != value.ty {
-                return Err(var_store.failed_error(format!(
+                return var_store.throw(format!(
                     "tring to assign to variable with type {} from type {}",
                     var_def.ty, value.ty
-                )));
+                ));
             }
 
             let value = value.value;
             self.this_pool().push_sotre(ast::VarStore { name, value });
-            Ok(())
+            Result::Success(())
         }
 
         fn fn_call(&mut self, fn_call: &PU<'s, FunctionCall>) -> Result<'s, TypedVar> {
@@ -319,29 +362,29 @@ mod parse {
                 args.push(arg)
             }
 
-            let fn_def = self
-                .search_fn(&fn_call.fn_name)
-                .ok_or_else(|| selection.failed_error("use of undefined function"))?;
+            let fn_def = Result::from_option(self.search_fn(&fn_call.fn_name), || {
+                selection.throw("use of undefined function")
+            })?;
             let fn_def = &fn_def.overdrives[0];
             let paramters = &fn_def.params;
 
             if paramters.len() != arguments.len() {
                 // TODO: Error's TODO
-                return Err(selection.failed_error(format!(
+                return selection.throw(format!(
                     "function {} exprct {} arguments, but {} arguments passed in",
                     fn_call.fn_name.ident,
                     paramters.len(),
                     arguments.len()
-                )));
+                ));
             }
 
             for idx in 0..arguments.len() {
                 // TODO: Error's TODO
                 if args[idx].ty != paramters[idx] {
-                    return Err(arguments[idx].failed_error(format!(
+                    return arguments[idx].throw(format!(
                         "expected type {}, but found type {}",
                         paramters[idx], args[idx].ty
-                    )));
+                    ));
                 }
             }
 
@@ -353,9 +396,10 @@ mod parse {
             let type_define = fn_def.ty.clone();
             let init = ast::Expr::FuncionCall(fn_call);
 
-            Ok(self
-                .this_pool()
-                .push_define(ast::VarDefine::new_alloc(type_define, init)))
+            Result::Success(
+                self.this_pool()
+                    .push_define(ast::VarDefine::new_alloc(type_define, init)),
+            )
         }
 
         fn expr(&mut self, expr: &PU<'s, Expr>) -> Result<'s, TypedVar> {
@@ -366,10 +410,10 @@ mod parse {
                     let l = self.expr(l)?;
                     let r = self.expr(r)?;
                     if l.ty != r.ty {
-                        return Err(expr.failed_error(format!(
+                        return expr.throw(format!(
                             "operator around different type: `{}` and `{}`!",
                             l.ty, r.ty
-                        )));
+                        ));
                     }
 
                     let ty = if o.ty() == crate::keywords::operators::OperatorTypes::CompareOperator
@@ -379,7 +423,7 @@ mod parse {
                         l.ty.clone()
                     };
 
-                    Ok(self.this_pool().push_define(ast::VarDefine::new_alloc(
+                    Result::Success(self.this_pool().push_define(ast::VarDefine::new_alloc(
                         ty,
                         ast::Expr::binary(o.take(), l.value, r.value),
                     )))
@@ -395,26 +439,26 @@ mod parse {
         ) -> Result<'s, TypedVar> {
             match atomic {
                 AtomicExpr::CharLiteral(char) => {
-                    Ok(self.this_pool().push_define(ast::VarDefine::new_alloc(
+                    Result::Success(self.this_pool().push_define(ast::VarDefine::new_alloc(
                         ast::TypeDefine::char(),
                         ast::Expr::Char(char.parsed),
                     )))
                 }
                 AtomicExpr::StringLiteral(str) => {
-                    Ok(self.this_pool().push_define(ast::VarDefine::new_alloc(
+                    Result::Success(self.this_pool().push_define(ast::VarDefine::new_alloc(
                         ast::TypeDefine::string(),
                         ast::Expr::String(str.parsed.clone()),
                     )))
                 }
                 AtomicExpr::NumberLiteral(n) => match n {
                     NumberLiteral::Float { number, .. } => {
-                        Ok(self.this_pool().push_define(ast::VarDefine::new_alloc(
+                        Result::Success(self.this_pool().push_define(ast::VarDefine::new_alloc(
                             ast::TypeDefine::float(),
                             ast::Expr::Float(*number),
                         )))
                     }
                     NumberLiteral::Digit { number, .. } => {
-                        Ok(self.this_pool().push_define(ast::VarDefine::new_alloc(
+                        Result::Success(self.this_pool().push_define(ast::VarDefine::new_alloc(
                             ast::TypeDefine::integer(),
                             ast::Expr::Integer(*number),
                         )))
@@ -423,14 +467,14 @@ mod parse {
                 AtomicExpr::Initialization(_) => todo!("how to do???"),
                 AtomicExpr::FunctionCall(fn_call) => self.fn_call_inner(fn_call, selection),
                 AtomicExpr::Variable(var) => {
-                    let def = self.search_var(var).ok_or_else(|| {
-                        selection.failed_error(format!("use of undefined variable {}", &var.ident))
+                    let def = Result::from_option(self.search_var(var), || {
+                        selection.throw("use of undefined variable")
                     })?;
-                    Ok(TypedVar::new(var.ident.clone(), def.ty.clone()))
+                    Result::Success(TypedVar::new(var.ident.clone(), def.ty.clone()))
                 }
                 AtomicExpr::UnaryExpr(unary) => {
                     let l = self.atomic_expr_inner(&unary.expr, &unary.expr.get_selection())?;
-                    Ok(self.this_pool().push_define(ast::VarDefine::new_alloc(
+                    Result::Success(self.this_pool().push_define(ast::VarDefine::new_alloc(
                         l.ty.clone(),
                         ast::Expr::unary(*unary.operator, l.value),
                     )))
@@ -444,7 +488,6 @@ mod parse {
             // so, the function serarching may be wrong(
 
             let mut this = self.this;
-
             loop {
                 match self.pools[this].fns.map.get(name) {
                     Some(def) => return Some(def),
@@ -460,7 +503,9 @@ mod parse {
 
         fn search_var(&self, name: &str) -> Option<&definition::VarDefinition<'ast, 's>> {
             let mut this = self.this;
-
+            if let Some(def) = self.pools[this].params.map.get(name) {
+                return Some(def);
+            }
             loop {
                 match self.pools[this].vars.map.get(name) {
                     Some(def) => return Some(def),
@@ -487,6 +532,8 @@ pub struct LocalPool<'ast, 's> {
     // defines
     pub vars: VarDefinitions<'ast, 's>,
     pub fns: FnDefinitions<'ast, 's>,
+    // this kind of var definitions are only allowed to be used in a LocalPool
+    pub params: VarDefinitions<'ast, 's>,
     // statements in scope
     pub stmts: ast::Statements,
     //

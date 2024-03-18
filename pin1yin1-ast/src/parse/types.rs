@@ -134,16 +134,16 @@ impl ParseUnit for TypeSignExtend<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypeDeclare<'s> {
+pub struct TypeDefine<'s> {
     pub const_: Option<PU<'s, TypeConstExtend<'s>>>,
     pub decorators: Vec<PU<'s, TypeDecorators<'s>>>,
     pub width: Option<PU<'s, TypeWidthExtend<'s>>>,
     pub sign: Option<PU<'s, TypeSignExtend<'s>>>,
-    pub real_type: PU<'s, Ident<'s>>,
+    pub ty: PU<'s, Ident<'s>>,
 }
 
-impl ParseUnit for TypeDeclare<'_> {
-    type Target<'t> = TypeDeclare<'t>;
+impl ParseUnit for TypeDefine<'_> {
+    type Target<'t> = TypeDefine<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let const_ = p.parse::<TypeConstExtend>().success();
@@ -153,13 +153,13 @@ impl ParseUnit for TypeDeclare<'_> {
         }
         let width = p.parse::<TypeWidthExtend>().success();
         let sign = p.parse::<TypeSignExtend>().success();
-        let real_type = p.parse::<Ident>()?;
-        p.finish(TypeDeclare {
+        let ty = p.parse::<Ident>()?;
+        p.finish(TypeDefine {
             const_,
             decorators,
             width,
             sign,
-            real_type,
+            ty,
         })
     }
 }
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn fucking_type() {
         parse_test("yin3 zu3 114514 kuan1 32 wu2fu2 zheng3", |p| {
-            assert!(p.parse::<TypeDeclare>().is_success())
+            assert!(p.parse::<TypeDefine>().is_success())
         })
     }
 }

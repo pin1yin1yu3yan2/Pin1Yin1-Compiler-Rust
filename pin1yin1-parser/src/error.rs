@@ -2,12 +2,6 @@ use std::fmt::Debug;
 
 use crate::*;
 
-/// normally result, with an optional [`Error`]
-pub type Result<'s, T, S = char> = std::result::Result<T, ParseError<'s, S>>;
-
-// /// normally parse result, storage [`T::Target`] in token
-// pub type ParseResult<'s, P, S = char> = std::result::Result<PU<'s, P, S>, Option<Error<'s, S>>>;
-
 /// error type with a [`Selection`] and a [`String`] as reason
 #[derive(Clone)]
 pub struct Error<'s, S: Copy = char> {
@@ -70,23 +64,25 @@ pub trait WithSelection<'s, S: Copy = char> {
     fn get_selection(&self) -> Selection<'s, S>;
 
     /// make a new [`Error`] with the given value and parser's selection
-    fn make_error(&self, reason: impl Into<String>) -> Error<'s, S> {
+    fn new_error(&self, reason: impl Into<String>) -> Error<'s, S> {
         Error::new(self.get_selection(), reason.into())
     }
 
-    fn unmatch<P: ParseUnit<S>>(&self, reason: impl Into<String>) -> ParseResult<'s, P, S> {
-        ParseResult::Unmatch(self.make_error(reason))
+    fn make_error(&self, reason: impl Into<String>, kind: ErrorKind) -> ParseError<'s, S> {
+        ParseError::new(self.new_error(reason), kind)
     }
 
-    fn unmatch_error(&self, reason: impl Into<String>) -> ParseError<'s, S> {
-        ParseError::Unmatch(self.make_error(reason))
+    fn unmatch<T>(&self, reason: impl Into<String>) -> Result<'s, T, S> {
+        Result::Failed(self.make_error(reason, ErrorKind::Unmatch))
     }
 
-    fn throw<P: ParseUnit<S>>(&self, reason: impl Into<String>) -> ParseResult<'s, P, S> {
-        ParseResult::Failed(self.make_error(reason))
+    fn throw<T>(&self, reason: impl Into<String>) -> Result<'s, T, S> {
+        Result::Failed(self.make_error(reason, ErrorKind::OtherError))
     }
+}
 
-    fn failed_error(&self, reason: impl Into<String>) -> ParseError<'s, S> {
-        ParseError::Unmatch(self.make_error(reason))
+impl<'s, S: Copy> WithSelection<'s, S> for Error<'s, S> {
+    fn get_selection(&self) -> Selection<'s, S> {
+        self.selection
     }
 }

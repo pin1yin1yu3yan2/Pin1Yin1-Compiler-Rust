@@ -15,14 +15,12 @@ pub struct CharLiteral<'s> {
 }
 
 fn escape<'s>(src: &PU<'s, String>, c: char) -> Result<'s, char> {
-    Ok(match c {
+    Result::Success(match c {
         '_' => '_',
         't' => '\t',
         'n' => '\n',
         's' => ' ',
-        _ => {
-            return Err(src.failed_error(format!("Invalid or unsupported escape character: {}", c)))
-        }
+        _ => return src.throw(format!("Invalid or unsupported escape character: {}", c)),
     })
 }
 
@@ -236,7 +234,7 @@ impl ParseUnit for UnaryExpr<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let operator = p.parse::<operators::Operators>().which_or(
             |op| op.associativity() == OperatorAssociativity::Unary,
-            |t| t.failed_error("unary expr must start with an unary operator!"),
+            |t| t.throw("unary expr must start with an unary operator!"),
         )?;
         let expr = Box::new(p.parse::<AtomicExpr>()?);
         p.finish(UnaryExpr { operator, expr })

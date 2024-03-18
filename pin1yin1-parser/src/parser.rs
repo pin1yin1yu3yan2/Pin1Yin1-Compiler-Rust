@@ -93,9 +93,9 @@ impl<'s, S: Copy> Parser<'s, S> {
         Try::new(self).or_try(p)
     }
 
-    /// try to parse, mean that [`ParseResult::Unmatch`] is allowed
+    /// try to parse, mean that [`PuResult::Unmatch`] is allowed
     ///
-    /// in this case, [`ParseResult::Unmatch`] will be transformed into [`None`]
+    /// in this case, [`PuResult::Unmatch`] will be transformed into [`None`]
     ///
     /// so that you can use `?` as usual after using match / if let ~
     pub fn once<P, F>(&mut self, parser: F) -> ParseResult<'s, P, S>
@@ -116,7 +116,7 @@ impl<'s, S: Copy> Parser<'s, S> {
         #[cfg(feature = "parser_calling_tree")]
         if p_name.starts_with("pin1yin1_ast::parse") {
             for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
-                print!(" ")
+                print!("    ")
             }
             println!("start {p_name}");
             DEPTH.fetch_add(1, std::sync::atomic::Ordering::Release);
@@ -129,16 +129,11 @@ impl<'s, S: Copy> Parser<'s, S> {
         if p_name.starts_with("pin1yin1_ast::parse") {
             DEPTH.fetch_sub(1, std::sync::atomic::Ordering::Release);
             for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
-                print!(" ")
+                print!("    ")
             }
-            if result.is_success() {
-                println!("success: {p_name}",)
-            }
-            if result.is_error() {
-                println!("error  : {p_name}")
-            }
-            if result.is_unmatch() {
-                println!("unmatch: {p_name}")
+            match &result {
+                Result::Success(_) => println!("Success: {p_name}"),
+                Result::Failed(e) => println!("{:?}: {p_name}", e.kind()),
             }
         }
         self.sync_with(&result, &tmp);
@@ -183,9 +178,9 @@ impl<'s, S: Copy> Parser<'s, S> {
         self.once(P::parse)
     }
 
-    /// try to parse, mean that [`ParseResult::Unmatch`] is allowed
+    /// try to parse, mean that [`PuResult::Unmatch`] is allowed
     ///
-    /// in this case, [`ParseResult::Unmatch`] will be transformed into [`None`]
+    /// in this case, [`PuResult::Unmatch`] will be transformed into [`None`]
     ///
     /// so that you can use `?` as usual after using match / if let ~
     pub fn try_parse<P: ParseUnit<S>>(&mut self) -> Option<ParseResult<'s, P, S>> {
@@ -275,7 +270,7 @@ impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
                 .as_ref()
                 .is_some_and(|result| result.is_unmatch())
         {
-            self.state = Some(parser(self.parser).map(|t| t));
+            self.state = Some(parser(self.parser).map_pu(|t| t));
         }
         self
     }

@@ -63,7 +63,7 @@ pub fn do_parse<'s>(parser: &mut Parser<'s>) -> Result<'s, Vec<PU<'s, Statement<
         stmts.push(stmt);
     }
 
-    Ok(stmts)
+    Result::Success(stmts)
 }
 
 #[cfg(test)]
