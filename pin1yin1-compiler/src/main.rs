@@ -1,8 +1,6 @@
 pub mod compile;
 
-use pin1yin1_ast::{
-    ast::Statements, parse::do_parse, semantic::definition_pool::GlobalDefinitions,
-};
+use pin1yin1_ast::{ast::Statements, parse::do_parse, semantic::definition_pool::GlobalPool};
 use pin1yin1_parser::*;
 
 fn main() {
@@ -14,7 +12,7 @@ fn main() {
 
     let pus = do_parse(&mut parser).to_result().unwrap();
 
-    let mut global = GlobalDefinitions::new();
+    let mut global = GlobalPool::new();
     global.load(&pus).to_result().unwrap();
 
     let ast = global.finish();

@@ -55,7 +55,7 @@ pub type Variables = Vec<String>;
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VarStore {
     pub name: String,
-    pub value: Variable,
+    pub val: Variable,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -67,7 +67,7 @@ pub struct FnCall {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Condition {
     // the final value of the condition
-    pub value: String,
+    pub val: String,
     pub compute: Statements,
 }
 

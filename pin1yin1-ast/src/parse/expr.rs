@@ -194,15 +194,15 @@ impl ParseUnit for Initialization<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionCall<'s> {
+pub struct FnCall<'s> {
     pub fn_name: PU<'s, Ident<'s>>,
     pub han2: PU<'s, Symbol>,
     pub args: PU<'s, Arguments<'s>>,
     pub jie2: PU<'s, Symbol>,
 }
 
-impl ParseUnit for FunctionCall<'_> {
-    type Target<'t> = FunctionCall<'t>;
+impl ParseUnit for FnCall<'_> {
+    type Target<'t> = FnCall<'t>;
 
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let fn_name = p.parse::<Ident>()?;
@@ -210,7 +210,7 @@ impl ParseUnit for FunctionCall<'_> {
         let args = p.parse::<Arguments>()?;
         let jie2 = Symbol::EndOfBracket.parse_or_unmatch(p)?;
 
-        p.finish(FunctionCall {
+        p.finish(FnCall {
             fn_name,
             han2,
             args,
@@ -266,7 +266,7 @@ complex_pu! {
         StringLiteral,
         NumberLiteral,
         Initialization,
-        FunctionCall,
+        FnCall,
         Variable,
         UnaryExpr,
         BracketExpr
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn function_call() {
         parse_test("han2shu41 can1 1919810 fen1 chuan4 acminoac jie2", |p| {
-            assert!(dbg!(p.parse::<FunctionCall>()).is_success());
+            assert!(dbg!(p.parse::<FnCall>()).is_success());
         })
     }
 

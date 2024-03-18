@@ -4,12 +4,14 @@ use pin1yin1_parser::*;
 
 mod controlflow;
 mod expr;
+mod into_ast;
 mod statements;
 mod syntax;
 mod types;
 
 pub use controlflow::*;
 pub use expr::*;
+pub use into_ast::*;
 pub use statements::*;
 pub use syntax::*;
 pub use types::*;

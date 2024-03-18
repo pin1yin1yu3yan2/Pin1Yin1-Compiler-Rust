@@ -44,7 +44,7 @@ macro_rules! statement_wrapper {
 
 statement_wrapper! {
     VarDefine => VarDefineStmt,
-    FunctionCall => FnCallStmt,
+    FnCall => FnCallStmt,
     VarStore => VarStoreStmt,
 }
 

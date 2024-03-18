@@ -142,6 +142,12 @@ pub struct TypeDefine<'s> {
     pub ty: PU<'s, Ident<'s>>,
 }
 
+impl<'s> TypeDefine<'s> {
+    pub(crate) fn to_ast_ty(&self) -> Result<'s, crate::ast::TypeDefine> {
+        Result::from_result(self.clone().try_into())
+    }
+}
+
 impl ParseUnit for TypeDefine<'_> {
     type Target<'t> = TypeDefine<'t>;
 
