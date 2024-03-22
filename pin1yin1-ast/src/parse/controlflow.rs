@@ -106,7 +106,7 @@ impl ParseUnit for While<'_> {
         let chong2 = p
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::Repeat, |t| t.unmatch("expect `chong2`"))?;
-        let conds = p.parse::<Arguments>()?;
+        let conds = p.parse::<Arguments>().must_match()?;
         let block = p.parse::<CodeBlock>().must_match()?;
         p.finish(While {
             chong2,
@@ -144,7 +144,8 @@ impl ParseUnit for Return<'_> {
         let or = "expect `fen1`";
         let fen1 = p
             .parse::<Symbol>()
-            .eq_or(Symbol::Semicolon, |t| t.unmatch(or))?;
+            .eq_or(Symbol::Semicolon, |t| t.unmatch(or))
+            .must_match()?;
 
         p.finish(Return { fan3, val, fen1 })
     }

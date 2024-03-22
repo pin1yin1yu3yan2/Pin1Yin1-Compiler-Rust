@@ -107,7 +107,6 @@ impl<'s> Ast<'s> for parse::FnCall<'s> {
         let params = &fn_def.params;
 
         if params.len() != args.len() {
-            // TODO: Error's TODO
             return _selection.throw(format!(
                 "function {} exprct {} arguments, but {} arguments passed in",
                 fn_call.fn_name.ident,
@@ -117,7 +116,6 @@ impl<'s> Ast<'s> for parse::FnCall<'s> {
         }
 
         for arg_idx in 0..args.len() {
-            // TODO: Error's TODO
             if args[arg_idx].ty != params[arg_idx] {
                 return fn_call.args.args[arg_idx].throw(format!(
                     "expected type {}, but found type {}",

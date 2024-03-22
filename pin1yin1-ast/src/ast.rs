@@ -23,14 +23,12 @@ pub struct FnDefine {
     pub body: Statements,
 }
 
-// TODO: devied this into two ast...
-// may ast should be abstract enough to means multiple instructions?
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VarDefine {
     #[serde(rename = "type")]
     pub ty: TypeDefine,
     pub name: String,
-    /// TODO: `init` must be an `atomic expr`
+    /// `init` must be an `atomic expr`
     pub init: Option<Expr>,
 }
 
@@ -139,7 +137,6 @@ pub struct Parameter {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-
 pub struct TypeDefine {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]

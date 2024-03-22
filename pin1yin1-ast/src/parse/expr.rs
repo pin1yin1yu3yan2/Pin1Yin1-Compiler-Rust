@@ -91,12 +91,10 @@ impl ParseUnit for StringLiteral<'_> {
 pub enum NumberLiteral<'s> {
     Float {
         number: f64,
-
         _p: PhantomData<&'s ()>,
     },
     Digit {
         number: usize,
-
         _p: PhantomData<&'s ()>,
     },
 }

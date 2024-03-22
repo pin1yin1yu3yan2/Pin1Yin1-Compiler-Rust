@@ -1,4 +1,5 @@
 pub mod compile;
+pub mod types;
 
 use pin1yin1_ast::{ast::Statements, parse::do_parse, semantic::definition_pool::GlobalPool};
 use pin1yin1_parser::*;

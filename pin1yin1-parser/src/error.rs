@@ -2,10 +2,15 @@ use std::fmt::Debug;
 
 use crate::*;
 
+// TODO: multiple selections, multiple reasons for more friendlier error messages
+// TODO: lazy eval error messages for better performance
+
 /// error type with a [`Selection`] and a [`String`] as reason
+///
+///
+///
 #[derive(Clone)]
 pub struct Error<'s, S: Copy = char> {
-    // TODO: multiple selections, multiple reasons for more friendlier error messages
     selection: Selection<'s, S>,
     reason: String,
 }

@@ -1,14 +1,12 @@
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-use std::collections::HashMap;
+use std::{collections::HashMap, error::Error};
 
 use inkwell::{
-    builder::Builder,
+    builder::{Builder, BuilderError},
     context::Context,
     execution_engine::ExecutionEngine,
     module::Module,
-    types::{AnyTypeEnum, BasicTypeEnum},
-    values::AnyValueEnum,
+    types::BasicTypeEnum,
+    values::{BasicValueEnum, PointerValue},
 };
 
 pub struct CodeGen<'ctx> {
@@ -16,11 +14,46 @@ pub struct CodeGen<'ctx> {
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     execution_engine: ExecutionEngine<'ctx>,
-    variables: HashMap<String, AnyValueEnum<'ctx>>,
+    variables: HashMap<String, Box<dyn Variable + 'ctx>>,
+}
+
+pub trait Variable {
+    fn load<'s: 'ctx, 'ctx>(
+        &'s self,
+        builder: &Builder<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, BuilderError>;
+    fn store<'s: 'ctx, 'ctx>(
+        &'s self,
+        builder: &Builder<'ctx>,
+        value: BasicValueEnum<'ctx>,
+    ) -> Result<(), BuilderError>;
+}
+
+pub struct StackVariable<'ctx> {
+    pointer: PointerValue<'ctx>,
+}
+
+impl Variable for StackVariable<'_> {
+    fn load<'s: 'ctx, 'ctx>(
+        &'s self,
+        builder: &Builder<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+        builder
+            .build_load(self.pointer, "")
+            .map(BasicValueEnum::from)
+    }
+
+    fn store<'s: 'ctx, 'ctx>(
+        &'s self,
+        builder: &Builder<'ctx>,
+        value: BasicValueEnum<'ctx>,
+    ) -> Result<(), BuilderError> {
+        builder.build_store(self.pointer, value).map(|_| ())
+    }
 }
 
 impl<'ctx> CodeGen<'ctx> {
-    pub fn new(context: &'ctx Context, module: &str) -> Result<Self> {
+    pub fn new(context: &'ctx Context, module: &str) -> Result<Self, Box<dyn Error>> {
         let module = context.create_module(module);
 
         // `void main()`
@@ -42,11 +75,22 @@ impl<'ctx> CodeGen<'ctx> {
         })
     }
 
-    fn type_cast(&self, ty: &ast::TypeDefine) -> Result<BasicTypeEnum<'ctx>> {
-        todo!()
+    fn type_cast(&self, ty: &ast::TypeDefine) -> BasicTypeEnum<'ctx> {
+        if !ty.decorators.is_empty() {
+            todo!("decorators is not supported now...")
+        }
+        let ty: &str = &ty.ty;
+        match ty {
+            "i64" => self.context.i64_type(),
+            "i32" => self.context.i32_type(),
+            "i16" => self.context.i16_type(),
+            "i8" => self.context.i8_type(),
+            _ => todo!("type {} is not supported now...", ty),
+        }
+        .into()
     }
 
-    fn to_value(&self, expr: &ast::Expr) -> Result<AnyValueEnum<'ctx>> {
+    fn eval(&self, expr: &ast::Expr) -> Result<BasicValueEnum, BuilderError> {
         let r = match expr {
             ast::Expr::Char(c) => {
                 let char = self.context.i32_type();
@@ -71,12 +115,8 @@ impl<'ctx> CodeGen<'ctx> {
                 f64.const_float(*f).into()
             }
             ast::Expr::Variable(v) => {
-                let v = self.variables[v];
-                if v.is_pointer_value() {
-                    self.builder.build_load(v.into_pointer_value(), "")?.into()
-                } else {
-                    v
-                }
+                let v = &self.variables[v];
+                v.load(&self.builder)?
             }
 
             _ => todo!("only atomic operations are allowed in VarStore"),
@@ -86,13 +126,13 @@ impl<'ctx> CodeGen<'ctx> {
 }
 
 pub trait Compile {
-    fn generate(&self, state: &mut CodeGen) -> Result<()>;
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError>;
 }
 
 use pin1yin1_ast::ast;
 
 impl Compile for ast::Statement {
-    fn generate(&self, state: &mut CodeGen) -> Result<()> {
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         match self {
             ast::Statement::FnDefine(f) => f.generate(state),
             ast::Statement::VarDefine(v) => v.generate(state),
@@ -111,83 +151,54 @@ impl Compile for ast::Statement {
     }
 }
 impl Compile for ast::FnDefine {
-    fn generate(&self, state: &mut CodeGen) -> Result<()> {
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         todo!()
     }
 }
+
+/// alloca, eval, store
 impl Compile for ast::VarDefine {
-    fn generate(&self, state: &mut CodeGen) -> Result<()> {
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
+        let ty = state.type_cast(&self.ty);
+        let pointer = state.builder.build_alloca(ty, &self.name)?;
+
+        let val = StackVariable { pointer };
+
         if let Some(init) = &self.init {
-            match init {
-                ast::Expr::Binary(o, l, r) => {
-                    let l = state.to_value(l)?;
-                    let r = state.to_value(r)?;
-
-                    let ty = l.get_type();
-                    match ty {
-                        AnyTypeEnum::IntType(_) => {
-                            let l = l.into_int_value();
-                            let r = r.into_int_value();
-                            match o {
-                                pin1yin1_ast::keywords::operators::Operators::Add => {
-                                    let result = state.builder.build_int_add(l, r, "")?;
-                                    state.variables.insert(self.name.clone(), result.into());
-                                }
-                                _ => todo!("other kinds of operators are not supported now~"),
-                            }
-                        }
-                        AnyTypeEnum::FloatType(_) => todo!(),
-
-                        _ => todo!("other kinds of types are not supported now~"),
-                    }
-                }
-                ast::Expr::Unary(o, l) => todo!(),
-                ast::Expr::Initialization(_) => todo!("unsupported"),
-                // atomics
-                _ => {
-                    let alloca = state
-                        .builder
-                        .build_alloca(state.type_cast(&self.ty)?, &self.name)?;
-                    let r = state.to_value(init)?;
-                    state.builder.build_store(alloca, r.into_int_value())?;
-                    state
-                        .variables
-                        .insert(self.name.clone(), AnyValueEnum::PointerValue(alloca));
-                }
-            }
-        } else {
-            let alloca = state
-                .builder
-                .build_alloca(state.type_cast(&self.ty)?, &self.name)?;
-            state
-                .variables
-                .insert(self.name.clone(), AnyValueEnum::PointerValue(alloca));
+            let init = state.eval(init)?;
+            val.store(&state.builder, init)?;
         }
-        todo!()
+        state.variables.insert(self.name.clone(), Box::new(val));
+        Ok(())
     }
 }
+// eval, store
 impl Compile for ast::VarStore {
-    fn generate(&self, state: &mut CodeGen) -> Result<()> {
-        todo!()
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
+        let val = state.variables.get(&self.val).unwrap();
+        let s = state.variables.get(&self.name).unwrap();
+        s.store(&state.builder, val.load(&state.builder)?)?;
+        Ok(())
     }
 }
+// call
 impl Compile for ast::FnCall {
-    fn generate(&self, state: &mut CodeGen) -> Result<()> {
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         todo!()
     }
 }
 impl Compile for ast::If {
-    fn generate(&self, state: &mut CodeGen) -> Result<()> {
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         todo!()
     }
 }
 impl Compile for ast::While {
-    fn generate(&self, state: &mut CodeGen) -> Result<()> {
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         todo!()
     }
 }
 impl Compile for ast::Return {
-    fn generate(&self, state: &mut CodeGen) -> Result<()> {
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         todo!()
     }
 }
