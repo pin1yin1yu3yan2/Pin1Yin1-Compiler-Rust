@@ -18,7 +18,11 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: install llvm
-      run: sudo apt install llvm
+      run: 
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -;
+        sudo add-apt-repository "deb https://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs) main";
+        sudo apt update;
+        sudo apt install llvm
 
     - name: install nightly rust
       run : rustup install nightly;
