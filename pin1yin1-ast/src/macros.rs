@@ -23,15 +23,12 @@ macro_rules! keywords {
             pub fn parse_or_unmatch<'s>(self, p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
                 use pin1yin1_parser::WithSelection;
                 p.parse::<Self>()
-                    .match_or(|e| e.unmatch(format!("expect `{self}`, but non {} matched", stringify!($enum_name))))
+                    .match_or(|e| e.unmatch(format!("expect {} `{self}`, but unmatched", stringify!($enum_name))))
                     .eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
             }
 
             pub fn parse_or_failed<'s>(self, p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
-                use pin1yin1_parser::WithSelection;
-                p.parse::<Self>()
-                    .match_or(|e| e.unmatch(format!("expect `{self}`, but non {} matched", stringify!($enum_name))))
-                    .eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
+                self.parse_or_unmatch(p).must_match()
             }
         }
 

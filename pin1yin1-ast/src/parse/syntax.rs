@@ -31,7 +31,7 @@ impl ParseUnit for Comment<'_> {
 #[derive(Debug, Clone)]
 pub struct VarAssign<'s> {
     pub deng3: PU<'s, Symbol>,
-    pub value: PU<'s, Expr<'s>>,
+    pub val: PU<'s, Expr<'s>>,
 }
 
 impl ParseUnit for VarAssign<'_> {
@@ -40,7 +40,7 @@ impl ParseUnit for VarAssign<'_> {
     fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
         let deng3 = Symbol::Assign.parse_or_unmatch(p)?;
         let value = p.parse::<Expr>()?;
-        p.finish(VarAssign { deng3, value })
+        p.finish(VarAssign { deng3, val: value })
     }
 }
 

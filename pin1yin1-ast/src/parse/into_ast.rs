@@ -1,27 +1,19 @@
 use crate::ast;
 use crate::parse;
-use crate::semantic::definition;
-use crate::semantic::definition_pool::GlobalPool;
+use crate::semantic;
+use crate::semantic::Global;
 use pin1yin1_parser::*;
 
 pub trait Ast<'s>: ParseUnit {
     type Forward;
 
-    /// this function may return nothing because the ast will be put in [`LocalPool`]
-    fn to_ast<'ast>(
-        s: &'ast PU<'s, Self>,
-        global: &mut GlobalPool<'ast, 's>,
-    ) -> Result<'s, Self::Forward> {
-        Self::to_ast_inner(&**s, s.get_selection(), global)
-    }
-
     /// divided [`PU`] into [`ParseUnit::Target`] and [`Selection`] becase
     /// variants from [`crate::complex_pu`] isnot [`PU`], and the [`Selection`]
     /// was stored in the enum
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         s: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward>;
 }
 
@@ -31,7 +23,7 @@ pub struct TypedVar {
 }
 
 impl TypedVar {
-    fn new(val: String, ty: ast::TypeDefine) -> Self {
+    pub(crate) fn new(val: String, ty: ast::TypeDefine) -> Self {
         Self { val, ty }
     }
 }
@@ -45,35 +37,35 @@ impl From<ast::VarDefine> for TypedVar {
 impl<'s> Ast<'s> for parse::Statement<'s> {
     type Forward = ();
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         stmt: &'ast Self::Target<'s>,
-        _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        selection: Selection<'s>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         match stmt {
             parse::Statement::FnCallStmt(fn_call) => {
-                parse::FnCall::to_ast(&fn_call.inner, _global)?;
+                _global.to_ast(&fn_call.inner)?;
             }
             parse::Statement::VarStoreStmt(var_store) => {
-                parse::VarStore::to_ast(&var_store.inner, _global)?;
+                _global.to_ast(&var_store.inner)?;
             }
             parse::Statement::FnDefine(fn_define) => {
-                parse::FnDefine::to_ast_inner(fn_define, _selection, _global)?;
+                parse::FnDefine::to_ast(fn_define, selection, _global)?;
             }
             parse::Statement::VarDefineStmt(var_define) => {
-                parse::VarDefine::to_ast(&var_define.inner, _global)?;
+                _global.to_ast(&var_define.inner)?;
             }
             parse::Statement::If(if_) => {
-                parse::If::to_ast_inner(if_, _selection, _global)?;
+                _global.to_ast_inner::<parse::If>(if_, selection)?;
             }
             parse::Statement::While(while_) => {
-                parse::While::to_ast_inner(while_, _selection, _global)?;
+                _global.to_ast_inner::<parse::While>(while_, selection)?;
             }
             parse::Statement::Return(return_) => {
-                parse::Return::to_ast_inner(return_, _selection, _global)?;
+                _global.to_ast_inner::<parse::Return>(return_, selection)?;
             }
             parse::Statement::CodeBlock(block) => {
-                parse::CodeBlock::to_ast_inner(block, _selection, _global)?;
+                _global.to_ast_inner::<parse::CodeBlock>(block, selection)?;
             }
             parse::Statement::Comment(_) => {}
         }
@@ -84,17 +76,17 @@ impl<'s> Ast<'s> for parse::Statement<'s> {
 impl<'s> Ast<'s> for parse::FnCall<'s> {
     type Forward = TypedVar;
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         fn_call: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         let args = fn_call
             .args
             .args
             .iter()
             .try_fold(vec![], |mut args, expr| {
-                args.push(parse::Expr::to_ast(expr, _global)?);
+                args.push(_global.to_ast(expr)?);
                 Result::Success(args)
             })?;
 
@@ -132,36 +124,36 @@ impl<'s> Ast<'s> for parse::FnCall<'s> {
         let ty = fn_def.ty.clone();
         let init = ast::Expr::FuncionCall(fn_call);
 
-        Result::Success(
-            _global
-                .this_pool()
-                .push_define(ast::VarDefine::new_alloc(ty, init)),
-        )
+        let define = _global.alloc_var(ty, init);
+        Result::Success(_global.push_define(define))
     }
 }
 
 impl<'s> Ast<'s> for parse::VarStore<'s> {
     type Forward = ();
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         var_store: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         let name = var_store.name.ident.clone();
-        let val = parse::Expr::to_ast(&var_store.assign.value, _global)?;
-        let Some(var_def) = _global.search_var(&name) else {
+        // function parameters are inmutable
+
+        let val = _global.to_ast(&var_store.assign.val)?;
+        let Some((var_def, mutable)) = _global.search_var(&name) else {
             return _selection.throw(format!("use of undefined variable {}", name));
         };
+        if !mutable {
+            return _selection.throw(format!("cant assign to a immmutable variable {}", name));
+        }
         if var_def.ty != val.ty {
             return _selection.throw(format!(
                 "tring to assign to variable with type {} from type {}",
                 var_def.ty, val.ty
             ));
         }
-        _global
-            .this_pool()
-            .push_sotre(ast::VarStore { name, val: val.val });
+        _global.push_stmt(ast::VarStore { name, val: val.val });
         Result::Success(())
     }
 }
@@ -169,10 +161,10 @@ impl<'s> Ast<'s> for parse::VarStore<'s> {
 impl<'s> Ast<'s> for parse::FnDefine<'s> {
     type Forward = ();
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         fn_define: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         let fn_name = fn_define.function.name.ident.clone();
         if let Some(exist) = _global.search_fn(&fn_name) {
@@ -183,7 +175,7 @@ impl<'s> Ast<'s> for parse::FnDefine<'s> {
 
         let ret_ty: ast::TypeDefine = fn_define.function.ty.to_ast_ty()?;
 
-        let params = fn_define
+        let types = fn_define
             .params
             .params
             .iter()
@@ -192,47 +184,54 @@ impl<'s> Ast<'s> for parse::FnDefine<'s> {
                 Result::Success(vec)
             })?;
 
-        let fn_sign = definition::FnSign::new(ret_ty.clone(), params);
+        // do this step firstly to allow recursion
+        // mangle should follow the `mangle rule` (not exist now)
+        // the mangle is the unique id of the function because overdrive allow fns with same name but different sign
 
-        _global.this_pool().fns.map.insert(
-            fn_name.clone(),
-            definition::FnDefinition::new(vec![fn_sign], vec![fn_define]),
-        );
+        // TODO: `mangle rule`
+        let fn_sign = semantic::FnSign::new(fn_name.clone(), ret_ty.clone(), types.clone());
+        let fn_def = semantic::FnDefinition::new(vec![fn_sign], vec![fn_define]);
+        _global.regist_fn(fn_name.clone(), fn_def);
+
         // generate ast
         let ty = ret_ty;
         let name = fn_name;
 
-        let params = fn_define
-            .params
-            .params
-            .iter()
-            .try_fold(Vec::new(), |mut vec, pu| {
-                let ty = ast::TypeDefine::try_from((*pu.inner.ty).clone())?;
-                let name = pu.inner.name.ident.clone();
+        let params = types
+            .into_iter()
+            .enumerate()
+            .try_fold(Vec::new(), |mut vec, (idx, ty)| {
+                let name = fn_define.params.params[idx].inner.name.ident.clone();
                 vec.push(ast::Parameter { ty, name });
                 Result::Success(vec)
             })?;
 
         // regist parameters
-        for (idx, param) in params.iter().enumerate() {
-            _global.regist_var(
+        let params_iter = params.iter().enumerate().map(|(idx, param)| {
+            (
                 param.name.clone(),
-                definition::VarDefinition::new(
-                    param.ty.clone(),
-                    &fn_define.params.params[idx].inner,
-                ),
+                semantic::VarDefinition::new(param.ty.clone(), &fn_define.params.params[idx].inner),
             )
-        }
+        });
 
-        let body = parse::CodeBlock::to_ast(&fn_define.codes, _global)?;
-        _global
-            .this_pool()
-            .push_stmt(ast::Statement::FnDefine(ast::FnDefine {
-                ty,
-                name,
-                params,
-                body,
-            }));
+        // use this because funtion cant access out variables
+
+        // TODO: global variables support
+        let body = _global
+            .fn_scope(|_global| {
+                _global.regist_params(params_iter);
+                for stmt in &fn_define.codes.stmts {
+                    _global.to_ast(stmt)?;
+                }
+                Result::Success(())
+            })?
+            .0;
+        _global.push_stmt(ast::Statement::FnDefine(ast::FnDefine {
+            ty,
+            name,
+            params,
+            body,
+        }));
 
         Result::Success(())
     }
@@ -241,16 +240,16 @@ impl<'s> Ast<'s> for parse::FnDefine<'s> {
 impl<'s> Ast<'s> for parse::VarDefine<'s> {
     type Forward = ();
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         var_define: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         let ty = var_define.ty.to_ast_ty()?;
         let name = var_define.name.ident.clone();
         let init = match &var_define.init {
             Some(init) => {
-                let init = parse::Expr::to_ast(&init.value, _global)?;
+                let init = _global.to_ast(&init.val)?;
                 if init.ty != ty {
                     return _selection.throw(format!(
                         "tring to define a variable with type {} from type {}",
@@ -264,12 +263,10 @@ impl<'s> Ast<'s> for parse::VarDefine<'s> {
 
         _global.regist_var(
             name.clone(),
-            definition::VarDefinition::new(ty.clone(), var_define),
+            semantic::VarDefinition::new(ty.clone(), var_define),
         );
 
-        _global
-            .this_pool()
-            .push_define(ast::VarDefine { ty, name, init });
+        _global.push_define(ast::VarDefine { ty, name, init });
 
         Result::Success(())
     }
@@ -278,20 +275,20 @@ impl<'s> Ast<'s> for parse::VarDefine<'s> {
 impl<'s> Ast<'s> for parse::If<'s> {
     type Forward = ();
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         if_: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
-        let mut branches = vec![parse::AtomicIf::to_ast(&if_.ruo4, _global)?];
+        let mut branches = vec![_global.to_ast(&if_.ruo4)?];
         for chain in &if_.chains {
             match &**chain {
                 parse::ChainIf::AtomicElseIf(atomic) => {
-                    branches.push(parse::AtomicIf::to_ast(&atomic.ruo4, _global)?);
+                    branches.push(_global.to_ast(&atomic.ruo4)?);
                 }
                 parse::ChainIf::AtomicElse(else_) => {
-                    let else_ = parse::CodeBlock::to_ast(&else_.block, _global)?;
-                    _global.this_pool().push_stmt(ast::Statement::If(ast::If {
+                    let else_ = _global.to_ast(&else_.block)?;
+                    _global.push_stmt(ast::Statement::If(ast::If {
                         branches,
                         else_: Some(else_),
                     }));
@@ -299,7 +296,7 @@ impl<'s> Ast<'s> for parse::If<'s> {
                 }
             }
         }
-        _global.this_pool().push_stmt(ast::Statement::If(ast::If {
+        _global.push_stmt(ast::Statement::If(ast::If {
             branches,
             else_: None,
         }));
@@ -310,16 +307,14 @@ impl<'s> Ast<'s> for parse::If<'s> {
 impl<'s> Ast<'s> for parse::While<'s> {
     type Forward = ();
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         while_: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
-        let cond = parse::Arguments::to_ast(&while_.conds, _global)?;
-        let body = parse::CodeBlock::to_ast(&while_.block, _global)?;
-        _global
-            .this_pool()
-            .push_stmt(ast::Statement::While(ast::While { cond, body }));
+        let cond = _global.to_ast(&while_.conds)?;
+        let body = _global.to_ast(&while_.block)?;
+        _global.push_stmt(ast::Statement::While(ast::While { cond, body }));
         Result::Success(())
     }
 }
@@ -327,13 +322,13 @@ impl<'s> Ast<'s> for parse::While<'s> {
 impl<'s> Ast<'s> for parse::AtomicIf<'s> {
     type Forward = ast::IfBranch;
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         atomic: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
-        let cond = parse::Arguments::to_ast(&atomic.conds, _global)?;
-        let body = parse::CodeBlock::to_ast(&atomic.block, _global)?;
+        let cond = _global.to_ast(&atomic.conds)?;
+        let body = _global.to_ast(&atomic.block)?;
         Result::Success(ast::IfBranch { cond, body })
     }
 }
@@ -341,18 +336,16 @@ impl<'s> Ast<'s> for parse::AtomicIf<'s> {
 impl<'s> Ast<'s> for parse::Return<'s> {
     type Forward = ();
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         return_: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         let val = match &return_.val {
-            Some(val) => Some(parse::Expr::to_ast(val, _global)?.val),
+            Some(val) => Some(_global.to_ast(val)?.val),
             None => None,
         };
-        _global
-            .this_pool()
-            .push_stmt(ast::Statement::Return(ast::Return { val }));
+        _global.push_stmt(ast::Statement::Return(ast::Return { val }));
         Result::Success(())
     }
 }
@@ -360,15 +353,15 @@ impl<'s> Ast<'s> for parse::Return<'s> {
 impl<'s> Ast<'s> for parse::CodeBlock<'s> {
     type Forward = ast::Statements;
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         block: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         _global
             .spoce(|_global| {
                 for stmt in &block.stmts {
-                    parse::Statement::to_ast(stmt, _global);
+                    _global.to_ast(stmt)?;
                 }
                 Result::Success(())
             })
@@ -380,15 +373,15 @@ impl<'s> Ast<'s> for parse::CodeBlock<'s> {
 impl<'s> Ast<'s> for parse::Arguments<'s> {
     type Forward = ast::Condition;
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         cond: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         let (compute, last_cond) = _global.spoce(|_global| {
-            let mut last_cond = parse::Expr::to_ast(&cond.args[0], _global)?;
+            let mut last_cond = _global.to_ast(&cond.args[0])?;
             for arg in cond.args.iter().skip(1) {
-                last_cond = parse::Expr::to_ast(arg, _global)?;
+                last_cond = _global.to_ast(arg)?;
             }
             Result::Success(last_cond)
         })?;
@@ -407,18 +400,17 @@ impl<'s> Ast<'s> for parse::Arguments<'s> {
 impl<'s> Ast<'s> for parse::Expr<'s> {
     type Forward = TypedVar;
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         expr: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         match expr {
-            parse::Expr::Atomic(atomic) => {
-                parse::AtomicExpr::to_ast_inner(atomic, _selection, _global)
-            }
+            parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, _selection, _global),
             parse::Expr::Binary(l, o, r) => {
-                let l = parse::Expr::to_ast(l, _global)?;
-                let r = parse::Expr::to_ast(r, _global)?;
+                let l = _global.to_ast(l)?;
+                let r = _global.to_ast(r)?;
+
                 if l.ty != r.ty {
                     return _selection.throw(format!(
                         "operator around different type: `{}` and `{}`!",
@@ -432,10 +424,8 @@ impl<'s> Ast<'s> for parse::Expr<'s> {
                     l.ty.clone()
                 };
 
-                Result::Success(_global.this_pool().push_define(ast::VarDefine::new_alloc(
-                    ty,
-                    ast::Expr::binary(o.take(), l.val, r.val),
-                )))
+                let define = _global.alloc_var(ty, ast::Expr::binary(o.take(), l.val, r.val));
+                Result::Success(_global.push_define(define))
             }
         }
     }
@@ -444,55 +434,52 @@ impl<'s> Ast<'s> for parse::Expr<'s> {
 impl<'s> Ast<'s> for parse::AtomicExpr<'s> {
     type Forward = TypedVar;
 
-    fn to_ast_inner<'ast>(
+    fn to_ast<'ast>(
         atomic: &'ast Self::Target<'s>,
         _selection: Selection<'s>,
-        _global: &mut GlobalPool<'ast, 's>,
+        _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         match atomic {
             parse::AtomicExpr::CharLiteral(char) => {
-                Result::Success(_global.this_pool().push_define(ast::VarDefine::new_alloc(
-                    ast::TypeDefine::char(),
-                    ast::Expr::Char(char.parsed),
-                )))
+                let define =
+                    _global.alloc_var(ast::TypeDefine::char(), ast::Expr::Char(char.parsed));
+                Result::Success(_global.push_define(define))
             }
             parse::AtomicExpr::StringLiteral(str) => {
-                Result::Success(_global.this_pool().push_define(ast::VarDefine::new_alloc(
+                let define = _global.alloc_var(
                     ast::TypeDefine::string(),
                     ast::Expr::String(str.parsed.clone()),
-                )))
+                );
+                Result::Success(_global.push_define(define))
             }
-            parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float { number, .. } => {
-                    Result::Success(_global.this_pool().push_define(ast::VarDefine::new_alloc(
-                        ast::TypeDefine::float(),
-                        ast::Expr::Float(*number),
-                    )))
-                }
-                parse::NumberLiteral::Digit { number, .. } => {
-                    Result::Success(_global.this_pool().push_define(ast::VarDefine::new_alloc(
-                        ast::TypeDefine::integer(),
-                        ast::Expr::Integer(*number),
-                    )))
-                }
-            },
+            parse::AtomicExpr::NumberLiteral(n) => {
+                let defint = match n {
+                    parse::NumberLiteral::Float { number, .. } => {
+                        _global.alloc_var(ast::TypeDefine::float(), ast::Expr::Float(*number))
+                    }
+                    parse::NumberLiteral::Digit { number, .. } => {
+                        _global.alloc_var(ast::TypeDefine::integer(), ast::Expr::Integer(*number))
+                    }
+                };
+                Result::Success(_global.push_define(defint))
+            }
             parse::AtomicExpr::FnCall(fn_call) => {
-                parse::FnCall::to_ast_inner(fn_call, _selection, _global)
+                parse::FnCall::to_ast(fn_call, _selection, _global)
             }
             parse::AtomicExpr::Variable(var) => {
                 let def = Result::from_option(_global.search_var(var), || {
                     _selection.throw("use of undefined variable")
-                })?;
+                })
+                .map(|(def, _m)| def)?;
                 Result::Success(TypedVar::new(var.ident.clone(), def.ty.clone()))
             }
             parse::AtomicExpr::UnaryExpr(unary) => {
-                let l = parse::AtomicExpr::to_ast(&unary.expr, _global)?;
-                Result::Success(_global.this_pool().push_define(ast::VarDefine::new_alloc(
-                    l.ty.clone(),
-                    ast::Expr::unary(*unary.operator, l.val),
-                )))
+                let l = _global.to_ast(&unary.expr)?;
+                let define =
+                    _global.alloc_var(l.ty.clone(), ast::Expr::unary(*unary.operator, l.val));
+                Result::Success(_global.push_define(define))
             }
-            parse::AtomicExpr::BracketExpr(expr) => parse::Expr::to_ast(&expr.expr, _global),
+            parse::AtomicExpr::BracketExpr(expr) => _global.to_ast(&expr.expr),
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),
         }
     }

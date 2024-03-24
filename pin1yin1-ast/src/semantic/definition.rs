@@ -36,13 +36,14 @@ impl<'ast, 's> FnDefinition<'ast, 's> {
 
 #[derive(Debug, Clone)]
 pub struct FnSign {
+    pub mangle: String,
     pub ty: ast::TypeDefine,
     pub params: Vec<ast::TypeDefine>,
 }
 
 impl FnSign {
-    pub fn new(ty: ast::TypeDefine, params: Vec<ast::TypeDefine>) -> Self {
-        Self { ty, params }
+    pub fn new(mangle: String, ty: ast::TypeDefine, params: Vec<ast::TypeDefine>) -> Self {
+        Self { mangle, ty, params }
     }
 }
 
@@ -72,3 +73,11 @@ impl<'ast, 's> VarDefinition<'ast, 's> {
         }
     }
 }
+
+#[derive(Default, Debug, Clone)]
+pub struct TypeDefinitions {
+    pub map: HashMap<String, TypeDefinition>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDefinition {}

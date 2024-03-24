@@ -1,2 +1,4 @@
-pub mod definition;
-pub mod definition_pool;
+mod definition;
+mod scope;
+pub use definition::*;
+pub use scope::*;

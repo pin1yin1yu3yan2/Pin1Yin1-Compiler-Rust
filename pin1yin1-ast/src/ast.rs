@@ -14,6 +14,57 @@ pub enum Statement {
     Return(Return),
 }
 
+mod from_impls {
+    use super::*;
+    impl From<FnDefine> for Statement {
+        fn from(v: FnDefine) -> Self {
+            Self::FnDefine(v)
+        }
+    }
+
+    impl From<VarDefine> for Statement {
+        fn from(v: VarDefine) -> Self {
+            Self::VarDefine(v)
+        }
+    }
+
+    impl From<VarStore> for Statement {
+        fn from(v: VarStore) -> Self {
+            Self::VarStore(v)
+        }
+    }
+
+    impl From<FnCall> for Statement {
+        fn from(v: FnCall) -> Self {
+            Self::FnCall(v)
+        }
+    }
+
+    impl From<Statements> for Statement {
+        fn from(v: Statements) -> Self {
+            Self::Block(v)
+        }
+    }
+
+    impl From<If> for Statement {
+        fn from(v: If) -> Self {
+            Self::If(v)
+        }
+    }
+
+    impl From<While> for Statement {
+        fn from(v: While) -> Self {
+            Self::While(v)
+        }
+    }
+
+    impl From<Return> for Statement {
+        fn from(v: Return) -> Self {
+            Self::Return(v)
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct FnDefine {
     #[serde(rename = "type")]
@@ -30,21 +81,6 @@ pub struct VarDefine {
     pub name: String,
     /// `init` must be an `atomic expr`
     pub init: Option<Expr>,
-}
-
-impl VarDefine {
-    pub fn new_alloc(ty: TypeDefine, init: impl Into<Option<Expr>>) -> Self {
-        use std::sync::atomic::AtomicUsize;
-        static ALLOC_NAME: AtomicUsize = AtomicUsize::new(0);
-        Self {
-            ty,
-            init: init.into(),
-            name: format!(
-                ".{}",
-                ALLOC_NAME.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            ),
-        }
-    }
 }
 
 pub type Variable = String;
@@ -90,6 +126,12 @@ pub struct While {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Return {
+    /// here, this should be [`Option<Variable>`]
+    ///
+    /// but that's llvm's work! we just bind a literal to a variable,
+    /// and return it
+    ///
+    /// llvm will and should opt this(
     pub val: Option<Variable>,
 }
 
@@ -206,6 +248,7 @@ pub enum TypeDecorators {
     // #[deprecated = "unclear semantics"]
     Const,
     // TODO: remove this varient
+    // hmm, `kuan1` has been removed, lol
     Array,
     Reference,
     Pointer,

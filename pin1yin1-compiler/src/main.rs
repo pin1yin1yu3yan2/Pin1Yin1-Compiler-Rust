@@ -1,11 +1,14 @@
 pub mod compile;
+pub mod scope;
 pub mod types;
 
-use pin1yin1_ast::{ast::Statements, parse::do_parse, semantic::definition_pool::GlobalPool};
+use compile::CodeGen;
+use inkwell::context::Context;
+use pin1yin1_ast::{ast::Statements, parse::do_parse, semantic::Global};
 use pin1yin1_parser::*;
 
 fn main() {
-    let path = "/home/twhice/Pin1Yin1-rustc/test.py1";
+    let path = "/home/yiyue/Pin1Yin1-rustc/test.py1";
     let src = std::fs::read_to_string(path).unwrap();
 
     let source = Source::new(path, src.chars());
@@ -13,7 +16,10 @@ fn main() {
 
     let pus = do_parse(&mut parser).to_result().unwrap();
 
-    let mut global = GlobalPool::new();
+    let context = Context::create();
+    let mut compiler = CodeGen::new(&context, "test").unwrap();
+
+    let mut global = Global::new();
     global.load(&pus).to_result().unwrap();
 
     let ast = global.finish();

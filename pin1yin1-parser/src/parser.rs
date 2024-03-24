@@ -114,11 +114,11 @@ impl<'s, S: Copy> Parser<'s, S> {
         #[cfg(feature = "parser_calling_tree")]
         static DEPTH: AtomicUsize = AtomicUsize::new(0);
         #[cfg(feature = "parser_calling_tree")]
-        if p_name.starts_with("pin1yin1_ast::parse") {
+        {
             for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
                 print!("    ")
             }
-            println!("start {p_name}");
+            println!("Start {p_name}");
             DEPTH.fetch_add(1, std::sync::atomic::Ordering::Release);
         }
 
@@ -126,7 +126,7 @@ impl<'s, S: Copy> Parser<'s, S> {
         let result = parser(&mut tmp);
 
         #[cfg(feature = "parser_calling_tree")]
-        if p_name.starts_with("pin1yin1_ast::parse") {
+        {
             DEPTH.fetch_sub(1, std::sync::atomic::Ordering::Release);
             for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
                 print!("    ")

@@ -5,10 +5,9 @@ use std::fmt::Debug;
 ///
 /// be different from &[char], this type contains
 /// two data: the start of the selection, and the end of the selection
-///
-/// as for [`serde`],,, we skip [`Selection`] now
 #[derive(Debug, Clone, Copy)]
 pub struct Selection<'s, S: Copy = char> {
+    // TODO: remove this
     pub(crate) src: &'s Source<S>,
     pub(crate) start: usize,
     pub(crate) end: usize,

@@ -6,7 +6,7 @@ use inkwell::{
     execution_engine::ExecutionEngine,
     module::Module,
     types::BasicTypeEnum,
-    values::{BasicValueEnum, PointerValue},
+    values::BasicValueEnum,
 };
 
 pub struct CodeGen<'ctx> {
@@ -15,41 +15,6 @@ pub struct CodeGen<'ctx> {
     builder: Builder<'ctx>,
     execution_engine: ExecutionEngine<'ctx>,
     variables: HashMap<String, Box<dyn Variable + 'ctx>>,
-}
-
-pub trait Variable {
-    fn load<'s: 'ctx, 'ctx>(
-        &'s self,
-        builder: &Builder<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, BuilderError>;
-    fn store<'s: 'ctx, 'ctx>(
-        &'s self,
-        builder: &Builder<'ctx>,
-        value: BasicValueEnum<'ctx>,
-    ) -> Result<(), BuilderError>;
-}
-
-pub struct StackVariable<'ctx> {
-    pointer: PointerValue<'ctx>,
-}
-
-impl Variable for StackVariable<'_> {
-    fn load<'s: 'ctx, 'ctx>(
-        &'s self,
-        builder: &Builder<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, BuilderError> {
-        builder
-            .build_load(self.pointer, "")
-            .map(BasicValueEnum::from)
-    }
-
-    fn store<'s: 'ctx, 'ctx>(
-        &'s self,
-        builder: &Builder<'ctx>,
-        value: BasicValueEnum<'ctx>,
-    ) -> Result<(), BuilderError> {
-        builder.build_store(self.pointer, value).map(|_| ())
-    }
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -131,6 +96,8 @@ pub trait Compile {
 
 use pin1yin1_ast::ast;
 
+use crate::scope::{AllocVariable, Variable};
+
 impl Compile for ast::Statement {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         match self {
@@ -162,7 +129,7 @@ impl Compile for ast::VarDefine {
         let ty = state.type_cast(&self.ty);
         let pointer = state.builder.build_alloca(ty, &self.name)?;
 
-        let val = StackVariable { pointer };
+        let val = AllocVariable { ty, pointer };
 
         if let Some(init) = &self.init {
             let init = state.eval(init)?;
