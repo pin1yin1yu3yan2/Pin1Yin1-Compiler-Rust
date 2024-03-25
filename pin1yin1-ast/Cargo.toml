@@ -12,5 +12,4 @@ serde = { version = "1", features = ["serde_derive"] }
 
 [features]
 default = ["parser"]
-parser_calling_tree = ["parser", "pin1yin1-parser/parser_calling_tree"]
 parser = ["pin1yin1-parser"]

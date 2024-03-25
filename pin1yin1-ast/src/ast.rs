@@ -80,11 +80,55 @@ pub struct VarDefine {
     pub ty: TypeDefine,
     pub name: String,
     /// `init` must be an `atomic expr`
-    pub init: Option<Expr>,
+    pub init: Option<OperateExpr>,
 }
 
-pub type Variable = String;
-pub type Variables = Vec<String>;
+/// this kind of expr is the most general expression
+///
+/// [`AtomicExpr::Char`], [`AtomicExpr::String`], [`AtomicExpr::Integer`] and [`AtomicExpr::Float`]
+/// mean literals
+///
+/// [`AtomicExpr::Variable`] and [`AtomicExpr::FnCall`] are folded expression,for example,
+/// [`OperateExpr::Binary`] and [`OperateExpr::Unary`] will be transformed into a [`VarDefine`],
+/// and its result(a variable) will be treated as [`AtomicExpr::Variable`]
+///
+/// using this way to avoid expressions' tree, and make llvm-ir generation much easier
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub enum AtomicExpr {
+    Char(char),
+    String(String),
+    Integer(usize),
+    Float(f64),
+    Variable(String),
+    FnCall(FnCall),
+    // #[deprecated = "unsupported now"]
+    // Initialization(Vec<Expr>),
+}
+
+impl AtomicExpr {
+    pub fn with_ty(self, ty: TypeDefine) -> TypedExpr {
+        TypedExpr { ty, val: self }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct TypedExpr {
+    #[serde(rename = "type")]
+    pub ty: TypeDefine,
+    pub val: AtomicExpr,
+}
+
+impl TypedExpr {
+    pub fn new(ty: TypeDefine, expr: impl Into<AtomicExpr>) -> Self {
+        Self {
+            ty,
+            val: expr.into(),
+        }
+    }
+}
+
+pub type Variable = TypedExpr;
+pub type Variables = Vec<Variable>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VarStore {
@@ -101,7 +145,7 @@ pub struct FnCall {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Condition {
     // the final value of the condition
-    pub val: String,
+    pub val: Variable,
     pub compute: Statements,
 }
 
@@ -135,48 +179,45 @@ pub struct Return {
     pub val: Option<Variable>,
 }
 
+/// [`OperateExpr::Unary`] and [`OperateExpr::Binary`] are normal operations aroud
+/// primitives, hign ranked operations are translated into [`AtomicExpr::FnCall`]
+/// and be stored as [`OperateExpr::NoOp`]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-pub enum Expr {
-    // atomic(both on lex and parse)
-    Char(char),
-    String(String),
-    Integer(usize),
-    Float(f64),
-    Variable(String),
-
-    // complex
-    FuncionCall(FnCall),
-    Unary(Operators, Box<Expr>),
-    Binary(Operators, Box<Expr>, Box<Expr>),
-
-    // unsupport :)
-    Initialization(Vec<Expr>),
+pub enum OperateExpr {
+    Unary(Operators, AtomicExpr),
+    Binary(Operators, AtomicExpr, AtomicExpr),
+    NoOp(AtomicExpr),
 }
 
-impl From<String> for Expr {
-    fn from(value: String) -> Self {
-        Self::Variable(value)
+impl From<AtomicExpr> for OperateExpr {
+    fn from(v: AtomicExpr) -> Self {
+        Self::noop(v)
     }
 }
 
-impl Expr {
-    pub fn binary(op: Operators, l: impl Into<Expr>, r: impl Into<Expr>) -> Self {
-        Self::Binary(op, Box::new(l.into()), Box::new(r.into()))
+impl OperateExpr {
+    pub fn binary(op: Operators, l: impl Into<AtomicExpr>, r: impl Into<AtomicExpr>) -> Self {
+        Self::Binary(op, l.into(), r.into())
     }
 
-    pub fn unary(op: Operators, l: impl Into<Expr>) -> Self {
-        Self::Unary(op, Box::new(l.into()))
+    pub fn unary(op: Operators, v: impl Into<AtomicExpr>) -> Self {
+        Self::Unary(op, v.into())
+    }
+
+    pub fn noop(v: impl Into<AtomicExpr>) -> Self {
+        Self::NoOp(v.into())
     }
 }
-
-pub type Parameters = Vec<Parameter>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Parameter {
     #[serde(rename = "type")]
     pub ty: TypeDefine,
+    /// using string because its the name of parameter, not a value
     pub name: String,
 }
+
+pub type Parameters = Vec<Parameter>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct TypeDefine {

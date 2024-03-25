@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::error::Error;
 
 use inkwell::{
     builder::{Builder, BuilderError},
@@ -14,7 +14,7 @@ pub struct CodeGen<'ctx> {
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     execution_engine: ExecutionEngine<'ctx>,
-    variables: HashMap<String, Box<dyn Variable + 'ctx>>,
+    global: Global<'ctx>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -36,8 +36,23 @@ impl<'ctx> CodeGen<'ctx> {
             builder,
             context,
             module,
-            variables: HashMap::new(),
+            global: Default::default(),
         })
+    }
+
+    pub fn get_var(&self, name: &str) -> &dyn Variable {
+        self.global.get_var(name)
+    }
+
+    pub fn regist_params<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = (String, crate::scope::ParamVariable<'ctx>)>,
+    {
+        self.global.regist_params(iter)
+    }
+
+    pub fn regist_var(&mut self, name: String, val: AllocVariable<'ctx>) {
+        self.global.regist_var(name, val)
     }
 
     fn type_cast(&self, ty: &ast::TypeDefine) -> BasicTypeEnum<'ctx> {
@@ -50,19 +65,19 @@ impl<'ctx> CodeGen<'ctx> {
             "i32" => self.context.i32_type(),
             "i16" => self.context.i16_type(),
             "i8" => self.context.i8_type(),
+            "zi4" => self.context.i32_type(),
             _ => todo!("type {} is not supported now...", ty),
         }
         .into()
     }
 
-    fn eval(&self, expr: &ast::Expr) -> Result<BasicValueEnum, BuilderError> {
-        let r = match expr {
-            ast::Expr::Char(c) => {
-                let char = self.context.i32_type();
+    fn atomic_epxr(&self, atomic: &ast::AtomicExpr) -> Result<BasicValueEnum, BuilderError> {
+        let r = match atomic {
+            ast::AtomicExpr::Char(c) => {
                 // char -> u32
-                char.const_int(*c as _, false).into()
+                self.context.i32_type().const_int(*c as _, false).into()
             }
-            ast::Expr::String(s) => {
+            ast::AtomicExpr::String(s) => {
                 let u8 = self.context.i8_type();
                 let mut bytes = vec![];
                 for byte in s.bytes() {
@@ -71,22 +86,21 @@ impl<'ctx> CodeGen<'ctx> {
                 // &str -> &[u8]
                 u8.const_array(&bytes).into()
             }
-            ast::Expr::Integer(i) => {
-                let i64 = self.context.i64_type();
-                i64.const_int(*i as _, false).into()
-            }
-            ast::Expr::Float(f) => {
-                let f64 = self.context.f64_type();
-                f64.const_float(*f).into()
-            }
-            ast::Expr::Variable(v) => {
-                let v = &self.variables[v];
-                v.load(&self.builder)?
-            }
+            ast::AtomicExpr::Integer(i) => self.context.i64_type().const_int(*i as _, false).into(),
+            ast::AtomicExpr::Float(f) => self.context.f64_type().const_float(*f).into(),
+            ast::AtomicExpr::Variable(v) => self.get_var(v).load(&self.builder)?,
 
-            _ => todo!("only atomic operations are allowed in VarStore"),
+            _ => todo!("initalizition is not supported now..."),
         };
         Ok(r)
+    }
+
+    fn eval(&self, expr: &ast::OperateExpr) -> Result<BasicValueEnum, BuilderError> {
+        match expr {
+            ast::OperateExpr::Unary(_, _) => todo!(),
+            ast::OperateExpr::Binary(_, _, _) => todo!(),
+            ast::OperateExpr::NoOp(val) => self.atomic_epxr(val),
+        }
     }
 }
 
@@ -96,7 +110,7 @@ pub trait Compile {
 
 use pin1yin1_ast::ast;
 
-use crate::scope::{AllocVariable, Variable};
+use crate::scope::{AllocVariable, Global, Variable};
 
 impl Compile for ast::Statement {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
@@ -135,16 +149,16 @@ impl Compile for ast::VarDefine {
             let init = state.eval(init)?;
             val.store(&state.builder, init)?;
         }
-        state.variables.insert(self.name.clone(), Box::new(val));
+        state.regist_var(self.name.clone(), val);
         Ok(())
     }
 }
 // eval, store
 impl Compile for ast::VarStore {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
-        let val = state.variables.get(&self.val).unwrap();
-        let s = state.variables.get(&self.name).unwrap();
-        s.store(&state.builder, val.load(&state.builder)?)?;
+        let val = state.atomic_epxr(&self.val.val)?;
+        let s = state.get_var(&self.name);
+        s.store(&state.builder, val)?;
         Ok(())
     }
 }

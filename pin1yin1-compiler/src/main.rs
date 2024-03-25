@@ -1,4 +1,5 @@
 pub mod compile;
+pub mod primitive;
 pub mod scope;
 pub mod types;
 

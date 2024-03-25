@@ -23,8 +23,11 @@ impl<'ast, 's> Global<'ast, 's> {
         self.this_pool().stmts.push(stmt.into())
     }
 
-    pub(crate) fn push_define(&mut self, define: ast::VarDefine) -> crate::parse::TypedVar {
-        let typed_var = crate::parse::TypedVar::new(define.name.clone(), define.ty.clone());
+    pub(crate) fn push_define(&mut self, define: ast::VarDefine) -> ast::TypedExpr {
+        let typed_var = ast::TypedExpr::new(
+            define.ty.clone(),
+            ast::AtomicExpr::Variable(define.name.clone()),
+        );
         self.push_stmt(define);
         typed_var
     }
@@ -36,14 +39,14 @@ impl<'ast, 's> Global<'ast, 's> {
 
     // pub fn mangle(&mut self, name: &str) {}
 
-    pub fn alloc_var(
-        &mut self,
-        ty: ast::TypeDefine,
-        init: impl Into<Option<ast::Expr>>,
-    ) -> ast::VarDefine {
+    pub fn alloc_var<O, E>(&mut self, ty: ast::TypeDefine, init: O) -> ast::VarDefine
+    where
+        O: Into<Option<E>>,
+        E: Into<ast::OperateExpr>,
+    {
         let def = ast::VarDefine {
             ty,
-            init: init.into(),
+            init: init.into().map(|e| e.into()),
             name: self.this_pool().alloc_id.to_string(),
         };
         self.this_pool().alloc_id += 1;

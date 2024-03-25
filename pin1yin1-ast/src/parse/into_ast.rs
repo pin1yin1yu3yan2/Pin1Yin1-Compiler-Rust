@@ -17,22 +17,22 @@ pub trait Ast<'s>: ParseUnit {
     ) -> Result<'s, Self::Forward>;
 }
 
-pub struct TypedVar {
-    val: String,
-    ty: ast::TypeDefine,
-}
+// pub struct TypedVar {
+//     val: String,
+//     ty: ast::TypeDefine,
+// }
 
-impl TypedVar {
-    pub(crate) fn new(val: String, ty: ast::TypeDefine) -> Self {
-        Self { val, ty }
-    }
-}
+// impl TypedVar {
+//     pub(crate) fn new(val: String, ty: ast::TypeDefine) -> Self {
+//         Self { val, ty }
+//     }
+// }
 
-impl From<ast::VarDefine> for TypedVar {
-    fn from(value: ast::VarDefine) -> Self {
-        Self::new(value.name, value.ty)
-    }
-}
+// impl From<ast::VarDefine> for TypedVar {
+//     fn from(value: ast::VarDefine) -> Self {
+//         Self::new(value.name, value.ty)
+//     }
+// }
 
 impl<'s> Ast<'s> for parse::Statement<'s> {
     type Forward = ();
@@ -74,7 +74,7 @@ impl<'s> Ast<'s> for parse::Statement<'s> {
 }
 
 impl<'s> Ast<'s> for parse::FnCall<'s> {
-    type Forward = TypedVar;
+    type Forward = ast::TypedExpr;
 
     fn to_ast<'ast>(
         fn_call: &'ast Self::Target<'s>,
@@ -118,12 +118,11 @@ impl<'s> Ast<'s> for parse::FnCall<'s> {
 
         let fn_call = ast::FnCall {
             name: fn_call.fn_name.ident.clone(),
-            args: args.into_iter().map(|tv| tv.val).collect(),
+            args: args.into_iter().collect(),
         };
 
         let ty = fn_def.ty.clone();
-        let init = ast::Expr::FuncionCall(fn_call);
-
+        let init = ast::AtomicExpr::FnCall(fn_call);
         let define = _global.alloc_var(ty, init);
         Result::Success(_global.push_define(define))
     }
@@ -153,7 +152,7 @@ impl<'s> Ast<'s> for parse::VarStore<'s> {
                 var_def.ty, val.ty
             ));
         }
-        _global.push_stmt(ast::VarStore { name, val: val.val });
+        _global.push_stmt(ast::VarStore { name, val });
         Result::Success(())
     }
 }
@@ -256,7 +255,7 @@ impl<'s> Ast<'s> for parse::VarDefine<'s> {
                         ty, init.ty
                     ));
                 }
-                Some(ast::Expr::Variable(init.val))
+                Some(init.val.into())
             }
             None => None,
         };
@@ -342,7 +341,7 @@ impl<'s> Ast<'s> for parse::Return<'s> {
         _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         let val = match &return_.val {
-            Some(val) => Some(_global.to_ast(val)?.val),
+            Some(val) => Some(_global.to_ast(val)?),
             None => None,
         };
         _global.push_stmt(ast::Statement::Return(ast::Return { val }));
@@ -391,14 +390,14 @@ impl<'s> Ast<'s> for parse::Arguments<'s> {
         }
 
         Result::Success(ast::Condition {
-            val: last_cond.val,
+            val: last_cond,
             compute,
         })
     }
 }
 
 impl<'s> Ast<'s> for parse::Expr<'s> {
-    type Forward = TypedVar;
+    type Forward = ast::TypedExpr;
 
     fn to_ast<'ast>(
         expr: &'ast Self::Target<'s>,
@@ -424,7 +423,8 @@ impl<'s> Ast<'s> for parse::Expr<'s> {
                     l.ty.clone()
                 };
 
-                let define = _global.alloc_var(ty, ast::Expr::binary(o.take(), l.val, r.val));
+                let define =
+                    _global.alloc_var(ty, ast::OperateExpr::binary(o.take(), l.val, r.val));
                 Result::Success(_global.push_define(define))
             }
         }
@@ -432,7 +432,7 @@ impl<'s> Ast<'s> for parse::Expr<'s> {
 }
 
 impl<'s> Ast<'s> for parse::AtomicExpr<'s> {
-    type Forward = TypedVar;
+    type Forward = ast::TypedExpr;
 
     fn to_ast<'ast>(
         atomic: &'ast Self::Target<'s>,
@@ -442,24 +442,25 @@ impl<'s> Ast<'s> for parse::AtomicExpr<'s> {
         match atomic {
             parse::AtomicExpr::CharLiteral(char) => {
                 let define =
-                    _global.alloc_var(ast::TypeDefine::char(), ast::Expr::Char(char.parsed));
+                    _global.alloc_var(ast::TypeDefine::char(), ast::AtomicExpr::Char(char.parsed));
                 Result::Success(_global.push_define(define))
             }
             parse::AtomicExpr::StringLiteral(str) => {
                 let define = _global.alloc_var(
                     ast::TypeDefine::string(),
-                    ast::Expr::String(str.parsed.clone()),
+                    ast::AtomicExpr::String(str.parsed.clone()),
                 );
                 Result::Success(_global.push_define(define))
             }
             parse::AtomicExpr::NumberLiteral(n) => {
                 let defint = match n {
                     parse::NumberLiteral::Float { number, .. } => {
-                        _global.alloc_var(ast::TypeDefine::float(), ast::Expr::Float(*number))
+                        _global.alloc_var(ast::TypeDefine::float(), ast::AtomicExpr::Float(*number))
                     }
-                    parse::NumberLiteral::Digit { number, .. } => {
-                        _global.alloc_var(ast::TypeDefine::integer(), ast::Expr::Integer(*number))
-                    }
+                    parse::NumberLiteral::Digit { number, .. } => _global.alloc_var(
+                        ast::TypeDefine::integer(),
+                        ast::AtomicExpr::Integer(*number),
+                    ),
                 };
                 Result::Success(_global.push_define(defint))
             }
@@ -471,12 +472,19 @@ impl<'s> Ast<'s> for parse::AtomicExpr<'s> {
                     _selection.throw("use of undefined variable")
                 })
                 .map(|(def, _m)| def)?;
-                Result::Success(TypedVar::new(var.ident.clone(), def.ty.clone()))
+                Result::Success(
+                    ast::AtomicExpr::Variable(var.ident.clone()).with_ty(def.ty.clone()),
+                )
             }
+
+            // here, this is incorrect because operators may be overdriven
+            // all operator overdriven must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
                 let l = _global.to_ast(&unary.expr)?;
-                let define =
-                    _global.alloc_var(l.ty.clone(), ast::Expr::unary(*unary.operator, l.val));
+                let define = _global.alloc_var(
+                    l.ty.clone(),
+                    ast::OperateExpr::unary(*unary.operator, l.val),
+                );
                 Result::Success(_global.push_define(define))
             }
             parse::AtomicExpr::BracketExpr(expr) => _global.to_ast(&expr.expr),
