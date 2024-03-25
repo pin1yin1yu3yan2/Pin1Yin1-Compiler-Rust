@@ -1,5 +1,3 @@
-use pin1yin1_parser::WithSelection;
-
 use crate::keywords::operators::Operators;
 
 pub type Statements = Vec<Statement>;
@@ -236,7 +234,7 @@ pub struct TypeDefine {
 }
 
 impl TypeDefine {
-    fn no_decorators(ty: impl Into<String>) -> Self {
+    pub fn no_decorators(ty: impl Into<String>) -> Self {
         Self {
             decorators: None,
             ty: ty.into(),
@@ -348,105 +346,5 @@ mod serde_ {
         {
             deserializer.deserialize_str(Visitor)
         }
-    }
-}
-
-#[cfg(feature = "parser")]
-impl TryFrom<crate::parse::TypeDefine> for TypeDefine {
-    type Error = pin1yin1_parser::ParseError;
-
-    fn try_from(value: crate::parse::TypeDefine) -> Result<Self, Self::Error> {
-        use pin1yin1_parser::ErrorKind;
-        /*
-           int: sign, width
-           float: width
-        */
-
-        let ty = if &**value.ty == "zheng3" {
-            // default to be i64
-            let sign = value.sign.map(|pu| pu.sign).unwrap_or(true);
-            let sign_char = if sign { 'i' } else { 'u' };
-            let width = if let Some(width) = value.width {
-                if !width.width.is_power_of_two() || *width.width > 64 {
-                    return Err(width.make_error(
-                        format!("`zheng3` with width {} is not suppert now", *width.width),
-                        ErrorKind::Semantic,
-                    ));
-                }
-                *width.width
-            } else {
-                64
-            };
-            value.width.map(|pu| *pu.width).unwrap_or(64);
-
-            format!("{sign_char}{width}")
-        } else if &**value.ty == "fu2" {
-            // default to be f32
-            if let Some(sign) = value.sign {
-                return Err(sign.make_error(
-                    "`fu2` type cant be decorated with `you3fu2` or `wu2fu2`",
-                    ErrorKind::Semantic,
-                ));
-            }
-            let width = if let Some(width) = value.width {
-                if *width.width == 32 || *width.width == 64 {
-                    *width.width
-                } else {
-                    return Err(width.make_error(
-                        format!("`fu2` with width {} is not supperted now", *width.width),
-                        ErrorKind::Semantic,
-                    ));
-                }
-            } else {
-                32
-            };
-            format!("f{width}")
-        } else {
-            if let Some(sign) = value.sign {
-                return Err(sign.make_error(
-                    format!(
-                        "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                        value.ty.ident
-                    ),
-                    ErrorKind::Semantic,
-                ));
-            }
-            if let Some(width) = value.width {
-                return Err(width.make_error(
-                    format!(
-                        "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                        value.ty.ident
-                    ),
-                    ErrorKind::Semantic,
-                ));
-            }
-            value.ty.take().ident
-        };
-
-        if value.const_.is_none() && value.decorators.is_empty() {
-            return Ok(Self::no_decorators(ty));
-        }
-
-        let mut decorators = vec![];
-        if value.const_.is_some() {
-            decorators.push(TypeDecorators::Const);
-        }
-
-        for decorator in value.decorators {
-            let decorator = match decorator.take() {
-                crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
-                    Some(size) => TypeDecorators::SizedArray(size.take()),
-                    None => TypeDecorators::Array,
-                },
-                crate::parse::TypeDecorators::TypeReferenceExtend(_) => TypeDecorators::Reference,
-                crate::parse::TypeDecorators::TypePointerExtend(_) => TypeDecorators::Pointer,
-            };
-            decorators.push(decorator);
-        }
-
-        Ok(Self {
-            decorators: decorators.into(),
-            ty,
-        })
     }
 }

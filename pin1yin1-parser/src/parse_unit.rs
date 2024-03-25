@@ -29,13 +29,13 @@ impl ParseUnit for String {
     }
 }
 
-///  very hot funtion!!!
-
 impl<'a> ParseUnit for &'a [char] {
     type Target = &'a [char];
 
     fn parse(_p: &mut Parser) -> ParseResult<Self> {
-        todo!()
+        unimplemented!(
+            "use `p.once(Parser::get_chars)` instead of `parse::<&[char]>(), because of lifetime`"
+        )
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::compile::CodeGen;
 use inkwell::{context::Context, execution_engine::JitFunction};
-use pin1yin1_ast::{ast::Statement, parse::do_parse, semantic::Global};
+use pin1yin1_ast::ast::Statement;
+use pin1yin1_grammar::{parse::do_parse, semantic::Global};
 use pin1yin1_parser::*;
 
 fn get_ast(src: &str) -> Vec<Statement> {
@@ -37,6 +38,19 @@ jie2
 ";
 
 #[test]
+fn jia_jian_around_114514() {
+    compile_tester(TEST_SRC1, |compiler| unsafe {
+        type TestFn = unsafe extern "C" fn(i64) -> i64;
+
+        let jia: JitFunction<TestFn> = compiler.execution_engine.get_function("jia").unwrap();
+        let jian: JitFunction<TestFn> = compiler.execution_engine.get_function("jian").unwrap();
+
+        assert_eq!(jia.call(114513), 114514);
+        assert_eq!(jian.call(114515), 114514);
+    })
+}
+
+#[test]
 fn serde_test() {
     let ast = get_ast(TEST_SRC1);
 
@@ -49,19 +63,6 @@ fn serde_test() {
     assert_eq!(ast, ast1);
     assert_eq!(ast, ast2);
     assert_eq!(str1, str2);
-}
-
-#[test]
-fn jia_jian_around_114514() {
-    compile_tester(TEST_SRC1, |compiler| unsafe {
-        type TestFn = unsafe extern "C" fn(i64) -> i64;
-
-        let jia: JitFunction<TestFn> = compiler.execution_engine.get_function("jia").unwrap();
-        let jian: JitFunction<TestFn> = compiler.execution_engine.get_function("jian").unwrap();
-
-        assert_eq!(jia.call(114513), 114514);
-        assert_eq!(jian.call(114515), 114514);
-    })
 }
 
 const TEST_SRC2: &str = "

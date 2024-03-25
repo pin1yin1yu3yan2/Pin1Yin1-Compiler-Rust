@@ -185,7 +185,7 @@ impl Ast for parse::FnDefine {
             .params
             .iter()
             .try_fold(Vec::new(), |mut vec, pu| {
-                let ty = ast::TypeDefine::try_from((*pu.inner.ty).clone())?;
+                let ty = pu.inner.ty.to_ast_ty()?;
                 let name = pu.inner.name.ident.clone();
                 vec.push(ast::Parameter { ty, name });
                 Result::Success(vec)
@@ -201,6 +201,7 @@ impl Ast for parse::FnDefine {
                     let param = semantic::Parameter {
                         name: param.name,
                         var_def: semantic::VarDefinition::new(param.ty, raw),
+                        _p: std::marker::PhantomData,
                     };
                     vec.push(param);
                     Result::Success(vec)

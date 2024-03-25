@@ -136,6 +136,108 @@ impl TypeDefine {
     }
 }
 
+impl TryFrom<TypeDefine> for crate::ast::TypeDefine {
+    type Error = pin1yin1_parser::ParseError;
+
+    fn try_from(value: crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
+        /*
+           int: sign, width
+           float: width
+        */
+
+        let ty = if &**value.ty == "zheng3" {
+            // default to be i64
+            let sign = value.sign.map(|pu| pu.sign).unwrap_or(true);
+            let sign_char = if sign { 'i' } else { 'u' };
+            let width = if let Some(width) = value.width {
+                if !width.width.is_power_of_two() || *width.width > 64 {
+                    return Err(width.make_error(
+                        format!("`zheng3` with width {} is not suppert now", *width.width),
+                        ErrorKind::Semantic,
+                    ));
+                }
+                *width.width
+            } else {
+                64
+            };
+            value.width.map(|pu| *pu.width).unwrap_or(64);
+
+            format!("{sign_char}{width}")
+        } else if &**value.ty == "fu2" {
+            // default to be f32
+            if let Some(sign) = value.sign {
+                return Err(sign.make_error(
+                    "`fu2` type cant be decorated with `you3fu2` or `wu2fu2`",
+                    ErrorKind::Semantic,
+                ));
+            }
+            let width = if let Some(width) = value.width {
+                if *width.width == 32 || *width.width == 64 {
+                    *width.width
+                } else {
+                    return Err(width.make_error(
+                        format!("`fu2` with width {} is not supperted now", *width.width),
+                        ErrorKind::Semantic,
+                    ));
+                }
+            } else {
+                32
+            };
+            format!("f{width}")
+        } else {
+            if let Some(sign) = value.sign {
+                return Err(sign.make_error(
+                    format!(
+                        "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
+                        value.ty.ident
+                    ),
+                    ErrorKind::Semantic,
+                ));
+            }
+            if let Some(width) = value.width {
+                return Err(width.make_error(
+                    format!(
+                        "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
+                        value.ty.ident
+                    ),
+                    ErrorKind::Semantic,
+                ));
+            }
+            value.ty.take().ident
+        };
+
+        if value.const_.is_none() && value.decorators.is_empty() {
+            return Ok(Self::no_decorators(ty));
+        }
+
+        let mut decorators = vec![];
+        if value.const_.is_some() {
+            decorators.push(crate::ast::TypeDecorators::Const);
+        }
+
+        for decorator in value.decorators {
+            let decorator = match decorator.take() {
+                crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
+                    Some(size) => crate::ast::TypeDecorators::SizedArray(size.take()),
+                    None => crate::ast::TypeDecorators::Array,
+                },
+                crate::parse::TypeDecorators::TypeReferenceExtend(_) => {
+                    crate::ast::TypeDecorators::Reference
+                }
+                crate::parse::TypeDecorators::TypePointerExtend(_) => {
+                    crate::ast::TypeDecorators::Pointer
+                }
+            };
+            decorators.push(decorator);
+        }
+
+        Ok(Self {
+            decorators: decorators.into(),
+            ty,
+        })
+    }
+}
+
 impl ParseUnit for TypeDefine {
     type Target = TypeDefine;
 

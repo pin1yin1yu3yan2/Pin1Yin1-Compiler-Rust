@@ -1,7 +1,6 @@
 use crate::ast;
 use std::{collections::HashMap, marker::PhantomData};
 
-#[cfg(feature = "parser")]
 use crate::parse;
 
 #[derive(Default, Debug, Clone)]
@@ -15,19 +14,16 @@ pub struct FnDefinition<'ast> {
     ///
     /// unsupport now
     pub overdrives: Vec<FnSign<'ast>>,
-    #[cfg(feature = "parser")]
+
     pub raw_defines: Vec<&'ast parse::FnDefine>,
     _p: PhantomData<&'ast ()>,
 }
 
 impl<'ast> FnDefinition<'ast> {
-    pub fn new(
-        overdrives: Vec<FnSign<'ast>>,
-        #[cfg(feature = "parser")] raw_defines: Vec<&'ast parse::FnDefine>,
-    ) -> Self {
+    pub fn new(overdrives: Vec<FnSign<'ast>>, raw_defines: Vec<&'ast parse::FnDefine>) -> Self {
         Self {
             overdrives,
-            #[cfg(feature = "parser")]
+
             raw_defines,
             _p: PhantomData,
         }
@@ -44,8 +40,9 @@ pub struct FnSign<'ast> {
 #[derive(Debug, Clone)]
 pub struct Parameter<'ast> {
     pub name: String,
-    #[cfg(feature = "parser")]
+
     pub var_def: VarDefinition<'ast>,
+    pub _p: PhantomData<&'ast ()>,
 }
 
 impl<'ast> std::ops::Deref for Parameter<'ast> {
@@ -64,19 +61,16 @@ pub struct VarDefinitions<'ast> {
 #[derive(Debug, Clone)]
 pub struct VarDefinition<'ast> {
     pub ty: ast::TypeDefine,
-    #[cfg(feature = "parser")]
+
     pub raw_define: &'ast parse::VarDefine,
     _p: PhantomData<&'ast ()>,
 }
 
 impl<'ast> VarDefinition<'ast> {
-    pub fn new(
-        ty: ast::TypeDefine,
-        #[cfg(feature = "parser")] raw_define: &'ast parse::VarDefine,
-    ) -> Self {
+    pub fn new(ty: ast::TypeDefine, raw_define: &'ast parse::VarDefine) -> Self {
         Self {
             ty,
-            #[cfg(feature = "parser")]
+
             raw_define,
             _p: PhantomData,
         }

@@ -19,6 +19,7 @@ macro_rules! keywords {
             )*
         }
 
+        #[cfg(feature = "parser")]
         impl $enum_name {
             pub fn parse_or_unmatch(self, p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
                 use pin1yin1_parser::WithSelection;
@@ -77,89 +78,4 @@ macro_rules! keywords {
             };
         }
     };
-}
-
-/// use to define a complex parse unit which could be one of its variants
-
-#[macro_export]
-#[cfg(feature = "parser")]
-macro_rules! complex_pu {
-    (
-        $(#[$metas:meta])*
-        cpu $enum_name:ident {
-        $(
-            $(#[$v_metas:meta])*
-            $variant:ident
-        ),*
-    }) => {
-        #[derive(Debug, Clone)]
-        $(#[$metas])*
-        pub enum $enum_name {
-            $(
-                $(#[$v_metas])*
-                $variant($variant),
-            )*
-        }
-
-        $(
-        impl From<$variant> for $enum_name {
-             fn from(v: $variant) -> $enum_name {
-                <$enum_name>::$variant(v)
-            }
-        }
-        )*
-
-
-        impl pin1yin1_parser::ParseUnit for $enum_name {
-            type Target = $enum_name;
-
-            fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self>
-            {
-                pin1yin1_parser::Try::new(p)
-                $(
-
-                    .or_try::<Self, _>(|p| {
-                        $variant::parse(p)
-                            .map_pu(<$enum_name>::$variant)
-                    })
-                )*
-                .finish()
-            }
-        }
-    };
-}
-
-//TODO: a super NB parser generator
-#[macro_export]
-#[cfg(feature = "parser")]
-macro_rules! parse_unit {
-    (
-        ParseUnit $pu_name:ident : { $($var:ident, )*} =  { $rule:tt }
-    ) => {};
-}
-
-#[macro_export]
-#[cfg(feature = "parser")]
-macro_rules! parse_rule {
-    (  $var:ident? : $ty:ident, $rest:tt) => {
-        let $var = p.parse::<$ty>()?;
-        $crate::parse_rule!($rest)
-    };
-
-    (  $var:ident! : $ty:ident, $rest:tt) => {
-        let #var = p.parse::<$ty>().must_match?;
-        $crate::parse_rule!($rest)
-    };
-
-    (  $var:ident? = $val:expr  , $rest:tt) => {
-        let $var = $val.parse_or_unmatch(p)?;
-        $crate::parse_rule!($rest)
-    };
-
-    (  $var:ident! = $val:expr  , $rest:tt) => {
-        let $var = $val.parse_or_failed(p)?;
-        $crate::parse_rule!($rest)
-    };
-
-    () => {};
 }

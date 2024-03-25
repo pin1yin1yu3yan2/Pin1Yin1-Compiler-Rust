@@ -4,9 +4,10 @@ pub mod scope;
 #[cfg(test)]
 mod tests;
 
-use compile::CodeGen;
+use crate::compile::CodeGen;
 use inkwell::{context::Context, execution_engine::JitFunction};
-use pin1yin1_ast::{ast::Statements, parse::do_parse, semantic::Global};
+use pin1yin1_ast::ast::Statements;
+use pin1yin1_grammar::{parse::do_parse, semantic::Global};
 use pin1yin1_parser::*;
 
 fn main() {
