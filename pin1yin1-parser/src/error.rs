@@ -9,8 +9,8 @@ use crate::*;
 ///
 #[derive(Clone, Debug)]
 pub struct Error {
-    selection: Selection,
-    reason: String,
+    pub(crate) selection: Selection,
+    pub(crate) reason: String,
 }
 
 impl Error {

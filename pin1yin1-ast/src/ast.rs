@@ -196,8 +196,7 @@ pub struct Return {
 }
 
 /// [`OperateExpr::Unary`] and [`OperateExpr::Binary`] are normal operations aroud
-/// primitives, hign ranked operations are translated into [`AtomicExpr::FnCall`]
-/// and be stored as [`OperateExpr::NoOp`]
+/// primitives
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum OperateExpr {
     Unary(Operators, AtomicExpr),

@@ -25,6 +25,11 @@ impl<T> Result<T> {
         }
     }
 
+    pub fn handle_error(self, parser: &Parser) -> std::result::Result<T, String> {
+        self.to_result()
+            .map_err(|e| parser.handle_error(e).unwrap())
+    }
+
     pub fn from_result(result: std::result::Result<T, ParseError>) -> Self {
         match result {
             Ok(ok) => Self::Success(ok),

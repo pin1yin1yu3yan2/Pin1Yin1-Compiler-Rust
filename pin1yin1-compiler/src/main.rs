@@ -17,12 +17,12 @@ fn main() {
     let source = Source::new(path, src.chars());
     let mut parser = Parser::<'_, char>::new(&source);
 
-    let pus = do_parse(&mut parser).to_result().unwrap();
+    let pus = do_parse(&mut parser).handle_error(&parser).unwrap();
 
     let context = Context::create();
 
     let mut global = Global::new();
-    global.load(&pus).to_result().unwrap();
+    global.load(&pus).handle_error(&parser).unwrap();
 
     let ast = global.finish();
 

@@ -58,12 +58,12 @@ impl<S: Copy, P: ParseUnit<S>> PU<P, S> {
         }
     }
 
-    /// take [Self::target] from [`PU`]
+    /// take [ParseUnit::Target] from [`PU`]
     pub fn take(self) -> P::Target {
         self.target
     }
 
-    /// map [Self::target]
+    /// map [ParseUnit::Target]
     pub fn map<P2: ParseUnit<S>, M>(self, mapper: M) -> PU<P2, S>
     where
         M: FnOnce(P::Target) -> P2::Target,

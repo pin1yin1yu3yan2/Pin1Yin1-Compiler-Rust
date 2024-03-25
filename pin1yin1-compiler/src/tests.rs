@@ -8,11 +8,11 @@ fn get_ast(src: &str) -> Vec<Statement> {
     let source = Source::new("compile_test.py1", src.chars());
 
     let mut parser = Parser::<'_, char>::new(&source);
-    let pus = do_parse(&mut parser).to_result().unwrap();
+    let pus = do_parse(&mut parser).handle_error(&parser).unwrap();
 
     let mut global = Global::new();
 
-    global.load(&pus).to_result().unwrap();
+    global.load(&pus).handle_error(&parser).unwrap();
     global.finish()
 }
 

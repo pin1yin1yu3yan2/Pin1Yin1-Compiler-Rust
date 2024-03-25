@@ -6,7 +6,7 @@ use crate::*;
 ///
 /// [`ParseUnit::Target`] measn the actual type of the parse result
 ///
-/// [`S`] is the type of source
+/// S is the type of source
 pub trait ParseUnit<S: Copy = char>: Sized {
     type Target: Debug;
 

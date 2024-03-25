@@ -61,10 +61,6 @@ impl<S: Copy> Parser<'_, S> {
     pub(crate) fn start_idx(&self) -> usize {
         self.start_idx.unwrap()
     }
-
-    pub fn is_ending(&self) -> bool {
-        self.idx >= self.src.len()
-    }
 }
 
 impl<'s, S: Copy> Parser<'s, S> {
@@ -83,8 +79,8 @@ impl<'s, S: Copy> Parser<'s, S> {
         }
     }
 
-    /// start a [`Try`], allow you to try many times until you get a actually [`Error`]
-    /// or successfully parse a [`ParseUnit`]
+    /// start a [`Try`], allow you to try many times until you get a actually [`Error`]:
+    /// (not [`ErrorKind::Unmatch`]) or successfully parse a [`ParseUnit`]
     pub fn r#try<'p, F, P>(&'p mut self, p: F) -> Try<'s, 'p, S, P>
     where
         P: ParseUnit<S>,
@@ -93,11 +89,10 @@ impl<'s, S: Copy> Parser<'s, S> {
         Try::new(self).or_try(p)
     }
 
-    /// try to parse, mean that [`PuResult::Unmatch`] is allowed
+    /// try to parse, if the parsing failed, there will be no effect made on [`Parser`]
     ///
-    /// in this case, [`PuResult::Unmatch`] will be transformed into [`None`]
-    ///
-    /// so that you can use `?` as usual after using match / if let ~
+    /// you should not call [`ParseUnit::parse`] directly, using methods like [`Parser::once`]
+    /// instead
     pub fn once<P, F>(&mut self, parser: F) -> ParseResult<P, S>
     where
         P: ParseUnit<S>,
@@ -140,7 +135,11 @@ impl<'s, S: Copy> Parser<'s, S> {
         result
     }
 
-    /// try to parse,
+    /// try to parse, mean that [`ErrorKind::Unmatch`] is allowed
+    ///
+    /// in this case, [`ErrorKind::Unmatch`] will be transformed into [`None`]
+    ///
+    /// so that you can use `?` as usual after using match / if let ~
     pub fn try_once<P, F>(&mut self, parser: F) -> Option<ParseResult<P, S>>
     where
         P: ParseUnit<S>,
@@ -178,9 +177,9 @@ impl<'s, S: Copy> Parser<'s, S> {
         self.once(P::parse)
     }
 
-    /// try to parse, mean that [`PuResult::Unmatch`] is allowed
+    /// try to parse, mean that [`ErrorKind::Unmatch`] is allowed
     ///
-    /// in this case, [`PuResult::Unmatch`] will be transformed into [`None`]
+    /// in this case, [`ErrorKind::Unmatch`] will be transformed into [`None`]
     ///
     /// so that you can use `?` as usual after using match / if let ~
     pub fn try_parse<P: ParseUnit<S>>(&mut self) -> Option<ParseResult<P, S>> {
@@ -252,6 +251,50 @@ impl<'s> Parser<'s, char> {
 
         p.finish(p.cache.chars)
     }
+
+    pub fn handle_error(&self, error: ParseError) -> std::result::Result<String, std::fmt::Error> {
+        use std::fmt::Write;
+        let mut buffer = String::new();
+
+        let ParseError { inner, kind } = error;
+
+        let selection = inner.selection;
+        let reason = inner.reason;
+
+        let left = (0..selection.start)
+            .rev()
+            .find(|idx| self.src[*idx] == '\n')
+            .map(|idx| idx + 1)
+            .unwrap_or(0);
+
+        let right = (selection.start..self.src.len())
+            .find(|idx| self.src[*idx] == '\n')
+            .unwrap_or(self.src.len());
+
+        let line_num = (0..selection.start)
+            .filter(|idx| self.src[*idx] == '\n')
+            .count()
+            + 1;
+
+        let row_num = selection.start - left;
+
+        let line = self.src[left..right].iter().collect::<String>();
+
+        let location = format!("[{}:{}:{}]", self.src.file_name(), line_num, row_num,);
+
+        writeln!(buffer)?;
+        // there is an error happend
+        writeln!(buffer, "{location} {kind:?} Error: {}", reason)?;
+        // at line {line_num}
+        let head = format!("at line {line_num} | ");
+        writeln!(buffer, "{head}{line}")?;
+        let ahead = (0..head.len() + selection.start - left)
+            .map(|_| ' ')
+            .collect::<String>();
+        let point = (0..selection.len()).map(|_| '^').collect::<String>();
+        writeln!(buffer, "{ahead}{point}")?;
+        Ok(buffer)
+    }
 }
 
 /// a [`Try`], allow you to try many times until you get a actually [`Error`]
@@ -297,10 +340,9 @@ impl<'s, 'p, S: Copy, P: ParseUnit<S>> Try<'s, 'p, S, P> {
 
     /// finish parsing tring
     ///
-    /// its not recommended to return [`Err`] with [`None`]
     ///
-    /// there should be at least one [`Self::or_try`] return [`Err`] with [`Some`] in,
-    /// or the parser will throw a message with very bad readability
+    /// there should be at least one [`Self::or_try`] return [`Result::Success`]
+    /// or [`Result::Failed`] , or panic
     pub fn finish(self) -> ParseResult<P, S> {
         self.state.unwrap()
     }
