@@ -3,15 +3,15 @@ use super::*;
 use crate::keywords::syntax::Symbol;
 
 #[derive(Debug, Clone)]
-pub struct Comment<'s> {
-    pub shi4: PU<'s, Symbol>,
-    pub jie2: PU<'s, Symbol>,
+pub struct Comment {
+    pub shi4: PU<Symbol>,
+    pub jie2: PU<Symbol>,
 }
 
-impl ParseUnit for Comment<'_> {
-    type Target<'t> = Comment<'t>;
+impl ParseUnit for Comment {
+    type Target = Comment;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let shi4 = Symbol::Comment.parse_or_unmatch(p)?;
         while let Some(str) = p.try_parse::<&[char]>() {
             let str = str?;
@@ -29,15 +29,15 @@ impl ParseUnit for Comment<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct VarAssign<'s> {
-    pub deng3: PU<'s, Symbol>,
-    pub val: PU<'s, Expr<'s>>,
+pub struct VarAssign {
+    pub deng3: PU<Symbol>,
+    pub val: PU<Expr>,
 }
 
-impl ParseUnit for VarAssign<'_> {
-    type Target<'t> = VarAssign<'t>;
+impl ParseUnit for VarAssign {
+    type Target = VarAssign;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let deng3 = Symbol::Assign.parse_or_unmatch(p)?;
         let value = p.parse::<Expr>()?;
         p.finish(VarAssign { deng3, val: value })
@@ -45,16 +45,16 @@ impl ParseUnit for VarAssign<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct VarDefine<'s> {
-    pub ty: PU<'s, types::TypeDefine<'s>>,
-    pub name: PU<'s, Ident<'s>>,
-    pub init: Option<Box<PU<'s, VarAssign<'s>>>>,
+pub struct VarDefine {
+    pub ty: PU<types::TypeDefine>,
+    pub name: PU<Ident>,
+    pub init: Option<Box<PU<VarAssign>>>,
 }
 
-impl ParseUnit for VarDefine<'_> {
-    type Target<'t> = VarDefine<'t>;
+impl ParseUnit for VarDefine {
+    type Target = VarDefine;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ty = p.parse::<types::TypeDefine>()?;
         let name = p.parse::<Ident>()?;
         let init = p.parse::<VarAssign>().success().map(Box::new);
@@ -63,15 +63,15 @@ impl ParseUnit for VarDefine<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct VarStore<'s> {
-    pub name: PU<'s, Ident<'s>>,
-    pub assign: PU<'s, VarAssign<'s>>,
+pub struct VarStore {
+    pub name: PU<Ident>,
+    pub assign: PU<VarAssign>,
 }
 
-impl ParseUnit for VarStore<'_> {
-    type Target<'t> = VarStore<'t>;
+impl ParseUnit for VarStore {
+    type Target = VarStore;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let name = p.parse::<Ident>()?;
         let assign = p.parse::<VarAssign>()?;
         p.finish(VarStore { name, assign })
@@ -79,16 +79,16 @@ impl ParseUnit for VarStore<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CodeBlock<'s> {
-    pub han2: PU<'s, Symbol>,
-    pub stmts: Vec<PU<'s, Statement<'s>>>,
-    pub jie2: PU<'s, Symbol>,
+pub struct CodeBlock {
+    pub han2: PU<Symbol>,
+    pub stmts: Vec<PU<Statement>>,
+    pub jie2: PU<Symbol>,
 }
 
-impl ParseUnit for CodeBlock<'_> {
-    type Target<'t> = CodeBlock<'t>;
+impl ParseUnit for CodeBlock {
+    type Target = CodeBlock;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let han2 = Symbol::Block.parse_or_unmatch(p)?;
         let mut stmts = vec![];
         while let Some(stmt) = p.try_parse::<Statement>() {
@@ -104,15 +104,15 @@ impl ParseUnit for CodeBlock<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Parameter<'s> {
+pub struct Parameter {
     /// so to make semantic cheaking easier
-    pub inner: VarDefine<'s>,
+    pub inner: VarDefine,
 }
 
-impl ParseUnit for Parameter<'_> {
-    type Target<'t> = Parameter<'t>;
+impl ParseUnit for Parameter {
+    type Target = Parameter;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ty = p.parse::<types::TypeDefine>()?;
         let name = p.parse::<Ident>()?;
         let inner = VarDefine {
@@ -125,13 +125,13 @@ impl ParseUnit for Parameter<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Parameters<'s> {
-    pub params: Vec<PU<'s, Parameter<'s>>>,
-    pub semicolons: Vec<PU<'s, Symbol>>,
+pub struct Parameters {
+    pub params: Vec<PU<Parameter>>,
+    pub semicolons: Vec<PU<Symbol>>,
 }
 
-impl<'s> From<Vec<PU<'s, Parameter<'s>>>> for Parameters<'s> {
-    fn from(value: Vec<PU<'s, Parameter<'s>>>) -> Self {
+impl From<Vec<PU<Parameter>>> for Parameters {
+    fn from(value: Vec<PU<Parameter>>) -> Self {
         Self {
             params: value,
             semicolons: Vec::new(),
@@ -139,16 +139,16 @@ impl<'s> From<Vec<PU<'s, Parameter<'s>>>> for Parameters<'s> {
     }
 }
 
-impl<'s> From<Parameters<'s>> for Vec<PU<'s, Parameter<'s>>> {
-    fn from(value: Parameters<'s>) -> Self {
+impl From<Parameters> for Vec<PU<Parameter>> {
+    fn from(value: Parameters) -> Self {
         value.params
     }
 }
 
-impl ParseUnit for Parameters<'_> {
-    type Target<'t> = Parameters<'t>;
+impl ParseUnit for Parameters {
+    type Target = Parameters;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         // may be empty
         let Some(param) = p.try_parse::<Parameter>() else {
             return p.finish(Parameters {
@@ -170,25 +170,28 @@ impl ParseUnit for Parameters<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FnDefine<'s> {
-    pub function: PU<'s, VarDefine<'s>>,
-    pub can1: PU<'s, Symbol>,
-    pub params: PU<'s, Parameters<'s>>,
-    pub jie2: PU<'s, Symbol>,
-    pub codes: PU<'s, CodeBlock<'s>>,
+pub struct FnDefine {
+    pub ty: PU<types::TypeDefine>,
+    pub name: PU<Ident>,
+    pub can1: PU<Symbol>,
+    pub params: PU<Parameters>,
+    pub jie2: PU<Symbol>,
+    pub codes: PU<CodeBlock>,
 }
 
-impl ParseUnit for FnDefine<'_> {
-    type Target<'t> = FnDefine<'t>;
+impl ParseUnit for FnDefine {
+    type Target = FnDefine;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        let function = p.parse::<VarDefine>()?;
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
+        let ty = p.parse::<types::TypeDefine>()?;
+        let name = p.parse::<Ident>()?;
         let can1 = Symbol::Parameter.parse_or_unmatch(p)?;
         let params = p.parse::<Parameters>()?;
         let jie2 = Symbol::EndOfBracket.parse_or_failed(p)?;
         let codes = p.parse::<CodeBlock>().must_match()?;
         p.finish(FnDefine {
-            function,
+            ty,
+            name,
             can1,
             params,
             jie2,

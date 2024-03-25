@@ -25,8 +25,8 @@ keywords! {
 
 // }
 // impl pin1yin1_parser::ParseUnit for PrimitiveTypes {
-//     type Target<'t> = PrimitiveTypes;
-//     fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
+//     type Target = PrimitiveTypes;
+//     fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
 //         use std::collections::HashMap;
 //         lazy_static::lazy_static! {
 //             static ref MAP:HashMap<Vec<char>,PrimitiveTypes>  = {

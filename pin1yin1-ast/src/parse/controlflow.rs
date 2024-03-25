@@ -5,16 +5,16 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct AtomicIf<'s> {
-    pub ruo4: PU<'s, ControlFlow>,
-    pub conds: PU<'s, Arguments<'s>>,
-    pub block: PU<'s, CodeBlock<'s>>,
+pub struct AtomicIf {
+    pub ruo4: PU<ControlFlow>,
+    pub conds: PU<Arguments>,
+    pub block: PU<CodeBlock>,
 }
 
-impl ParseUnit for AtomicIf<'_> {
-    type Target<'t> = AtomicIf<'t>;
+impl ParseUnit for AtomicIf {
+    type Target = AtomicIf;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ruo4 = p
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::If, |t| t.unmatch("expect `ruo4`"))?;
@@ -25,15 +25,15 @@ impl ParseUnit for AtomicIf<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct AtomicElse<'s> {
-    pub ze2: PU<'s, ControlFlow>,
-    pub block: PU<'s, CodeBlock<'s>>,
+pub struct AtomicElse {
+    pub ze2: PU<ControlFlow>,
+    pub block: PU<CodeBlock>,
 }
 
-impl ParseUnit for AtomicElse<'_> {
-    type Target<'t> = AtomicElse<'t>;
+impl ParseUnit for AtomicElse {
+    type Target = AtomicElse;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ze2 = p
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::Else, |t| t.unmatch("expect `else`"))?;
@@ -43,15 +43,15 @@ impl ParseUnit for AtomicElse<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct AtomicElseIf<'s> {
-    pub ze2: PU<'s, ControlFlow>,
-    pub ruo4: PU<'s, AtomicIf<'s>>,
+pub struct AtomicElseIf {
+    pub ze2: PU<ControlFlow>,
+    pub ruo4: PU<AtomicIf>,
 }
 
-impl ParseUnit for AtomicElseIf<'_> {
-    type Target<'t> = AtomicElseIf<'t>;
+impl ParseUnit for AtomicElseIf {
+    type Target = AtomicElseIf;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ze2 = p
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::If, |t| t.unmatch("expect `ruo4`"))?;
@@ -69,15 +69,15 @@ complex_pu! {
 }
 
 #[derive(Debug, Clone)]
-pub struct If<'s> {
-    pub ruo4: PU<'s, AtomicIf<'s>>,
-    pub chains: Vec<PU<'s, ChainIf<'s>>>,
+pub struct If {
+    pub ruo4: PU<AtomicIf>,
+    pub chains: Vec<PU<ChainIf>>,
 }
 
-impl ParseUnit for If<'_> {
-    type Target<'t> = If<'t>;
+impl ParseUnit for If {
+    type Target = If;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ruo4 = p.parse::<AtomicIf>()?;
         let mut chains = vec![];
         while let Some(chain) = p.try_parse::<ChainIf>() {
@@ -93,16 +93,16 @@ impl ParseUnit for If<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct While<'s> {
-    pub chong2: PU<'s, ControlFlow>,
-    pub conds: PU<'s, Arguments<'s>>,
-    pub block: PU<'s, CodeBlock<'s>>,
+pub struct While {
+    pub chong2: PU<ControlFlow>,
+    pub conds: PU<Arguments>,
+    pub block: PU<CodeBlock>,
 }
 
-impl ParseUnit for While<'_> {
-    type Target<'t> = While<'t>;
+impl ParseUnit for While {
+    type Target = While;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let chong2 = p
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::Repeat, |t| t.unmatch("expect `chong2`"))?;
@@ -117,16 +117,16 @@ impl ParseUnit for While<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Return<'s> {
-    pub fan3: PU<'s, ControlFlow>,
-    pub val: Option<PU<'s, Expr<'s>>>,
-    pub fen1: PU<'s, Symbol>,
+pub struct Return {
+    pub fan3: PU<ControlFlow>,
+    pub val: Option<PU<Expr>>,
+    pub fen1: PU<Symbol>,
 }
 
-impl ParseUnit for Return<'_> {
-    type Target<'t> = Return<'t>;
+impl ParseUnit for Return {
+    type Target = Return;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let fan3 = p
             .parse::<ControlFlow>()
             .eq_or(ControlFlow::Return, |t| t.unmatch("expect `fan3`"))?;

@@ -8,9 +8,9 @@ use crate::*;
 ///
 /// [`S`] is the type of source
 pub trait ParseUnit<S: Copy = char>: Sized {
-    type Target<'t>: Debug;
+    type Target: Debug;
 
-    fn parse<'s>(p: &mut Parser<'s, S>) -> ParseResult<'s, Self, S>;
+    fn parse(p: &mut Parser<S>) -> ParseResult<Self, S>;
 }
 
 /// extract this function to make the addition of the UNICODE support much easier
@@ -21,9 +21,9 @@ pub(crate) const fn chars_taking_rule(c: char) -> bool {
 }
 
 impl ParseUnit for String {
-    type Target<'t> = String;
+    type Target = String;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let s = <&[char]>::parse(p)?.iter().collect::<String>();
 
         p.finish(s)
@@ -31,29 +31,18 @@ impl ParseUnit for String {
 }
 
 ///  very hot funtion!!!
-impl ParseUnit for &[char] {
-    type Target<'t> = &'t [char];
+impl<'a> ParseUnit for &'a [char] {
+    type Target = &'a [char];
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
-        // reparse and cache the result
-        if p.cache.first_index != p.idx {
-            p.cache.first_index = p.idx;
-            p.cache.chars = p.skip_whitespace().take_while(chars_taking_rule);
-            p.cache.final_index = p.idx;
-        } else {
-            // load from cache, call p.start_taking() to perform the right behavior
-            p.start_taking();
-            p.idx = p.cache.final_index;
-        }
-
-        p.finish(p.cache.chars)
+    fn parse(_p: &mut Parser) -> ParseResult<Self> {
+        todo!()
     }
 }
 
 impl ParseUnit for usize {
-    type Target<'t> = usize;
+    type Target = usize;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let chars = p.skip_whitespace().take_while(|c| c.is_ascii_digit());
         if chars.is_empty() {
             return p.unmatch("no chars found");
@@ -69,9 +58,9 @@ impl ParseUnit for usize {
 }
 
 impl ParseUnit for char {
-    type Target<'t> = char;
+    type Target = char;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         p.start_taking();
         let next = p.next();
         let Some(char) = next.copied() else {

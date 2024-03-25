@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use crate::scope::{AllocVariable, Global, ImmediateValue, Scope, Variable};
+use crate::scope::{AllocVariable, ComputeResult, Global, Scope, Variable};
 use inkwell::{
     basic_block::BasicBlock,
     builder::{Builder, BuilderError},
@@ -55,12 +55,20 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(s)
     }
 
+    pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: String, val: V) {
+        self.global.regist_var(name, val)
+    }
+
     pub fn get_var(&self, name: &str) -> &(dyn Variable<'ctx> + 'ctx) {
         self.global.get_var(name)
     }
 
-    pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: String, val: V) {
-        self.global.regist_var(name, val)
+    pub fn get_fn(&self, name: &str) -> inkwell::values::FunctionValue<'ctx> {
+        self.global.get_fn(name)
+    }
+
+    pub fn regist_fn(&mut self, name: String, val: inkwell::values::FunctionValue<'ctx>) {
+        self.global.regist_fn(name, val)
     }
 
     fn type_cast(&self, ty: &ast::TypeDefine) -> BasicTypeEnum<'ctx> {
@@ -118,7 +126,21 @@ impl<'ctx> CodeGen<'ctx> {
             ast::AtomicExpr::Float(f) => Ok(self.context.f64_type().const_float(*f).into()),
             ast::AtomicExpr::Variable(v) => self.get_var(v).load(&self.builder),
 
-            _ => todo!("initalizition is not supported now..."),
+            ast::AtomicExpr::FnCall(fn_call) => {
+                let fn_ = self.get_fn(&fn_call.name);
+                let args = fn_call.args.iter().try_fold(vec![], |mut vec, arg| {
+                    vec.push(self.atomic_epxr(arg)?.into());
+                    Ok(vec)
+                })?;
+
+                let val = self
+                    .builder
+                    .build_call(fn_, &args, &fn_call.name)?
+                    .try_as_basic_value()
+                    // TODO: `kong1` as return type
+                    .unwrap_left();
+                Ok(val)
+            }
         }
     }
 
@@ -177,6 +199,7 @@ impl Compile for ast::FnDefine {
         let fn_ty = retty.fn_type(&param_ty, false);
 
         let fn_ = state.module.add_function(&self.name, fn_ty, None);
+        state.regist_fn(self.name.clone(), fn_);
 
         state.scope(move |state| {
             let params = self
@@ -184,7 +207,7 @@ impl Compile for ast::FnDefine {
                 .iter()
                 .enumerate()
                 .map(|(idx, param)| (param.name.clone(), fn_.get_nth_param(idx as _).unwrap()))
-                .map(|(name, param)| (name, ImmediateValue { inner: param }));
+                .map(|(name, param)| (name, ComputeResult { inner: param }));
             state.global.regist_params(params);
             let entry = state.context.append_basic_block(fn_, "entry");
             state.builder.position_at_end(entry);
@@ -224,7 +247,7 @@ impl Compile for ast::Compute {
                         } else {
                             todo!()
                         };
-                        let imv = ImmediateValue { inner: val };
+                        let imv = ComputeResult { inner: val };
                         state.regist_var(self.name.clone(), imv);
                     }
                     Operators::Sub => {
@@ -245,7 +268,7 @@ impl Compile for ast::Compute {
                         } else {
                             todo!()
                         };
-                        let imv = ImmediateValue { inner: val };
+                        let imv = ComputeResult { inner: val };
                         state.regist_var(self.name.clone(), imv);
                     }
 
@@ -285,7 +308,15 @@ impl Compile for ast::VarStore {
 // call
 impl Compile for ast::FnCall {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
-        todo!()
+        let fn_ = state.get_fn(&self.name);
+        let args = self.args.iter().try_fold(vec![], |mut vec, arg| {
+            vec.push(state.atomic_epxr(arg)?.into());
+            Ok(vec)
+        })?;
+
+        // droped
+        state.builder.build_call(fn_, &args, &self.name)?;
+        Ok(())
     }
 }
 impl Compile for ast::If {
@@ -300,7 +331,6 @@ impl Compile for ast::While {
 }
 impl Compile for ast::Return {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
-        use inkwell::values::BasicValue;
         let val = match &self.val {
             Some(val) => Some(state.atomic_epxr(val)?),
             None => None,

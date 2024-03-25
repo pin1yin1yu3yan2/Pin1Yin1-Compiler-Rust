@@ -27,14 +27,14 @@ pub struct Parser<'s, S: Copy = char> {
     pub(crate) cache: ParserCache<'s>,
 }
 
-impl<'s, S: Copy> WithSelection<'s, S> for Parser<'s, S> {
-    fn get_selection(&self) -> Selection<'s, S> {
+impl<S: Copy> WithSelection for Parser<'_, S> {
+    fn get_selection(&self) -> Selection {
         if self.start_idx.is_some() {
-            Selection::new(self.src, self.start_idx(), self.idx)
+            Selection::new(self.start_idx(), self.idx)
         } else {
             // while finishing parsing or throwing an error, the taking may not ever be started
             // so, match the case to make error reporting easier&better
-            Selection::new(self.src, self.idx, self.idx + 1)
+            Selection::new(self.idx, self.idx + 1)
         }
     }
 }
@@ -69,7 +69,7 @@ impl<S: Copy> Parser<'_, S> {
 
 impl<'s, S: Copy> Parser<'s, S> {
     /// create a new parser from a slice of [char]
-    pub fn new(src: &Source) -> Parser<'_> {
+    pub fn new(src: &'s Source) -> Parser<'s> {
         Parser {
             src,
             idx: 0,
@@ -85,10 +85,10 @@ impl<'s, S: Copy> Parser<'s, S> {
 
     /// start a [`Try`], allow you to try many times until you get a actually [`Error`]
     /// or successfully parse a [`ParseUnit`]
-    pub fn r#try<'p, F, P>(&'p mut self, p: F) -> Try<'p, 's, S, P>
+    pub fn r#try<'p, F, P>(&'p mut self, p: F) -> Try<'s, 'p, S, P>
     where
         P: ParseUnit<S>,
-        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<'s, P, S>,
+        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<P, S>,
     {
         Try::new(self).or_try(p)
     }
@@ -98,10 +98,10 @@ impl<'s, S: Copy> Parser<'s, S> {
     /// in this case, [`PuResult::Unmatch`] will be transformed into [`None`]
     ///
     /// so that you can use `?` as usual after using match / if let ~
-    pub fn once<P, F>(&mut self, parser: F) -> ParseResult<'s, P, S>
+    pub fn once<P, F>(&mut self, parser: F) -> ParseResult<P, S>
     where
         P: ParseUnit<S>,
-        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<'s, P, S>,
+        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<P, S>,
     {
         // create a temp parser and reset its state
         let mut tmp = *self;
@@ -114,7 +114,7 @@ impl<'s, S: Copy> Parser<'s, S> {
         #[cfg(feature = "parser_calling_tree")]
         static DEPTH: AtomicUsize = AtomicUsize::new(0);
         #[cfg(feature = "parser_calling_tree")]
-        {
+        if p_name.starts_with("pin1yin1_ast::parse") {
             for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
                 print!("    ")
             }
@@ -126,7 +126,7 @@ impl<'s, S: Copy> Parser<'s, S> {
         let result = parser(&mut tmp);
 
         #[cfg(feature = "parser_calling_tree")]
-        {
+        if p_name.starts_with("pin1yin1_ast::parse") {
             DEPTH.fetch_sub(1, std::sync::atomic::Ordering::Release);
             for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
                 print!("    ")
@@ -141,10 +141,10 @@ impl<'s, S: Copy> Parser<'s, S> {
     }
 
     /// try to parse,
-    pub fn try_once<P, F>(&mut self, parser: F) -> Option<ParseResult<'s, P, S>>
+    pub fn try_once<P, F>(&mut self, parser: F) -> Option<ParseResult<P, S>>
     where
         P: ParseUnit<S>,
-        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<'s, P, S>,
+        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<P, S>,
     {
         let result = self.once(parser);
         if result.is_unmatch() {
@@ -155,7 +155,7 @@ impl<'s, S: Copy> Parser<'s, S> {
     }
 
     /// sync state with the parsing result from a temp sub parser
-    pub(crate) fn sync_with<P>(&mut self, result: &ParseResult<'s, P, S>, tmp: &Parser<'s, S>)
+    pub(crate) fn sync_with<P>(&mut self, result: &ParseResult<P, S>, tmp: &Parser<'s, S>)
     where
         P: ParseUnit<S>,
     {
@@ -174,7 +174,7 @@ impl<'s, S: Copy> Parser<'s, S> {
 
     /// make effort if success or return [`Error`], make no effort if failure
     /// this kind of try...
-    pub fn parse<P: ParseUnit<S>>(&mut self) -> ParseResult<'s, P, S> {
+    pub fn parse<P: ParseUnit<S>>(&mut self) -> ParseResult<P, S> {
         self.once(P::parse)
     }
 
@@ -183,7 +183,7 @@ impl<'s, S: Copy> Parser<'s, S> {
     /// in this case, [`PuResult::Unmatch`] will be transformed into [`None`]
     ///
     /// so that you can use `?` as usual after using match / if let ~
-    pub fn try_parse<P: ParseUnit<S>>(&mut self) -> Option<ParseResult<'s, P, S>> {
+    pub fn try_parse<P: ParseUnit<S>>(&mut self) -> Option<ParseResult<P, S>> {
         self.try_once(P::parse)
     }
 
@@ -198,15 +198,12 @@ impl<'s, S: Copy> Parser<'s, S> {
     }
 
     /// make a new [`PU`] with the given value and parser's selection
-    pub fn make_token<I: Into<P::Target<'s>>, P: ParseUnit<S>>(&self, t: I) -> PU<'s, P, S> {
+    pub fn make_token<I: Into<P::Target>, P: ParseUnit<S>>(&self, t: I) -> PU<P, S> {
         PU::new(self.get_selection(), t.into())
     }
 
     /// finish the successful parsing, just using the this method to make return easier
-    pub fn finish<I: Into<P::Target<'s>>, P: ParseUnit<S>>(
-        &mut self,
-        t: I,
-    ) -> ParseResult<'s, P, S> {
+    pub fn finish<I: Into<P::Target>, P: ParseUnit<S>>(&mut self, t: I) -> ParseResult<P, S> {
         ParseResult::Success(self.make_token(t))
     }
 }
@@ -238,16 +235,32 @@ impl<'s> Parser<'s, char> {
         self.skip_while(&rule);
         &self.src[self.start_idx.unwrap()..self.idx]
     }
+
+    pub fn get_chars(&mut self) -> Result<PU<&'s [char]>> {
+        let p = self;
+        // reparse and cache the result
+        if p.cache.first_index != p.idx {
+            p.cache.first_index = p.idx;
+            p.cache.chars = p.skip_whitespace().take_while(chars_taking_rule);
+            p.cache.final_index = p.idx;
+        } else {
+            // load from cache, call p.start_taking() to perform the right behavior
+            p.start_taking();
+            p.idx = p.cache.final_index;
+        }
+
+        p.finish(p.cache.chars)
+    }
 }
 
 /// a [`Try`], allow you to try many times until you get a actually [`Error`]
 /// or successfully parse a [`ParseUnit`]
-pub struct Try<'p, 's, S: Copy, P: ParseUnit<S>> {
+pub struct Try<'s, 'p, S: Copy, P: ParseUnit<S>> {
     parser: &'p mut Parser<'s, S>,
-    state: Option<ParseResult<'s, P, S>>,
+    state: Option<ParseResult<P, S>>,
 }
 
-impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
+impl<'s, 'p, S: Copy, P: ParseUnit<S>> Try<'s, 'p, S, P> {
     pub fn new(parser: &'p mut Parser<'s, S>) -> Self {
         Self {
             parser,
@@ -261,8 +274,8 @@ impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
     /// or got a actually [`Error`]
     pub fn or_try<P1, F>(mut self, parser: F) -> Self
     where
-        P1: ParseUnit<S, Target<'s> = P::Target<'s>>,
-        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<'s, P1, S>,
+        P1: ParseUnit<S, Target = P::Target>,
+        F: FnOnce(&mut Parser<'s, S>) -> ParseResult<P1, S>,
     {
         if self.state.is_none()
             || self
@@ -287,7 +300,7 @@ impl<'p, 's, S: Copy, P: ParseUnit<S>> Try<'p, 's, S, P> {
     ///
     /// there should be at least one [`Self::or_try`] return [`Err`] with [`Some`] in,
     /// or the parser will throw a message with very bad readability
-    pub fn finish(self) -> ParseResult<'s, P, S> {
+    pub fn finish(self) -> ParseResult<P, S> {
         self.state.unwrap()
     }
 }

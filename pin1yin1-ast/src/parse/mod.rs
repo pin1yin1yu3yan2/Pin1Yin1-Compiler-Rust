@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use pin1yin1_parser::*;
 
 mod controlflow;
@@ -17,12 +15,11 @@ pub use syntax::*;
 pub use types::*;
 
 #[derive(Debug, Clone)]
-pub struct Ident<'s> {
+pub struct Ident {
     pub ident: String,
-    _p: PhantomData<&'s ()>,
 }
 
-impl std::ops::Deref for Ident<'_> {
+impl std::ops::Deref for Ident {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
@@ -30,10 +27,10 @@ impl std::ops::Deref for Ident<'_> {
     }
 }
 
-impl ParseUnit for Ident<'_> {
-    type Target<'t> = Ident<'t>;
+impl ParseUnit for Ident {
+    type Target = Ident;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ident = p
             .parse::<&[char]>()
             .which_or(|s| !s.is_empty(), |s| s.unmatch("empty ident!"))
@@ -53,12 +50,11 @@ impl ParseUnit for Ident<'_> {
 
         p.finish(Ident {
             ident: ident.take().iter().collect(),
-            _p: PhantomData,
         })
     }
 }
 
-pub fn do_parse<'s>(parser: &mut Parser<'s>) -> Result<'s, Vec<PU<'s, Statement<'s>>>> {
+pub fn do_parse(parser: &mut Parser) -> Result<Vec<PU<Statement>>> {
     let mut stmts = vec![];
     while let Some(result) = parser.try_parse::<Statement>() {
         let stmt = result.to_result()?;
@@ -90,7 +86,7 @@ mod tests {
 
     #[test]
     fn e4chou4de1_ident() {
-        fn is_e4chou4de1<P: ParseUnit>(r: ParseResult<'_, P>) -> bool {
+        fn is_e4chou4de1<P: ParseUnit>(r: ParseResult<P>) -> bool {
             r.is_unmatch()
         }
 

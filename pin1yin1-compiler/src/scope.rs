@@ -7,7 +7,7 @@ use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 /// this is not the most elegant way, but it works for now
 
 pub struct Global<'ctx> {
-    pub fns: Vec<FunctionValue<'ctx>>,
+    pub fns: HashMap<String, FunctionValue<'ctx>>,
     pub scopes: Vec<Scope<'ctx>>,
 }
 
@@ -15,7 +15,7 @@ impl<'ctx> Global<'ctx> {
     pub fn new() -> Self {
         Self {
             scopes: vec![Scope::default()],
-            fns: vec![],
+            fns: Default::default(),
         }
     }
 
@@ -35,13 +35,21 @@ impl<'ctx> Global<'ctx> {
         unreachable!("{name}")
     }
 
+    pub fn get_fn(&self, name: &str) -> FunctionValue<'ctx> {
+        *self.fns.get(name).unwrap()
+    }
+
     pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: String, val: V) {
         self.this_scope().vars.insert(name, Box::new(val));
     }
 
+    pub fn regist_fn(&mut self, name: String, val: FunctionValue<'ctx>) {
+        self.fns.insert(name, val);
+    }
+
     pub fn regist_params<I>(&mut self, iter: I)
     where
-        I: IntoIterator<Item = (String, ImmediateValue<'ctx>)>,
+        I: IntoIterator<Item = (String, ComputeResult<'ctx>)>,
     {
         assert!(self.this_scope().params.is_none());
         self.this_scope().params = Some(iter.into_iter().collect())
@@ -58,7 +66,7 @@ impl<'ctx> Default for Global<'ctx> {
 #[derive(Default)]
 pub struct Scope<'ctx> {
     vars: HashMap<String, Box<dyn Variable<'ctx> + 'ctx>>,
-    params: Option<HashMap<String, ImmediateValue<'ctx>>>,
+    params: Option<HashMap<String, ComputeResult<'ctx>>>,
 }
 
 pub trait Variable<'ctx> {
@@ -98,11 +106,11 @@ impl<'ctx> Variable<'ctx> for AllocVariable<'ctx> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ImmediateValue<'ctx> {
+pub struct ComputeResult<'ctx> {
     pub inner: BasicValueEnum<'ctx>,
 }
 
-impl<'ctx> Variable<'ctx> for ImmediateValue<'ctx> {
+impl<'ctx> Variable<'ctx> for ComputeResult<'ctx> {
     fn load(&self, _builder: &Builder<'ctx>) -> Result<BasicValueEnum<'ctx>, BuilderError> {
         Ok(self.inner)
     }

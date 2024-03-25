@@ -3,34 +3,30 @@ use crate::{complex_pu, keywords::types::BasicExtenWord};
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
-pub struct TypeConstExtend<'s> {
+pub struct TypeConstExtend {
     pub keyword: BasicExtenWord,
-    _p: PhantomData<&'s ()>,
 }
 
-impl ParseUnit for TypeConstExtend<'_> {
-    type Target<'t> = TypeConstExtend<'t>;
+impl ParseUnit for TypeConstExtend {
+    type Target = TypeConstExtend;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let keyword = BasicExtenWord::Const.parse_or_unmatch(p)?.take();
-        p.finish(TypeConstExtend {
-            keyword,
-            _p: PhantomData,
-        })
+        p.finish(TypeConstExtend { keyword })
     }
 }
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
-pub struct TypeArrayExtend<'s> {
-    pub keyword: PU<'s, BasicExtenWord>,
-    pub size: Option<PU<'s, usize>>,
+pub struct TypeArrayExtend {
+    pub keyword: PU<BasicExtenWord>,
+    pub size: Option<PU<usize>>,
 }
 
-impl ParseUnit for TypeArrayExtend<'_> {
-    type Target<'t> = TypeArrayExtend<'t>;
+impl ParseUnit for TypeArrayExtend {
+    type Target = TypeArrayExtend;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let keyword = BasicExtenWord::Array.parse_or_unmatch(p)?;
 
         let size = match p.try_parse::<usize>() {
@@ -43,40 +39,32 @@ impl ParseUnit for TypeArrayExtend<'_> {
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
-pub struct TypeReferenceExtend<'s> {
+pub struct TypeReferenceExtend {
     pub keyword: BasicExtenWord,
-    _p: PhantomData<&'s ()>,
 }
 
-impl ParseUnit for TypeReferenceExtend<'_> {
-    type Target<'t> = TypeReferenceExtend<'t>;
+impl ParseUnit for TypeReferenceExtend {
+    type Target = TypeReferenceExtend;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let keyword = BasicExtenWord::Reference.parse_or_unmatch(p)?.take();
 
-        p.finish(TypeReferenceExtend {
-            keyword,
-            _p: PhantomData,
-        })
+        p.finish(TypeReferenceExtend { keyword })
     }
 }
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
-pub struct TypePointerExtend<'s> {
+pub struct TypePointerExtend {
     pub keyword: BasicExtenWord,
-    _p: PhantomData<&'s ()>,
 }
 
-impl ParseUnit for TypePointerExtend<'_> {
-    type Target<'t> = TypePointerExtend<'t>;
+impl ParseUnit for TypePointerExtend {
+    type Target = TypePointerExtend;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let keyword = BasicExtenWord::Pointer.parse_or_unmatch(p)?.take();
-        p.finish(TypePointerExtend {
-            keyword,
-            _p: PhantomData,
-        })
+        p.finish(TypePointerExtend { keyword })
     }
 }
 
@@ -91,15 +79,15 @@ complex_pu! {
 /// Decorators for primitive types
 
 #[derive(Debug, Clone, Copy)]
-pub struct TypeWidthExtend<'s> {
-    pub keyword: PU<'s, BasicExtenWord>,
-    pub width: PU<'s, usize>,
+pub struct TypeWidthExtend {
+    pub keyword: PU<BasicExtenWord>,
+    pub width: PU<usize>,
 }
 
-impl ParseUnit for TypeWidthExtend<'_> {
-    type Target<'t> = TypeWidthExtend<'t>;
+impl ParseUnit for TypeWidthExtend {
+    type Target = TypeWidthExtend;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let keyword = BasicExtenWord::Width.parse_or_unmatch(p)?;
         let width = p
             .parse::<usize>()
@@ -111,15 +99,15 @@ impl ParseUnit for TypeWidthExtend<'_> {
 /// Decorators for `zheng3`
 
 #[derive(Debug, Clone, Copy)]
-pub struct TypeSignExtend<'s> {
-    pub keyword: PU<'s, BasicExtenWord>,
+pub struct TypeSignExtend {
+    pub keyword: PU<BasicExtenWord>,
     pub sign: bool,
 }
 
-impl ParseUnit for TypeSignExtend<'_> {
-    type Target<'t> = TypeSignExtend<'t>;
+impl ParseUnit for TypeSignExtend {
+    type Target = TypeSignExtend;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let keyword = p.parse::<BasicExtenWord>()?;
         let sign = match *keyword {
             BasicExtenWord::Signed => true,
@@ -134,24 +122,24 @@ impl ParseUnit for TypeSignExtend<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub struct TypeDefine<'s> {
-    pub const_: Option<PU<'s, TypeConstExtend<'s>>>,
-    pub decorators: Vec<PU<'s, TypeDecorators<'s>>>,
-    pub width: Option<PU<'s, TypeWidthExtend<'s>>>,
-    pub sign: Option<PU<'s, TypeSignExtend<'s>>>,
-    pub ty: PU<'s, Ident<'s>>,
+pub struct TypeDefine {
+    pub const_: Option<PU<TypeConstExtend>>,
+    pub decorators: Vec<PU<TypeDecorators>>,
+    pub width: Option<PU<TypeWidthExtend>>,
+    pub sign: Option<PU<TypeSignExtend>>,
+    pub ty: PU<Ident>,
 }
 
-impl<'s> TypeDefine<'s> {
-    pub(crate) fn to_ast_ty(&self) -> Result<'s, crate::ast::TypeDefine> {
+impl TypeDefine {
+    pub(crate) fn to_ast_ty(&self) -> Result<crate::ast::TypeDefine> {
         Result::from_result(self.clone().try_into())
     }
 }
 
-impl ParseUnit for TypeDefine<'_> {
-    type Target<'t> = TypeDefine<'t>;
+impl ParseUnit for TypeDefine {
+    type Target = TypeDefine;
 
-    fn parse<'s>(p: &mut Parser<'s>) -> ParseResult<'s, Self> {
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
         let const_ = p.parse::<TypeConstExtend>().success();
         let mut decorators = vec![];
         while let Some(decorator) = p.try_parse::<TypeDecorators>() {

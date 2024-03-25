@@ -1,13 +1,13 @@
 use crate::*;
 
-pub type ParseResult<'s, P, S = char> = Result<'s, PU<'s, P, S>, S>;
+pub type ParseResult<P, S = char> = Result<PU<P, S>>;
 
-pub enum Result<'s, T, S: Copy = char> {
+pub enum Result<T> {
     Success(T),
-    Failed(ParseError<'s, S>),
+    Failed(ParseError),
 }
 
-impl<'s, T, S: Copy> Result<'s, T, S> {
+impl<T> Result<T> {
     pub fn from_option<Se>(opt: Option<T>, or: impl FnOnce() -> Se) -> Self
     where
         Se: Into<Self>,
@@ -18,21 +18,21 @@ impl<'s, T, S: Copy> Result<'s, T, S> {
         }
     }
 
-    pub fn to_result(self) -> std::result::Result<T, ParseError<'s, S>> {
+    pub fn to_result(self) -> std::result::Result<T, ParseError> {
         match self {
             Result::Success(ok) => Ok(ok),
             Result::Failed(e) => Err(e),
         }
     }
 
-    pub fn from_result(result: std::result::Result<T, ParseError<'s, S>>) -> Self {
+    pub fn from_result(result: std::result::Result<T, ParseError>) -> Self {
         match result {
             Ok(ok) => Self::Success(ok),
             Err(e) => e.into(),
         }
     }
 
-    pub fn is_failed_and(&self, cond: impl FnOnce(&ParseError<'s, S>) -> bool) -> bool {
+    pub fn is_failed_and(&self, cond: impl FnOnce(&ParseError) -> bool) -> bool {
         match self {
             Result::Success(_) => false,
             Result::Failed(e) => cond(e),
@@ -66,7 +66,7 @@ impl<'s, T, S: Copy> Result<'s, T, S> {
         self.try_into_success().ok()
     }
 
-    pub fn map<T1, M>(self, mapper: M) -> Result<'s, T1, S>
+    pub fn map<T1, M>(self, mapper: M) -> Result<T1>
     where
         M: FnOnce(T) -> T1,
     {
@@ -76,10 +76,10 @@ impl<'s, T, S: Copy> Result<'s, T, S> {
         }
     }
 }
-impl<'s, P: ParseUnit<S>, S: Copy> Result<'s, PU<'s, P, S>, S> {
-    pub fn map_pu<P1: ParseUnit<S>, M>(self, mapper: M) -> ParseResult<'s, P1, S>
+impl<P: ParseUnit<S>, S: Copy> Result<PU<P, S>> {
+    pub fn map_pu<P1: ParseUnit<S>, M>(self, mapper: M) -> ParseResult<P1, S>
     where
-        M: FnOnce(P::Target<'s>) -> P1::Target<'s>,
+        M: FnOnce(P::Target) -> P1::Target,
     {
         match self {
             Result::Success(success) => Result::Success(success.map(mapper)),
@@ -87,7 +87,7 @@ impl<'s, P: ParseUnit<S>, S: Copy> Result<'s, PU<'s, P, S>, S> {
         }
     }
 
-    pub fn map_err(self, mapper: impl FnOnce(ParseError<'s, S>) -> ParseError<'s, S>) -> Self {
+    pub fn map_err(self, mapper: impl FnOnce(ParseError) -> ParseError) -> Self {
         match ParseError::try_from(self) {
             Ok(err) => mapper(err).into(),
             Err(ok) => Self::Success(ok),
@@ -96,7 +96,7 @@ impl<'s, P: ParseUnit<S>, S: Copy> Result<'s, PU<'s, P, S>, S> {
 
     pub fn and_then<M>(self, mapper: M) -> Self
     where
-        M: FnOnce(PU<'s, P, S>) -> Self,
+        M: FnOnce(PU<P, S>) -> Self,
     {
         match self.try_into_success() {
             Ok(pu) => mapper(pu),
@@ -104,11 +104,11 @@ impl<'s, P: ParseUnit<S>, S: Copy> Result<'s, PU<'s, P, S>, S> {
         }
     }
 
-    pub fn which_or<Se, C>(self, cond: C, or: impl FnOnce(PU<'s, P, S>) -> Se) -> Self
+    pub fn which_or<Se, C>(self, cond: C, or: impl FnOnce(PU<P, S>) -> Se) -> Self
     where
-        P::Target<'s>: PartialEq,
+        P::Target: PartialEq,
         Se: Into<Self>,
-        C: FnOnce(&P::Target<'s>) -> bool,
+        C: FnOnce(&P::Target) -> bool,
     {
         self.and_then(|pu| {
             if cond(&pu) {
@@ -119,9 +119,9 @@ impl<'s, P: ParseUnit<S>, S: Copy> Result<'s, PU<'s, P, S>, S> {
         })
     }
 
-    pub fn eq_or<Se>(self, rhs: P::Target<'s>, or: impl FnOnce(PU<'s, P, S>) -> Se) -> Self
+    pub fn eq_or<Se>(self, rhs: P::Target, or: impl FnOnce(PU<P, S>) -> Se) -> Self
     where
-        P::Target<'s>: PartialEq,
+        P::Target: PartialEq,
         Se: Into<Self>,
     {
         self.and_then(|pu| {
@@ -137,7 +137,7 @@ impl<'s, P: ParseUnit<S>, S: Copy> Result<'s, PU<'s, P, S>, S> {
         self.map_err(|e| e.to_error())
     }
 
-    pub fn match_or<Se: Into<Self>>(self, or: impl FnOnce(Selection<'s, S>) -> Se) -> Self {
+    pub fn match_or<Se: Into<Self>>(self, or: impl FnOnce(Selection) -> Se) -> Self {
         match ParseError::try_from(self) {
             Ok(error) => {
                 if error.kind() == &ErrorKind::Unmatch {
@@ -151,8 +151,8 @@ impl<'s, P: ParseUnit<S>, S: Copy> Result<'s, PU<'s, P, S>, S> {
     }
 }
 
-pub struct ParseError<'s, S: Copy = char> {
-    pub(crate) inner: Error<'s, S>,
+pub struct ParseError {
+    pub(crate) inner: Error,
     pub(crate) kind: ErrorKind,
 }
 
@@ -163,8 +163,8 @@ pub enum ErrorKind {
     OtherError,
 }
 
-impl<'s, S: Copy> ParseError<'s, S> {
-    pub fn new(inner: Error<'s, S>, kind: ErrorKind) -> Self {
+impl ParseError {
+    pub fn new(inner: Error, kind: ErrorKind) -> Self {
         Self { inner, kind }
     }
 
@@ -197,21 +197,18 @@ impl<'s, S: Copy> ParseError<'s, S> {
     }
 }
 
-impl<'s, T, S: Copy> From<ParseError<'s, S>> for Result<'s, T, S> {
-    fn from(value: ParseError<'s, S>) -> Self {
+impl<T> From<ParseError> for Result<T> {
+    fn from(value: ParseError) -> Self {
         Result::Failed(value)
     }
 }
 
-impl<'s, T, S: Copy> TryFrom<Result<'s, T, S>> for ParseError<'s, S> {
+impl<T> TryFrom<Result<T>> for ParseError {
     type Error = T;
 
     fn try_from(
-        value: Result<'s, T, S>,
-    ) -> std::prelude::v1::Result<
-        Self,
-        <result::ParseError<'s, S> as TryFrom<Result<'s, T, S>>>::Error,
-    > {
+        value: Result<T>,
+    ) -> std::prelude::v1::Result<Self, <result::ParseError as TryFrom<Result<T>>>::Error> {
         match value {
             Result::Success(success) => Err(success),
             Result::Failed(e) => Ok(e),
@@ -219,27 +216,24 @@ impl<'s, T, S: Copy> TryFrom<Result<'s, T, S>> for ParseError<'s, S> {
     }
 }
 
-impl<'s, T, S: Copy>
-    std::ops::FromResidual<std::result::Result<std::convert::Infallible, ParseError<'s, S>>>
-    for Result<'s, T, S>
+impl<T> std::ops::FromResidual<std::result::Result<std::convert::Infallible, ParseError>>
+    for Result<T>
 {
-    fn from_residual(
-        residual: std::result::Result<std::convert::Infallible, ParseError<'s, S>>,
-    ) -> Self {
+    fn from_residual(residual: std::result::Result<std::convert::Infallible, ParseError>) -> Self {
         residual.err().unwrap().into()
     }
 }
 
-impl<'s, T, S: Copy> std::ops::FromResidual for Result<'s, T, S> {
+impl<T> std::ops::FromResidual for Result<T> {
     fn from_residual(residual: <Self as std::ops::Try>::Residual) -> Self {
         residual.into()
     }
 }
 
-impl<'s, T, S: Copy> std::ops::Try for Result<'s, T, S> {
+impl<T> std::ops::Try for Result<T> {
     type Output = T;
 
-    type Residual = ParseError<'s, S>;
+    type Residual = ParseError;
 
     fn from_output(output: Self::Output) -> Self {
         Self::Success(output)
@@ -253,8 +247,8 @@ impl<'s, T, S: Copy> std::ops::Try for Result<'s, T, S> {
     }
 }
 
-impl<'s, T: std::fmt::Debug> std::fmt::Debug for Result<'s, T, char> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: std::fmt::Debug> std::fmt::Debug for Result<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Success(arg0) => f.debug_tuple("Success").field(arg0).finish(),
             Self::Failed(arg0) => f.debug_tuple("Failed").field(arg0).finish(),
@@ -262,8 +256,8 @@ impl<'s, T: std::fmt::Debug> std::fmt::Debug for Result<'s, T, char> {
     }
 }
 
-impl<'s> std::fmt::Debug for ParseError<'s, char> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Debug for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("ParseError")
             .field("inner", &self.inner)
             .field("kind", &self.kind)

@@ -1,3 +1,5 @@
+use pin1yin1_parser::WithSelection;
+
 use crate::keywords::operators::Operators;
 
 pub type Statements = Vec<Statement>;
@@ -350,11 +352,11 @@ mod serde_ {
 }
 
 #[cfg(feature = "parser")]
-impl<'s> TryFrom<crate::parse::TypeDefine<'s>> for TypeDefine {
-    type Error = pin1yin1_parser::ParseError<'s>;
+impl TryFrom<crate::parse::TypeDefine> for TypeDefine {
+    type Error = pin1yin1_parser::ParseError;
 
-    fn try_from(value: crate::parse::TypeDefine<'s>) -> Result<Self, Self::Error> {
-        use pin1yin1_parser::{ErrorKind, WithSelection};
+    fn try_from(value: crate::parse::TypeDefine) -> Result<Self, Self::Error> {
+        use pin1yin1_parser::ErrorKind;
         /*
            int: sign, width
            float: width

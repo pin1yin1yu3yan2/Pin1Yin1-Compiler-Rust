@@ -13,15 +13,15 @@ macro_rules! statement_wrapper {
         $(
         #[derive(Debug, Clone)]
         $(#[$metas])*
-        pub struct $into<'s> {
-            pub inner: pin1yin1_parser::PU<'s,$from<'s>>,
-            pub fen1: pin1yin1_parser::PU<'s, $crate::keywords::syntax::Symbol>
+        pub struct $into {
+            pub inner: pin1yin1_parser::PU<$from>,
+            pub fen1: pin1yin1_parser::PU<$crate::keywords::syntax::Symbol>
         }
 
-        impl pin1yin1_parser::ParseUnit for $into<'_> {
-            type Target<'t> = $into<'t>;
+        impl pin1yin1_parser::ParseUnit for $into {
+            type Target = $into;
 
-            fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self> {
+            fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
                 use pin1yin1_parser::WithSelection;
                 let inner = p.parse::<$from>()?;
 
@@ -60,25 +60,25 @@ macro_rules! statements {
     }) => {
         #[derive(Debug, Clone)]
         $(#[$metas])*
-        pub enum $enum_name<'s> {
+        pub enum $enum_name {
             $(
                 $(#[$v_metas])*
-                $variant(Box<$variant<'s>>),
+                $variant(Box<$variant>),
             )*
         }
 
         $(
-        impl<'s> From<$variant<'s>> for $enum_name<'s> {
-             fn from(v: $variant<'s>) -> $enum_name<'s> {
+        impl From<$variant> for $enum_name {
+             fn from(v: $variant) -> $enum_name {
                 <$enum_name>::$variant(Box::new(v))
             }
         }
         )*
 
-        impl pin1yin1_parser::ParseUnit for $enum_name<'_> {
-            type Target<'t> = $enum_name<'t>;
+        impl pin1yin1_parser::ParseUnit for $enum_name {
+            type Target = $enum_name;
 
-            fn parse<'s>(p: &mut pin1yin1_parser::Parser<'s>) -> pin1yin1_parser::ParseResult<'s, Self>
+            fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self>
             {
                 pin1yin1_parser::Try::new(p)
                 $(

@@ -5,25 +5,25 @@ use std::{collections::HashMap, marker::PhantomData};
 use crate::parse;
 
 #[derive(Default, Debug, Clone)]
-pub struct FnDefinitions<'ast, 's> {
-    pub map: HashMap<String, FnDefinition<'ast, 's>>,
+pub struct FnDefinitions<'ast> {
+    pub map: HashMap<String, FnDefinition<'ast>>,
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct FnDefinition<'ast, 's> {
+pub struct FnDefinition<'ast> {
     /// functions have same names but different signatures
     ///
     /// unsupport now
-    pub overdrives: Vec<FnSign<'ast, 's>>,
+    pub overdrives: Vec<FnSign<'ast>>,
     #[cfg(feature = "parser")]
-    pub raw_defines: Vec<&'ast parse::FnDefine<'s>>,
-    _p: PhantomData<&'ast &'s ()>,
+    pub raw_defines: Vec<&'ast parse::FnDefine>,
+    _p: PhantomData<&'ast ()>,
 }
 
-impl<'ast, 's> FnDefinition<'ast, 's> {
+impl<'ast> FnDefinition<'ast> {
     pub fn new(
-        overdrives: Vec<FnSign<'ast, 's>>,
-        #[cfg(feature = "parser")] raw_defines: Vec<&'ast parse::FnDefine<'s>>,
+        overdrives: Vec<FnSign<'ast>>,
+        #[cfg(feature = "parser")] raw_defines: Vec<&'ast parse::FnDefine>,
     ) -> Self {
         Self {
             overdrives,
@@ -35,21 +35,21 @@ impl<'ast, 's> FnDefinition<'ast, 's> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FnSign<'ast, 's> {
+pub struct FnSign<'ast> {
     pub mangle: String,
     pub ty: ast::TypeDefine,
-    pub params: Vec<Parameter<'ast, 's>>,
+    pub params: Vec<Parameter<'ast>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Parameter<'ast, 's> {
+pub struct Parameter<'ast> {
     pub name: String,
     #[cfg(feature = "parser")]
-    pub var_def: VarDefinition<'ast, 's>,
+    pub var_def: VarDefinition<'ast>,
 }
 
-impl<'ast, 's> std::ops::Deref for Parameter<'ast, 's> {
-    type Target = VarDefinition<'ast, 's>;
+impl<'ast> std::ops::Deref for Parameter<'ast> {
+    type Target = VarDefinition<'ast>;
 
     fn deref(&self) -> &Self::Target {
         &self.var_def
@@ -57,22 +57,22 @@ impl<'ast, 's> std::ops::Deref for Parameter<'ast, 's> {
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct VarDefinitions<'ast, 's> {
-    pub map: HashMap<String, VarDefinition<'ast, 's>>,
+pub struct VarDefinitions<'ast> {
+    pub map: HashMap<String, VarDefinition<'ast>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct VarDefinition<'ast, 's> {
+pub struct VarDefinition<'ast> {
     pub ty: ast::TypeDefine,
     #[cfg(feature = "parser")]
-    pub raw_define: &'ast parse::VarDefine<'s>,
-    _p: PhantomData<&'ast &'s ()>,
+    pub raw_define: &'ast parse::VarDefine,
+    _p: PhantomData<&'ast ()>,
 }
 
-impl<'ast, 's> VarDefinition<'ast, 's> {
+impl<'ast> VarDefinition<'ast> {
     pub fn new(
         ty: ast::TypeDefine,
-        #[cfg(feature = "parser")] raw_define: &'ast parse::VarDefine<'s>,
+        #[cfg(feature = "parser")] raw_define: &'ast parse::VarDefine,
     ) -> Self {
         Self {
             ty,

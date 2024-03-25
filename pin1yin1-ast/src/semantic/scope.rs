@@ -4,13 +4,13 @@ use super::definition::{FnDefinitions, VarDefinitions};
 
 use crate::ast;
 
-pub struct Global<'ast, 's> {
+pub struct Global<'ast> {
     // this kind of variables can be accessed cross fn define
-    pub(crate) fns: FnDefinitions<'ast, 's>,
-    pub(crate) pools: Vec<Scope<'ast, 's>>,
+    pub(crate) fns: FnDefinitions<'ast>,
+    pub(crate) pools: Vec<Scope<'ast>>,
 }
 
-impl<'ast, 's> Global<'ast, 's> {
+impl<'ast> Global<'ast> {
     pub fn new() -> Self {
         let pools = vec![Scope::new()];
 
@@ -20,7 +20,7 @@ impl<'ast, 's> Global<'ast, 's> {
         }
     }
 
-    pub(crate) fn this_pool(&mut self) -> &mut Scope<'ast, 's> {
+    pub(crate) fn this_pool(&mut self) -> &mut Scope<'ast> {
         self.pools.last_mut().unwrap()
     }
 
@@ -52,7 +52,7 @@ impl<'ast, 's> Global<'ast, 's> {
     }
 }
 
-impl<'ast, 's> Default for Global<'ast, 's> {
+impl<'ast> Default for Global<'ast> {
     fn default() -> Self {
         Self::new()
     }
@@ -64,17 +64,17 @@ mod parse {
     use crate::{parse::*, semantic::definition};
     use pin1yin1_parser::*;
 
-    impl<'ast, 's> Global<'ast, 's> {
-        pub fn load(&mut self, stmts: &'ast [PU<'s, Statement<'s>>]) -> Result<'s, ()> {
+    impl<'ast> Global<'ast> {
+        pub fn load(&mut self, stmts: &'ast [PU<Statement>]) -> Result<()> {
             for stmt in stmts {
                 self.to_ast(stmt)?;
             }
             Result::Success(())
         }
 
-        pub(crate) fn spoce<T, F>(&mut self, f: F) -> Result<'s, (ast::Statements, T)>
+        pub(crate) fn spoce<T, F>(&mut self, f: F) -> Result<(ast::Statements, T)>
         where
-            F: FnOnce(&mut Self) -> Result<'s, T>,
+            F: FnOnce(&mut Self) -> Result<T>,
         {
             let mut scope = Scope::new();
             scope.alloc_id = self.this_pool().alloc_id;
@@ -90,9 +90,9 @@ mod parse {
             &mut self,
             fn_name: String,
             f: F,
-        ) -> Result<'s, (ast::Statements, T)>
+        ) -> Result<(ast::Statements, T)>
         where
-            F: FnOnce(&mut Self) -> Result<'s, T>,
+            F: FnOnce(&mut Self) -> Result<T>,
         {
             let mut scope = Scope::new();
             scope.fn_name = Some(fn_name);
@@ -103,19 +103,15 @@ mod parse {
             Result::Success((pool.stmts, t))
         }
 
-        pub(crate) fn regist_var(
-            &mut self,
-            name: String,
-            def: definition::VarDefinition<'ast, 's>,
-        ) {
+        pub(crate) fn regist_var(&mut self, name: String, def: definition::VarDefinition<'ast>) {
             self.this_pool().vars.map.insert(name, def);
         }
 
-        pub(crate) fn regist_fn(&mut self, name: String, def: definition::FnDefinition<'ast, 's>) {
+        pub(crate) fn regist_fn(&mut self, name: String, def: definition::FnDefinition<'ast>) {
             self.fns.map.insert(name, def);
         }
 
-        pub(crate) fn search_fn(&self, name: &str) -> Option<&definition::FnDefinition<'ast, 's>> {
+        pub(crate) fn search_fn(&self, name: &str) -> Option<&definition::FnDefinition<'ast>> {
             // overdrive is not supported now :(
             // so, the function serarching may be wrong(
             // because the function ignore the function parameters
@@ -127,7 +123,7 @@ mod parse {
         pub(crate) fn search_var(
             &self,
             name: &str,
-        ) -> Option<(&definition::VarDefinition<'ast, 's>, bool)> {
+        ) -> Option<(&definition::VarDefinition<'ast>, bool)> {
             for pool in self.pools.iter().rev() {
                 if let Some(def) = pool.vars.map.get(name) {
                     return Some((def, true));
@@ -145,15 +141,15 @@ mod parse {
             None
         }
 
-        pub fn to_ast_inner<A: Ast<'s>>(
+        pub fn to_ast_inner<A: Ast>(
             &mut self,
-            s: &'ast A::Target<'s>,
-            selection: Selection<'s>,
-        ) -> Result<'s, A::Forward> {
+            s: &'ast A::Target,
+            selection: Selection,
+        ) -> Result<A::Forward> {
             A::to_ast(s, selection, self)
         }
 
-        pub fn to_ast<A: Ast<'s>>(&mut self, pu: &'ast PU<'s, A>) -> Result<'s, A::Forward> {
+        pub fn to_ast<A: Ast>(&mut self, pu: &'ast PU<A>) -> Result<A::Forward> {
             self.to_ast_inner::<A>(&**pu, pu.get_selection())
         }
     }
@@ -164,9 +160,9 @@ mod parse {
 pub struct Mangle;
 
 #[derive(Default, Debug, Clone)]
-pub struct Scope<'ast, 's> {
+pub struct Scope<'ast> {
     // defines
-    pub vars: VarDefinitions<'ast, 's>,
+    pub vars: VarDefinitions<'ast>,
     // TODO: static/const variable
     // this kind of var definitions are only allowed to be used in a LocalPool
     pub fn_name: Option<String>,
@@ -179,7 +175,7 @@ pub struct Scope<'ast, 's> {
     pub alloc_id: usize,
 }
 
-impl<'ast, 's> Scope<'ast, 's> {
+impl<'ast> Scope<'ast> {
     pub fn new() -> Self {
         Self::default()
     }

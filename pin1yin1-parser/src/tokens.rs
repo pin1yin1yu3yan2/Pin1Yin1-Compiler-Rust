@@ -6,26 +6,21 @@ use std::fmt::Debug;
 /// be different from &[char], this type contains
 /// two data: the start of the selection, and the end of the selection
 #[derive(Debug, Clone, Copy)]
-pub struct Selection<'s, S: Copy = char> {
-    // TODO: remove this
-    pub(crate) src: &'s Source<S>,
+pub struct Selection {
     pub(crate) start: usize,
     pub(crate) end: usize,
 }
 
-impl<'s, S: Copy> Selection<'s, S> {
-    pub fn new(src: &'s Source<S>, start: usize, end: usize) -> Self {
-        Self { src, start, end }
+impl Selection {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
     }
 
-    pub fn merge(self, rhs: Selection<'s, S>) -> Self {
-        if !(self.src.as_ptr() == rhs.src.as_ptr() && self.src.len() == rhs.src.len()) {
-            panic!("invalid merge")
-        }
+    pub fn merge(self, rhs: Selection) -> Self {
         let start = self.start.min(rhs.start);
         let end = self.end.max(rhs.end);
 
-        Selection::new(self.src, start, end)
+        Selection::new(start, end)
     }
 
     pub fn len(&self) -> usize {
@@ -37,34 +32,26 @@ impl<'s, S: Copy> Selection<'s, S> {
     }
 }
 
-impl std::ops::Deref for Selection<'_> {
-    type Target = [char];
-
-    fn deref(&self) -> &Self::Target {
-        &self.src[self.start..self.end]
-    }
-}
-
-impl<'s, S: Copy> WithSelection<'s, S> for Selection<'s, S> {
-    fn get_selection(&self) -> Selection<'s, S> {
+impl WithSelection for Selection {
+    fn get_selection(&self) -> Selection {
         *self
     }
 }
 
 /// a type which implemented [`ParseUnit<S>`] with source code it selected
-pub struct PU<'s, P: ParseUnit<S>, S: Copy = char> {
-    pub(crate) selection: Selection<'s, S>,
-    pub(crate) target: P::Target<'s>,
+pub struct PU<P: ParseUnit<S>, S: Copy = char> {
+    pub(crate) selection: Selection,
+    pub(crate) target: P::Target,
 }
 
-impl<'s, P: ParseUnit<S>, S: Copy> WithSelection<'s, S> for PU<'s, P, S> {
-    fn get_selection(&self) -> Selection<'s, S> {
+impl<P: ParseUnit<S>, S: Copy> WithSelection for PU<P, S> {
+    fn get_selection(&self) -> Selection {
         self.selection
     }
 }
 
-impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
-    pub fn new(selection: Selection<'s, S>, inner: P::Target<'s>) -> Self {
+impl<S: Copy, P: ParseUnit<S>> PU<P, S> {
+    pub fn new(selection: Selection, inner: P::Target) -> Self {
         Self {
             selection,
             target: inner,
@@ -72,24 +59,24 @@ impl<'s, S: Copy, P: ParseUnit<S>> PU<'s, P, S> {
     }
 
     /// take [Self::target] from [`PU`]
-    pub fn take(self) -> P::Target<'s> {
+    pub fn take(self) -> P::Target {
         self.target
     }
 
     /// map [Self::target]
-    pub fn map<P2: ParseUnit<S>, M>(self, mapper: M) -> PU<'s, P2, S>
+    pub fn map<P2: ParseUnit<S>, M>(self, mapper: M) -> PU<P2, S>
     where
-        M: FnOnce(P::Target<'s>) -> P2::Target<'s>,
+        M: FnOnce(P::Target) -> P2::Target,
     {
         PU::new(self.selection, mapper(self.target))
     }
 }
 
-impl<'s, S: Copy, P: ParseUnit<S>> Debug for PU<'s, P, S>
+impl<S: Copy, P: ParseUnit<S>> Debug for PU<P, S>
 where
-    P::Target<'s>: Debug,
+    P::Target: Debug,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("PU")
             .field("selection", &"...")
             .field("target", &self.target)
@@ -97,9 +84,9 @@ where
     }
 }
 
-impl<'s, S: Copy, P: ParseUnit<S>> Clone for PU<'s, P, S>
+impl<S: Copy, P: ParseUnit<S>> Clone for PU<P, S>
 where
-    P::Target<'s>: Clone,
+    P::Target: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -109,17 +96,17 @@ where
     }
 }
 
-impl<'s, S: Copy, P: ParseUnit<S>> Copy for PU<'s, P, S> where P::Target<'s>: Copy {}
+impl<S: Copy, P: ParseUnit<S>> Copy for PU<P, S> where P::Target: Copy {}
 
-impl<'s, S: Copy, P: ParseUnit<S>> std::ops::Deref for PU<'s, P, S> {
-    type Target = P::Target<'s>;
+impl<S: Copy, P: ParseUnit<S>> std::ops::Deref for PU<P, S> {
+    type Target = P::Target;
 
     fn deref(&self) -> &Self::Target {
         &self.target
     }
 }
 
-impl<S: Copy, P: ParseUnit<S>> std::ops::DerefMut for PU<'_, P, S> {
+impl<S: Copy, P: ParseUnit<S>> std::ops::DerefMut for PU<P, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.target
     }

@@ -63,3 +63,31 @@ fn jia_jian_around_114514() {
         assert_eq!(jian.call(114515), 114514);
     })
 }
+
+const TEST_SRC2: &str = "
+zheng3 jia can1 zheng3 x jie2
+han2
+    zheng3 jie2guo3 deng3 x jia1 1 fen1
+    fan3 jie2guo3 fen1
+jie2
+
+zheng3 jia2 can1 zheng3 x jie2
+han2
+    zheng3 jie2guo3 deng3 
+        jia can1 x jia1 1 jie2 fen1
+    fan3 jie2guo3 fen1
+jie2   
+";
+
+#[test]
+fn fn_call() {
+    compile_tester(TEST_SRC2, |tester| unsafe {
+        type TestFn = unsafe extern "C" fn(i64) -> i64;
+
+        let jia: JitFunction<TestFn> = tester.execution_engine.get_function("jia").unwrap();
+        let jia2: JitFunction<TestFn> = tester.execution_engine.get_function("jia2").unwrap();
+
+        assert_eq!(jia.call(114513), 114514);
+        assert_eq!(jia2.call(114512), 114514);
+    })
+}
