@@ -3,7 +3,6 @@ use crate::parse;
 use crate::semantic;
 use crate::semantic::Global;
 use pin1yin1_parser::*;
-use serde::de;
 
 pub trait Ast<'s>: ParseUnit {
     type Forward;
@@ -260,7 +259,7 @@ impl<'s> Ast<'s> for parse::VarDefine<'s> {
                         ty, init.ty
                     ));
                 }
-                Some(init.val.into())
+                Some(init.val)
             }
             None => None,
         };

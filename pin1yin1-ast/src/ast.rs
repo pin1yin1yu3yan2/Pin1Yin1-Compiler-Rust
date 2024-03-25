@@ -2,7 +2,7 @@ use crate::keywords::operators::Operators;
 
 pub type Statements = Vec<Statement>;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum Statement {
     FnDefine(FnDefine),
     Compute(Compute),
@@ -72,7 +72,7 @@ mod from_impls {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct FnDefine {
     #[serde(rename = "type")]
     pub ty: TypeDefine,
@@ -81,7 +81,7 @@ pub struct FnDefine {
     pub body: Statements,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct Compute {
     // we can know this in code generation
     // #[serde(rename = "type")]
@@ -90,7 +90,7 @@ pub struct Compute {
     pub eval: OperateExpr,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct VarDefine {
     #[serde(rename = "type")]
     pub ty: TypeDefine,
@@ -109,7 +109,7 @@ pub struct VarDefine {
 /// and its result(a variable) will be treated as [`AtomicExpr::Variable`]
 ///
 /// using this way to avoid expressions' tree, and make llvm-ir generation much easier
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum AtomicExpr {
     Char(char),
     String(String),
@@ -127,7 +127,7 @@ impl AtomicExpr {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct TypedExpr {
     #[serde(rename = "type")]
     pub ty: TypeDefine,
@@ -146,45 +146,45 @@ impl TypedExpr {
 pub type Variable = AtomicExpr;
 pub type Variables = Vec<Variable>;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct VarStore {
     pub name: String,
     pub val: Variable,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct FnCall {
     pub name: String,
     pub args: Variables,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct Condition {
     // the final value of the condition
     pub val: Variable,
     pub compute: Statements,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct IfBranch {
     pub cond: Condition,
     pub body: Statements,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct If {
     pub branches: Vec<IfBranch>,
     #[serde(rename = "else")]
     pub else_: Option<Statements>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct While {
     pub cond: Condition,
     pub body: Statements,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct Return {
     /// here, this should be [`Option<Variable>`]
     ///
@@ -198,7 +198,7 @@ pub struct Return {
 /// [`OperateExpr::Unary`] and [`OperateExpr::Binary`] are normal operations aroud
 /// primitives, hign ranked operations are translated into [`AtomicExpr::FnCall`]
 /// and be stored as [`OperateExpr::NoOp`]
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum OperateExpr {
     Unary(Operators, AtomicExpr),
     Binary(Operators, AtomicExpr, AtomicExpr),
@@ -214,7 +214,7 @@ impl OperateExpr {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct Parameter {
     #[serde(rename = "type")]
     pub ty: TypeDefine,

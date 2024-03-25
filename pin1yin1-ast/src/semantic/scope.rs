@@ -39,7 +39,7 @@ impl<'ast, 's> Global<'ast, 's> {
     where
         E: Into<ast::OperateExpr>,
     {
-        let name = self.this_pool().alloc_id.to_string();
+        let name = format!("_{}", self.this_pool().alloc_id);
         self.this_pool().alloc_id += 1;
 
         let eval = init.into();

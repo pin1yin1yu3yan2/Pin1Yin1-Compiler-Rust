@@ -6,9 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pin1yin1-parser = { path = "../pin1yin1-parser", features = [
-    "parser_calling_tree",
-] }
+pin1yin1-parser = { path = "../pin1yin1-parser" }
 pin1yin1-ast = { path = "../pin1yin1-ast", features = ["parser"] }
 serde_json = "1"
 inkwell = { version = "0.4.0", features = ["llvm17-0-prefer-dynamic"] }

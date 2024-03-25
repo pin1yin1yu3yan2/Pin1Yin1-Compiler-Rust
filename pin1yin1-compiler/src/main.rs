@@ -1,7 +1,8 @@
 pub mod compile;
 pub mod primitive;
 pub mod scope;
-pub mod types;
+#[cfg(test)]
+mod tests;
 
 use compile::CodeGen;
 use inkwell::{context::Context, execution_engine::JitFunction};
