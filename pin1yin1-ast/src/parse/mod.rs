@@ -32,7 +32,7 @@ impl ParseUnit for Ident {
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ident = p
-            .parse::<&[char]>()
+            .get_chars()
             .which_or(|s| !s.is_empty(), |s| s.unmatch("empty ident!"))
             .which_or(|s| !s[0].is_ascii_digit(), |s| s.unmatch("bad ident"))?;
 
@@ -92,6 +92,19 @@ mod tests {
 
         parse_test("114514", |p| {
             assert!(is_e4chou4de1(p.parse::<Ident>()));
+        })
+    }
+
+    #[test]
+    fn double_idnet() {
+        parse_test("a b", |p| {
+            let a = p.parse::<Ident>();
+            assert!(a.is_success());
+            assert_eq!(a.success().unwrap().ident, "a");
+
+            let b = p.parse::<Ident>();
+            assert!(b.is_success());
+            assert_eq!(b.success().unwrap().ident, "b");
         })
     }
 }

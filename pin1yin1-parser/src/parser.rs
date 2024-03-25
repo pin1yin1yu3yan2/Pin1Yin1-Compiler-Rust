@@ -283,7 +283,7 @@ impl<'s, 'p, S: Copy, P: ParseUnit<S>> Try<'s, 'p, S, P> {
                 .as_ref()
                 .is_some_and(|result| result.is_unmatch())
         {
-            self.state = Some(parser(self.parser).map_pu(|t| t));
+            self.state = Some(self.parser.once(parser).map_pu(|t| t));
         }
         self
     }

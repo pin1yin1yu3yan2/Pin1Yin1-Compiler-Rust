@@ -13,11 +13,13 @@ impl ParseUnit for Comment {
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         let shi4 = Symbol::Comment.parse_or_unmatch(p)?;
-        while let Some(str) = p.try_parse::<&[char]>() {
+
+        while let Some(str) = p.try_once(Parser::get_chars) {
             let str = str?;
             if str.len() == 0 {
                 break;
             }
+
             const JIE2: &[char] = &['j', 'i', 'e', '2'];
             if *str == JIE2 {
                 let jie2 = str.map(|_| Symbol::EndOfBracket);

@@ -174,6 +174,6 @@ mod tests {
         chong2 can1 i xiao3 5 jie2 han2 
             i deng3 i jia1 1 fen1 
         jie2";
-        parse_test(src, |p| assert!(p.parse::<While>().is_success()));
+        parse_test(src, |p| assert!(dbg!(p.parse::<While>()).is_success()));
     }
 }

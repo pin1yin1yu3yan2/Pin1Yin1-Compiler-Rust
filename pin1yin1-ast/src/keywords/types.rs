@@ -18,28 +18,3 @@ keywords! {
         "zhi3"     -> Pointer,
     }
 }
-
-// PrimitiveType shouldn't be keeping keywords
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// pub enum PrimitiveTypes {
-
-// }
-// impl pin1yin1_parser::ParseUnit for PrimitiveTypes {
-//     type Target = PrimitiveTypes;
-//     fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
-//         use std::collections::HashMap;
-//         lazy_static::lazy_static! {
-//             static ref MAP:HashMap<Vec<char>,PrimitiveTypes>  = {
-//                 let mut _map = HashMap::new();
-//                 _map.insert("zheng3".chars().collect::<Vec<_>>(),PrimitiveTypes::Integer);
-//                 _map.insert("fu2".chars().collect::<Vec<_>>(),PrimitiveTypes::Float);
-//                 _map.insert("zi4".chars().collect::<Vec<_>>(),PrimitiveTypes::Char);
-//                 _map.insert("bu4".chars().collect::<Vec<_>>(),PrimitiveTypes::Bool);
-//                 _map.insert("xu1".chars().collect::<Vec<_>>(),PrimitiveTypes::Complex);
-//                 _map
-//             };
-//         }
-//         let s: &[char] = &p.parse::<&[char]>()?;
-//         MAP.get(s).copied().map(|t| p.new_token(t)).ok_or(None)
-//     }
-// }

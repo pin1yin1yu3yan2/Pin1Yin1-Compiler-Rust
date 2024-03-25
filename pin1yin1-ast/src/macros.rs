@@ -58,7 +58,7 @@ macro_rules! keywords {
                     };
                 }
 
-                let s: &[char] = &p.parse::<&[char]>()?;
+                let s = *p.once(pin1yin1_parser::Parser::get_chars)?;
                 let opt = MAP.get(s).copied().map(|t| p.make_token(t));
                 pin1yin1_parser::ParseResult::from_option(opt,|| p.unmatch(format!("non of {} matched", stringify!($enum_name))))
             }

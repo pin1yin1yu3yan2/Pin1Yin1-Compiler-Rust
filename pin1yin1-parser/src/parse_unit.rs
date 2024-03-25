@@ -24,13 +24,13 @@ impl ParseUnit for String {
     type Target = String;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let s = <&[char]>::parse(p)?.iter().collect::<String>();
-
+        let s = p.get_chars()?.iter().collect::<String>();
         p.finish(s)
     }
 }
 
 ///  very hot funtion!!!
+
 impl<'a> ParseUnit for &'a [char] {
     type Target = &'a [char];
 
