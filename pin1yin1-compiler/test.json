@@ -1,1 +1,1 @@
-[]
+[{"FnDefine":{"type":{"type":"i64"},"name":"jia","params":[{"type":{"type":"i64"},"name":"x"}],"body":[{"Compute":{"name":"0","eval":{"Binary":["Add",{"Variable":"x"},{"Integer":1}]}}},{"VarDefine":{"type":{"type":"i64"},"name":"jie2guo3","init":{"Variable":"0"}}},{"Return":{"val":{"Variable":"jie2guo3"}}}]}},{"FnDefine":{"type":{"type":"i64"},"name":"jian","params":[{"type":{"type":"i64"},"name":"x"}],"body":[{"Compute":{"name":"0","eval":{"Binary":["Sub",{"Variable":"x"},{"Integer":1}]}}},{"Return":{"val":{"Variable":"0"}}}]}}]

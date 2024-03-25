@@ -3,6 +3,7 @@ use crate::parse;
 use crate::semantic;
 use crate::semantic::Global;
 use pin1yin1_parser::*;
+use serde::de;
 
 pub trait Ast<'s>: ParseUnit {
     type Forward;
@@ -81,14 +82,17 @@ impl<'s> Ast<'s> for parse::FnCall<'s> {
         _selection: Selection<'s>,
         _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
-        let args = fn_call
+        let (tys, vals): (Vec<_>, Vec<_>) = fn_call
             .args
             .args
             .iter()
             .try_fold(vec![], |mut args, expr| {
-                args.push(_global.to_ast(expr)?);
+                let expr = _global.to_ast(expr)?;
+                args.push((expr.ty, expr.val));
                 Result::Success(args)
-            })?;
+            })?
+            .into_iter()
+            .unzip();
 
         let fn_def = Result::from_option(_global.search_fn(&fn_call.fn_name), || {
             _selection.throw("use of undefined function")
@@ -98,33 +102,32 @@ impl<'s> Ast<'s> for parse::FnCall<'s> {
         let fn_def = &fn_def.overdrives[0];
         let params = &fn_def.params;
 
-        if params.len() != args.len() {
+        if params.len() != vals.len() {
             return _selection.throw(format!(
                 "function {} exprct {} arguments, but {} arguments passed in",
                 fn_call.fn_name.ident,
                 params.len(),
-                args.len()
+                vals.len()
             ));
         }
 
-        for arg_idx in 0..args.len() {
-            if args[arg_idx].ty != params[arg_idx] {
+        for arg_idx in 0..vals.len() {
+            if tys[arg_idx] != params[arg_idx].ty {
                 return fn_call.args.args[arg_idx].throw(format!(
                     "expected type {}, but found type {}",
-                    params[arg_idx], args[arg_idx].ty
+                    params[arg_idx].ty, tys[arg_idx]
                 ));
             }
         }
 
         let fn_call = ast::FnCall {
             name: fn_call.fn_name.ident.clone(),
-            args: args.into_iter().collect(),
+            args: vals.into_iter().collect(),
         };
 
         let ty = fn_def.ty.clone();
-        let init = ast::AtomicExpr::FnCall(fn_call);
-        let define = _global.alloc_var(ty, init);
-        Result::Success(_global.push_define(define))
+        let fn_call = ast::AtomicExpr::FnCall(fn_call);
+        Result::Success(ast::TypedExpr::new(ty, fn_call))
     }
 }
 
@@ -152,7 +155,7 @@ impl<'s> Ast<'s> for parse::VarStore<'s> {
                 var_def.ty, val.ty
             ));
         }
-        _global.push_stmt(ast::VarStore { name, val });
+        _global.push_stmt(ast::VarStore { name, val: val.val });
         Result::Success(())
     }
 }
@@ -166,29 +169,51 @@ impl<'s> Ast<'s> for parse::FnDefine<'s> {
         _global: &mut Global<'ast, 's>,
     ) -> Result<'s, Self::Forward> {
         let fn_name = fn_define.function.name.ident.clone();
+
         if let Some(exist) = _global.search_fn(&fn_name) {
             return exist.raw_defines[0]
                 .function
                 .throw("overdrive is not supported now...");
         }
 
+        // do this step firstly to allow recursion
+        // mangle should follow the `mangle rule` (not exist now)
+        // the mangle is the unique id of the function because overdrive allow fns with same name but different sign
         let ret_ty: ast::TypeDefine = fn_define.function.ty.to_ast_ty()?;
 
-        let types = fn_define
+        let params = fn_define
             .params
             .params
             .iter()
             .try_fold(Vec::new(), |mut vec, pu| {
-                vec.push(ast::TypeDefine::try_from((*pu.inner.ty).clone())?);
+                let ty = ast::TypeDefine::try_from((*pu.inner.ty).clone())?;
+                let name = pu.inner.name.ident.clone();
+                vec.push(ast::Parameter { ty, name });
                 Result::Success(vec)
             })?;
 
-        // do this step firstly to allow recursion
-        // mangle should follow the `mangle rule` (not exist now)
-        // the mangle is the unique id of the function because overdrive allow fns with same name but different sign
+        let sign_params =
+            params
+                .iter()
+                .cloned()
+                .enumerate()
+                .try_fold(Vec::new(), |mut vec, (idx, param)| {
+                    let raw = &fn_define.params.params[idx].inner;
+                    let param = semantic::Parameter {
+                        name: param.name,
+                        var_def: semantic::VarDefinition::new(param.ty, raw),
+                    };
+                    vec.push(param);
+                    Result::Success(vec)
+                })?;
 
         // TODO: `mangle rule`
-        let fn_sign = semantic::FnSign::new(fn_name.clone(), ret_ty.clone(), types.clone());
+        let fn_sign = semantic::FnSign {
+            mangle: fn_name.clone(),
+            ty: ret_ty.clone(),
+            params: sign_params,
+        };
+
         let fn_def = semantic::FnDefinition::new(vec![fn_sign], vec![fn_define]);
         _global.regist_fn(fn_name.clone(), fn_def);
 
@@ -196,29 +221,9 @@ impl<'s> Ast<'s> for parse::FnDefine<'s> {
         let ty = ret_ty;
         let name = fn_name;
 
-        let params = types
-            .into_iter()
-            .enumerate()
-            .try_fold(Vec::new(), |mut vec, (idx, ty)| {
-                let name = fn_define.params.params[idx].inner.name.ident.clone();
-                vec.push(ast::Parameter { ty, name });
-                Result::Success(vec)
-            })?;
-
-        // regist parameters
-        let params_iter = params.iter().enumerate().map(|(idx, param)| {
-            (
-                param.name.clone(),
-                semantic::VarDefinition::new(param.ty.clone(), &fn_define.params.params[idx].inner),
-            )
-        });
-
-        // use this because funtion cant access out variables
-
-        // TODO: global variables support
         let body = _global
-            .fn_scope(|_global| {
-                _global.regist_params(params_iter);
+            .fn_scope(name.clone(), |_global| {
+                // _global.regist_params(params_iter);
                 for stmt in &fn_define.codes.stmts {
                     _global.to_ast(stmt)?;
                 }
@@ -265,7 +270,7 @@ impl<'s> Ast<'s> for parse::VarDefine<'s> {
             semantic::VarDefinition::new(ty.clone(), var_define),
         );
 
-        _global.push_define(ast::VarDefine { ty, name, init });
+        _global.push_stmt(ast::VarDefine { ty, name, init });
 
         Result::Success(())
     }
@@ -344,7 +349,9 @@ impl<'s> Ast<'s> for parse::Return<'s> {
             Some(val) => Some(_global.to_ast(val)?),
             None => None,
         };
-        _global.push_stmt(ast::Statement::Return(ast::Return { val }));
+        _global.push_stmt(ast::Statement::Return(ast::Return {
+            val: val.map(|v| v.val),
+        }));
         Result::Success(())
     }
 }
@@ -390,7 +397,7 @@ impl<'s> Ast<'s> for parse::Arguments<'s> {
         }
 
         Result::Success(ast::Condition {
-            val: last_cond,
+            val: last_cond.val,
             compute,
         })
     }
@@ -423,9 +430,8 @@ impl<'s> Ast<'s> for parse::Expr<'s> {
                     l.ty.clone()
                 };
 
-                let define =
-                    _global.alloc_var(ty, ast::OperateExpr::binary(o.take(), l.val, r.val));
-                Result::Success(_global.push_define(define))
+                let define = _global.push_compute(ast::OperateExpr::binary(o.take(), l.val, r.val));
+                Result::Success(define.with_ty(ty))
             }
         }
     }
@@ -441,29 +447,19 @@ impl<'s> Ast<'s> for parse::AtomicExpr<'s> {
     ) -> Result<'s, Self::Forward> {
         match atomic {
             parse::AtomicExpr::CharLiteral(char) => {
-                let define =
-                    _global.alloc_var(ast::TypeDefine::char(), ast::AtomicExpr::Char(char.parsed));
-                Result::Success(_global.push_define(define))
+                Result::Success(ast::AtomicExpr::Char(char.parsed).with_ty(ast::TypeDefine::char()))
             }
-            parse::AtomicExpr::StringLiteral(str) => {
-                let define = _global.alloc_var(
-                    ast::TypeDefine::string(),
-                    ast::AtomicExpr::String(str.parsed.clone()),
-                );
-                Result::Success(_global.push_define(define))
-            }
-            parse::AtomicExpr::NumberLiteral(n) => {
-                let defint = match n {
-                    parse::NumberLiteral::Float { number, .. } => {
-                        _global.alloc_var(ast::TypeDefine::float(), ast::AtomicExpr::Float(*number))
-                    }
-                    parse::NumberLiteral::Digit { number, .. } => _global.alloc_var(
-                        ast::TypeDefine::integer(),
-                        ast::AtomicExpr::Integer(*number),
-                    ),
-                };
-                Result::Success(_global.push_define(defint))
-            }
+            parse::AtomicExpr::StringLiteral(str) => Result::Success(
+                ast::AtomicExpr::String(str.parsed.clone()).with_ty(ast::TypeDefine::string()),
+            ),
+            parse::AtomicExpr::NumberLiteral(n) => match n {
+                parse::NumberLiteral::Float { number, .. } => Result::Success(
+                    ast::AtomicExpr::Float(*number).with_ty(ast::TypeDefine::float()),
+                ),
+                parse::NumberLiteral::Digit { number, .. } => Result::Success(
+                    ast::AtomicExpr::Integer(*number).with_ty(ast::TypeDefine::integer()),
+                ),
+            },
             parse::AtomicExpr::FnCall(fn_call) => {
                 parse::FnCall::to_ast(fn_call, _selection, _global)
             }
@@ -481,11 +477,8 @@ impl<'s> Ast<'s> for parse::AtomicExpr<'s> {
             // all operator overdriven must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
                 let l = _global.to_ast(&unary.expr)?;
-                let define = _global.alloc_var(
-                    l.ty.clone(),
-                    ast::OperateExpr::unary(*unary.operator, l.val),
-                );
-                Result::Success(_global.push_define(define))
+                let define = _global.push_compute(ast::OperateExpr::unary(*unary.operator, l.val));
+                Result::Success(define.with_ty(l.ty))
             }
             parse::AtomicExpr::BracketExpr(expr) => _global.to_ast(&expr.expr),
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),

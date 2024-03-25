@@ -5,6 +5,7 @@ pub type Statements = Vec<Statement>;
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub enum Statement {
     FnDefine(FnDefine),
+    Compute(Compute),
     VarDefine(VarDefine),
     VarStore(VarStore),
     FnCall(FnCall),
@@ -19,6 +20,12 @@ mod from_impls {
     impl From<FnDefine> for Statement {
         fn from(v: FnDefine) -> Self {
             Self::FnDefine(v)
+        }
+    }
+
+    impl From<Compute> for Statement {
+        fn from(v: Compute) -> Self {
+            Self::Compute(v)
         }
     }
 
@@ -75,12 +82,21 @@ pub struct FnDefine {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct Compute {
+    // we can know this in code generation
+    // #[serde(rename = "type")]
+    // pub ty: TypeDefine,
+    pub name: String,
+    pub eval: OperateExpr,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VarDefine {
     #[serde(rename = "type")]
     pub ty: TypeDefine,
     pub name: String,
     /// `init` must be an `atomic expr`
-    pub init: Option<OperateExpr>,
+    pub init: Option<Variable>,
 }
 
 /// this kind of expr is the most general expression
@@ -127,7 +143,7 @@ impl TypedExpr {
     }
 }
 
-pub type Variable = TypedExpr;
+pub type Variable = AtomicExpr;
 pub type Variables = Vec<Variable>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -186,13 +202,6 @@ pub struct Return {
 pub enum OperateExpr {
     Unary(Operators, AtomicExpr),
     Binary(Operators, AtomicExpr, AtomicExpr),
-    NoOp(AtomicExpr),
-}
-
-impl From<AtomicExpr> for OperateExpr {
-    fn from(v: AtomicExpr) -> Self {
-        Self::noop(v)
-    }
 }
 
 impl OperateExpr {
@@ -202,10 +211,6 @@ impl OperateExpr {
 
     pub fn unary(op: Operators, v: impl Into<AtomicExpr>) -> Self {
         Self::Unary(op, v.into())
-    }
-
-    pub fn noop(v: impl Into<AtomicExpr>) -> Self {
-        Self::NoOp(v.into())
     }
 }
 
@@ -222,64 +227,59 @@ pub type Parameters = Vec<Parameter>;
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct TypeDefine {
     #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub decorators: Vec<TypeDecorators>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decorators: Option<Vec<TypeDecorators>>,
     #[serde(rename = "type")]
     pub ty: String,
 }
 
 impl TypeDefine {
-    pub fn integer() -> Self {
+    fn no_decorators(ty: impl Into<String>) -> Self {
         Self {
-            decorators: vec![],
-            ty: "i64".into(),
+            decorators: None,
+            ty: ty.into(),
         }
+    }
+
+    pub fn integer() -> Self {
+        Self::no_decorators("i64")
     }
     pub fn float() -> Self {
-        Self {
-            decorators: vec![],
-            ty: "f32".into(),
-        }
+        Self::no_decorators("f32")
     }
     pub fn char() -> Self {
-        Self {
-            decorators: vec![],
-            ty: "zi4".into(),
-        }
+        Self::no_decorators("zi4")
     }
     pub fn string() -> Self {
         Self {
-            decorators: vec![TypeDecorators::Array],
+            decorators: vec![TypeDecorators::Array].into(),
             ty: "zi4".into(),
         }
     }
     pub fn bool() -> Self {
-        Self {
-            decorators: vec![],
-            ty: "bu4".into(),
-        }
+        Self::no_decorators("bu4")
     }
 
     #[deprecated = "this is not going to be implemented in pin1yin1"]
     pub fn complex() -> Self {
-        Self {
-            decorators: vec![],
-            ty: "xu1".into(),
-        }
+        Self::no_decorators("zu1")
     }
 }
 
 impl std::fmt::Display for TypeDefine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for dec in &self.decorators {
-            match dec {
-                TypeDecorators::Const => write!(f, "const "),
-                TypeDecorators::Array => write!(f, "[] "),
-                TypeDecorators::Reference => write!(f, "& "),
-                TypeDecorators::Pointer => write!(f, "* "),
-                TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
-            }?;
+        if let Some(decorators) = &self.decorators {
+            for dec in decorators {
+                match dec {
+                    TypeDecorators::Const => write!(f, "const "),
+                    TypeDecorators::Array => write!(f, "[] "),
+                    TypeDecorators::Reference => write!(f, "& "),
+                    TypeDecorators::Pointer => write!(f, "* "),
+                    TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
+                }?;
+            }
         }
+
         write!(f, "{}", self.ty)
     }
 }
@@ -421,6 +421,10 @@ impl<'s> TryFrom<crate::parse::TypeDefine<'s>> for TypeDefine {
             value.ty.take().ident
         };
 
+        if value.const_.is_none() && value.decorators.is_empty() {
+            return Ok(Self::no_decorators(ty));
+        }
+
         let mut decorators = vec![];
         if value.const_.is_some() {
             decorators.push(TypeDecorators::Const);
@@ -438,6 +442,9 @@ impl<'s> TryFrom<crate::parse::TypeDefine<'s>> for TypeDefine {
             decorators.push(decorator);
         }
 
-        Ok(Self { decorators, ty })
+        Ok(Self {
+            decorators: decorators.into(),
+            ty,
+        })
     }
 }

@@ -5,6 +5,8 @@ use super::definition::{FnDefinitions, VarDefinitions};
 use crate::ast;
 
 pub struct Global<'ast, 's> {
+    // this kind of variables can be accessed cross fn define
+    pub(crate) fns: FnDefinitions<'ast, 's>,
     pub(crate) pools: Vec<Scope<'ast, 's>>,
 }
 
@@ -12,7 +14,10 @@ impl<'ast, 's> Global<'ast, 's> {
     pub fn new() -> Self {
         let pools = vec![Scope::new()];
 
-        Self { pools }
+        Self {
+            pools,
+            fns: Default::default(),
+        }
     }
 
     pub(crate) fn this_pool(&mut self) -> &mut Scope<'ast, 's> {
@@ -23,15 +28,6 @@ impl<'ast, 's> Global<'ast, 's> {
         self.this_pool().stmts.push(stmt.into())
     }
 
-    pub(crate) fn push_define(&mut self, define: ast::VarDefine) -> ast::TypedExpr {
-        let typed_var = ast::TypedExpr::new(
-            define.ty.clone(),
-            ast::AtomicExpr::Variable(define.name.clone()),
-        );
-        self.push_stmt(define);
-        typed_var
-    }
-
     pub fn finish(mut self) -> ast::Statements {
         assert!(self.pools.len() == 1, "un closed parse!?");
         self.pools.pop().unwrap().stmts
@@ -39,18 +35,20 @@ impl<'ast, 's> Global<'ast, 's> {
 
     // pub fn mangle(&mut self, name: &str) {}
 
-    pub fn alloc_var<O, E>(&mut self, ty: ast::TypeDefine, init: O) -> ast::VarDefine
+    pub fn push_compute<E>(&mut self, init: E) -> ast::Variable
     where
-        O: Into<Option<E>>,
         E: Into<ast::OperateExpr>,
     {
-        let def = ast::VarDefine {
-            ty,
-            init: init.into().map(|e| e.into()),
-            name: self.this_pool().alloc_id.to_string(),
-        };
+        let name = self.this_pool().alloc_id.to_string();
         self.this_pool().alloc_id += 1;
-        def
+
+        let eval = init.into();
+        let compute = ast::Compute {
+            name: name.clone(),
+            eval,
+        };
+        self.this_pool().stmts.push(compute.into());
+        ast::AtomicExpr::Variable(name)
     }
 }
 
@@ -88,11 +86,17 @@ mod parse {
             Result::Success((pool.stmts, t))
         }
 
-        pub(crate) fn fn_scope<T, F>(&mut self, f: F) -> Result<'s, (ast::Statements, T)>
+        pub(crate) fn fn_scope<T, F>(
+            &mut self,
+            fn_name: String,
+            f: F,
+        ) -> Result<'s, (ast::Statements, T)>
         where
             F: FnOnce(&mut Self) -> Result<'s, T>,
         {
-            self.pools.push(Scope::new());
+            let mut scope = Scope::new();
+            scope.fn_name = Some(fn_name);
+            self.pools.push(scope);
             let t = f(self)?;
             let pool = self.pools.pop().unwrap();
 
@@ -107,20 +111,8 @@ mod parse {
             self.this_pool().vars.map.insert(name, def);
         }
 
-        pub(crate) fn regist_params<I>(&mut self, defs: I)
-        where
-            I: IntoIterator<Item = (String, definition::VarDefinition<'ast, 's>)>,
-        {
-            assert!(self.this_pool().params.is_none());
-
-            let defs = definition::VarDefinitions {
-                map: defs.into_iter().collect(),
-            };
-            self.this_pool().params = Some(defs);
-        }
-
         pub(crate) fn regist_fn(&mut self, name: String, def: definition::FnDefinition<'ast, 's>) {
-            self.this_pool().fns.map.insert(name, def);
+            self.fns.map.insert(name, def);
         }
 
         pub(crate) fn search_fn(&self, name: &str) -> Option<&definition::FnDefinition<'ast, 's>> {
@@ -128,13 +120,7 @@ mod parse {
             // so, the function serarching may be wrong(
             // because the function ignore the function parameters
             // the calling should select the right function with the function's parameters
-
-            for pool in self.pools.iter().rev() {
-                if let Some(def) = pool.fns.map.get(name) {
-                    return Some(def);
-                }
-            }
-            None
+            self.fns.map.get(name)
         }
 
         // .1: mutable
@@ -147,14 +133,13 @@ mod parse {
                     return Some((def, true));
                 }
 
-                if pool.params.is_some() {
-                    return pool
+                if let Some(fn_name) = &pool.fn_name {
+                    let fn_def = self.search_fn(fn_name).unwrap();
+                    return fn_def.overdrives[0]
                         .params
-                        .as_ref()
-                        .unwrap()
-                        .map
-                        .get(name)
-                        .map(|def| (def, false));
+                        .iter()
+                        .find(|param| param.name == name)
+                        .map(|param| (&param.var_def, false));
                 }
             }
             None
@@ -183,10 +168,8 @@ pub struct Scope<'ast, 's> {
     // defines
     pub vars: VarDefinitions<'ast, 's>,
     // TODO: static/const variable
-    // this kind of variables can be accessed cross fn define
-    pub fns: FnDefinitions<'ast, 's>,
     // this kind of var definitions are only allowed to be used in a LocalPool
-    pub params: Option<VarDefinitions<'ast, 's>>,
+    pub fn_name: Option<String>,
     // statements in scope
     pub stmts: ast::Statements,
     // a mangle for functions, variable, etc

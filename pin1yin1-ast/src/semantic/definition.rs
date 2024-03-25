@@ -14,7 +14,7 @@ pub struct FnDefinition<'ast, 's> {
     /// functions have same names but different signatures
     ///
     /// unsupport now
-    pub overdrives: Vec<FnSign>,
+    pub overdrives: Vec<FnSign<'ast, 's>>,
     #[cfg(feature = "parser")]
     pub raw_defines: Vec<&'ast parse::FnDefine<'s>>,
     _p: PhantomData<&'ast &'s ()>,
@@ -22,7 +22,7 @@ pub struct FnDefinition<'ast, 's> {
 
 impl<'ast, 's> FnDefinition<'ast, 's> {
     pub fn new(
-        overdrives: Vec<FnSign>,
+        overdrives: Vec<FnSign<'ast, 's>>,
         #[cfg(feature = "parser")] raw_defines: Vec<&'ast parse::FnDefine<'s>>,
     ) -> Self {
         Self {
@@ -35,15 +35,24 @@ impl<'ast, 's> FnDefinition<'ast, 's> {
 }
 
 #[derive(Debug, Clone)]
-pub struct FnSign {
+pub struct FnSign<'ast, 's> {
     pub mangle: String,
     pub ty: ast::TypeDefine,
-    pub params: Vec<ast::TypeDefine>,
+    pub params: Vec<Parameter<'ast, 's>>,
 }
 
-impl FnSign {
-    pub fn new(mangle: String, ty: ast::TypeDefine, params: Vec<ast::TypeDefine>) -> Self {
-        Self { mangle, ty, params }
+#[derive(Debug, Clone)]
+pub struct Parameter<'ast, 's> {
+    pub name: String,
+    #[cfg(feature = "parser")]
+    pub var_def: VarDefinition<'ast, 's>,
+}
+
+impl<'ast, 's> std::ops::Deref for Parameter<'ast, 's> {
+    type Target = VarDefinition<'ast, 's>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.var_def
     }
 }
 
