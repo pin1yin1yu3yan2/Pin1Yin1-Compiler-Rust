@@ -22,18 +22,9 @@ macro_rules! statement_wrapper {
             type Target = $into;
 
             fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
-                use pin1yin1_parser::WithSelection;
-                let inner = p.parse::<$from>()?;
 
-                #[cfg(debug_assertions)]
-                let or = format!(
-                    "expect `fen1` {{{}}}",
-                    std::any::type_name_of_val(&Self::parse)
-                );
-                #[cfg(not(debug_assertions))]
-                let or = "expect `fen1`";
-                let fen1 = p.parse::<$crate::keywords::syntax::Symbol>()
-                    .eq_or($crate::keywords::syntax::Symbol::Semicolon, |t| t.unmatch(or))?;
+                let inner = p.parse::<$from>()?;
+                let fen1 = p.match_($crate::keywords::syntax::Symbol::Semicolon)?;
                 p.finish($into { inner, fen1 })
             }
         }
@@ -84,7 +75,7 @@ macro_rules! statements {
                 $(
                     .or_try::<Self, _>(|p| {
                         $variant::parse(p)
-                            .map_pu(|pu| <$enum_name>::$variant(Box::new(pu)))
+                            .map(|pu| pu.map(|t |<$enum_name>::$variant(Box::new(t))))
                     })
                 )*
                 .finish()

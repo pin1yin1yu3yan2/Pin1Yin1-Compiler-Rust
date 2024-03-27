@@ -63,7 +63,7 @@ impl<'ast> Global<'ast> {
         for stmt in stmts {
             self.to_ast(stmt)?;
         }
-        Result::Success(())
+        Result::Ok(())
     }
 
     pub(crate) fn spoce<T, F>(&mut self, f: F) -> Result<(ast::Statements, T)>
@@ -77,7 +77,7 @@ impl<'ast> Global<'ast> {
         let t = f(self)?;
         let pool = self.pools.pop().unwrap();
 
-        Result::Success((pool.stmts, t))
+        Result::Ok((pool.stmts, t))
     }
 
     pub(crate) fn fn_scope<T, F>(&mut self, fn_name: String, f: F) -> Result<(ast::Statements, T)>
@@ -90,7 +90,7 @@ impl<'ast> Global<'ast> {
         let t = f(self)?;
         let pool = self.pools.pop().unwrap();
 
-        Result::Success((pool.stmts, t))
+        Result::Ok((pool.stmts, t))
     }
 
     pub(crate) fn regist_var(&mut self, name: String, def: definition::VarDefinition<'ast>) {
@@ -134,13 +134,13 @@ impl<'ast> Global<'ast> {
     pub fn to_ast_inner<A: Ast>(
         &mut self,
         s: &'ast A::Target,
-        selection: Selection,
+        selection: Span,
     ) -> Result<A::Forward> {
         A::to_ast(s, selection, self)
     }
 
     pub fn to_ast<A: Ast>(&mut self, pu: &'ast PU<A>) -> Result<A::Forward> {
-        self.to_ast_inner::<A>(&**pu, pu.get_selection())
+        self.to_ast_inner::<A>(&**pu, pu.get_span())
     }
 }
 

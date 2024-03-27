@@ -7,12 +7,12 @@ use pin1yin1_parser::*;
 pub trait Ast: ParseUnit {
     type Forward;
 
-    /// divided [`PU`] into [`ParseUnit::Target`] and [`Selection`] becase
-    /// variants from [`crate::complex_pu`] isnot [`PU`], and the [`Selection`]
+    /// divided [`PU`] into [`ParseUnit::Target`] and [`Span`] becase
+    /// variants from [`crate::complex_pu`] isnot [`PU`], and the [`Span`]
     /// was stored in the enum
     fn to_ast<'ast>(
         s: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward>;
 }
@@ -39,7 +39,7 @@ impl Ast for parse::Statement {
 
     fn to_ast<'ast>(
         stmt: &'ast Self::Target,
-        selection: Selection,
+        selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         match stmt {
@@ -69,7 +69,7 @@ impl Ast for parse::Statement {
             }
             parse::Statement::Comment(_) => {}
         }
-        Result::Success(())
+        Result::Ok(())
     }
 }
 
@@ -78,7 +78,7 @@ impl Ast for parse::FnCall {
 
     fn to_ast<'ast>(
         fn_call: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let (tys, vals): (Vec<_>, Vec<_>) = fn_call
@@ -88,14 +88,14 @@ impl Ast for parse::FnCall {
             .try_fold(vec![], |mut args, expr| {
                 let expr = _global.to_ast(expr)?;
                 args.push((expr.ty, expr.val));
-                Result::Success(args)
+                Result::Ok(args)
             })?
             .into_iter()
             .unzip();
 
-        let fn_def = Result::from_option(_global.search_fn(&fn_call.fn_name), || {
-            _selection.throw("use of undefined function")
-        })?;
+        let Some(fn_def) = _global.search_fn(&fn_call.fn_name) else {
+            return _selection.throw("use of undefined function");
+        };
 
         // TOOD: overdrive support
         let fn_def = &fn_def.overdrives[0];
@@ -104,7 +104,7 @@ impl Ast for parse::FnCall {
         if params.len() != vals.len() {
             return _selection.throw(format!(
                 "function {} exprct {} arguments, but {} arguments passed in",
-                fn_call.fn_name.ident,
+                fn_call.fn_name.0,
                 params.len(),
                 vals.len()
             ));
@@ -120,13 +120,13 @@ impl Ast for parse::FnCall {
         }
 
         let fn_call = ast::FnCall {
-            name: fn_call.fn_name.ident.clone(),
+            name: fn_call.fn_name.0.clone(),
             args: vals.into_iter().collect(),
         };
 
         let ty = fn_def.ty.clone();
         let fn_call = ast::AtomicExpr::FnCall(fn_call);
-        Result::Success(ast::TypedExpr::new(ty, fn_call))
+        Result::Ok(ast::TypedExpr::new(ty, fn_call))
     }
 }
 
@@ -135,10 +135,10 @@ impl Ast for parse::VarStore {
 
     fn to_ast<'ast>(
         var_store: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
-        let name = var_store.name.ident.clone();
+        let name = var_store.name.0.clone();
         // function parameters are inmutable
 
         let val = _global.to_ast(&var_store.assign.val)?;
@@ -155,7 +155,7 @@ impl Ast for parse::VarStore {
             ));
         }
         _global.push_stmt(ast::VarStore { name, val: val.val });
-        Result::Success(())
+        Result::Ok(())
     }
 }
 
@@ -164,10 +164,10 @@ impl Ast for parse::FnDefine {
 
     fn to_ast<'ast>(
         fn_define: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
-        let fn_name = fn_define.name.ident.clone();
+        let fn_name = fn_define.name.0.clone();
 
         if let Some(exist) = _global.search_fn(&fn_name) {
             return exist.raw_defines[0]
@@ -186,9 +186,9 @@ impl Ast for parse::FnDefine {
             .iter()
             .try_fold(Vec::new(), |mut vec, pu| {
                 let ty = pu.inner.ty.to_ast_ty()?;
-                let name = pu.inner.name.ident.clone();
+                let name = pu.inner.name.0.clone();
                 vec.push(ast::Parameter { ty, name });
-                Result::Success(vec)
+                Result::Ok(vec)
             })?;
 
         let sign_params =
@@ -204,7 +204,7 @@ impl Ast for parse::FnDefine {
                         _p: std::marker::PhantomData,
                     };
                     vec.push(param);
-                    Result::Success(vec)
+                    Result::Ok(vec)
                 })?;
 
         // TODO: `mangle rule`
@@ -227,7 +227,7 @@ impl Ast for parse::FnDefine {
                 for stmt in &fn_define.codes.stmts {
                     _global.to_ast(stmt)?;
                 }
-                Result::Success(())
+                Result::Ok(())
             })?
             .0;
         _global.push_stmt(ast::Statement::FnDefine(ast::FnDefine {
@@ -237,7 +237,7 @@ impl Ast for parse::FnDefine {
             body,
         }));
 
-        Result::Success(())
+        Result::Ok(())
     }
 }
 
@@ -246,12 +246,12 @@ impl Ast for parse::VarDefine {
 
     fn to_ast<'ast>(
         var_define: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         // TODO: if ty exist
         let ty = var_define.ty.to_ast_ty()?;
-        let name = var_define.name.ident.clone();
+        let name = var_define.name.0.clone();
         let init = match &var_define.init {
             Some(init) => {
                 let init = _global.to_ast(&init.val)?;
@@ -273,7 +273,7 @@ impl Ast for parse::VarDefine {
 
         _global.push_stmt(ast::VarDefine { ty, name, init });
 
-        Result::Success(())
+        Result::Ok(())
     }
 }
 
@@ -282,7 +282,7 @@ impl Ast for parse::If {
 
     fn to_ast<'ast>(
         if_: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let mut branches = vec![_global.to_ast(&if_.ruo4)?];
@@ -297,7 +297,7 @@ impl Ast for parse::If {
                         branches,
                         else_: Some(else_),
                     }));
-                    return Result::Success(());
+                    return Result::Ok(());
                 }
             }
         }
@@ -305,7 +305,7 @@ impl Ast for parse::If {
             branches,
             else_: None,
         }));
-        Result::Success(())
+        Result::Ok(())
     }
 }
 
@@ -314,13 +314,13 @@ impl Ast for parse::While {
 
     fn to_ast<'ast>(
         while_: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let cond = _global.to_ast(&while_.conds)?;
         let body = _global.to_ast(&while_.block)?;
         _global.push_stmt(ast::Statement::While(ast::While { cond, body }));
-        Result::Success(())
+        Result::Ok(())
     }
 }
 
@@ -329,12 +329,12 @@ impl Ast for parse::AtomicIf {
 
     fn to_ast<'ast>(
         atomic: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let cond = _global.to_ast(&atomic.conds)?;
         let body = _global.to_ast(&atomic.block)?;
-        Result::Success(ast::IfBranch { cond, body })
+        Result::Ok(ast::IfBranch { cond, body })
     }
 }
 
@@ -343,7 +343,7 @@ impl Ast for parse::Return {
 
     fn to_ast<'ast>(
         return_: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let val = match &return_.val {
@@ -353,7 +353,7 @@ impl Ast for parse::Return {
         _global.push_stmt(ast::Statement::Return(ast::Return {
             val: val.map(|v| v.val),
         }));
-        Result::Success(())
+        Result::Ok(())
     }
 }
 
@@ -362,7 +362,7 @@ impl Ast for parse::CodeBlock {
 
     fn to_ast<'ast>(
         block: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         _global
@@ -370,7 +370,7 @@ impl Ast for parse::CodeBlock {
                 for stmt in &block.stmts {
                     _global.to_ast(stmt)?;
                 }
-                Result::Success(())
+                Result::Ok(())
             })
             .map(|(v, _)| v)
     }
@@ -382,7 +382,7 @@ impl Ast for parse::Arguments {
 
     fn to_ast<'ast>(
         cond: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let (compute, last_cond) = _global.spoce(|_global| {
@@ -390,14 +390,14 @@ impl Ast for parse::Arguments {
             for arg in cond.args.iter().skip(1) {
                 last_cond = _global.to_ast(arg)?;
             }
-            Result::Success(last_cond)
+            Result::Ok(last_cond)
         })?;
 
         if last_cond.ty != ast::TypeDefine::bool() {
             return cond.args.last().unwrap().throw("condition must be boolean");
         }
 
-        Result::Success(ast::Condition {
+        Result::Ok(ast::Condition {
             val: last_cond.val,
             compute,
         })
@@ -409,7 +409,7 @@ impl Ast for parse::Expr {
 
     fn to_ast<'ast>(
         expr: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         match expr {
@@ -432,7 +432,7 @@ impl Ast for parse::Expr {
                 };
 
                 let define = _global.push_compute(ast::OperateExpr::binary(o.take(), l.val, r.val));
-                Result::Success(define.with_ty(ty))
+                Result::Ok(define.with_ty(ty))
             }
         }
     }
@@ -443,21 +443,21 @@ impl Ast for parse::AtomicExpr {
 
     fn to_ast<'ast>(
         atomic: &'ast Self::Target,
-        _selection: Selection,
+        _selection: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         match atomic {
             parse::AtomicExpr::CharLiteral(char) => {
-                Result::Success(ast::AtomicExpr::Char(char.parsed).with_ty(ast::TypeDefine::char()))
+                Result::Ok(ast::AtomicExpr::Char(char.parsed).with_ty(ast::TypeDefine::char()))
             }
-            parse::AtomicExpr::StringLiteral(str) => Result::Success(
+            parse::AtomicExpr::StringLiteral(str) => Result::Ok(
                 ast::AtomicExpr::String(str.parsed.clone()).with_ty(ast::TypeDefine::string()),
             ),
             parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float { number, .. } => Result::Success(
-                    ast::AtomicExpr::Float(*number).with_ty(ast::TypeDefine::float()),
-                ),
-                parse::NumberLiteral::Digit { number, .. } => Result::Success(
+                parse::NumberLiteral::Float { number, .. } => {
+                    Result::Ok(ast::AtomicExpr::Float(*number).with_ty(ast::TypeDefine::float()))
+                }
+                parse::NumberLiteral::Digit { number, .. } => Result::Ok(
                     ast::AtomicExpr::Integer(*number).with_ty(ast::TypeDefine::integer()),
                 ),
             },
@@ -465,13 +465,11 @@ impl Ast for parse::AtomicExpr {
                 parse::FnCall::to_ast(fn_call, _selection, _global)
             }
             parse::AtomicExpr::Variable(var) => {
-                let def = Result::from_option(_global.search_var(var), || {
-                    _selection.throw("use of undefined variable")
-                })
-                .map(|(def, _m)| def)?;
-                Result::Success(
-                    ast::AtomicExpr::Variable(var.ident.clone()).with_ty(def.ty.clone()),
-                )
+                let Some(def) = _global.search_var(var) else {
+                    return _selection.throw("use of undefined variable");
+                };
+
+                Result::Ok(ast::AtomicExpr::Variable(var.0.clone()).with_ty(def.0.ty.clone()))
             }
 
             // here, this is incorrect because operators may be overdriven
@@ -479,7 +477,7 @@ impl Ast for parse::AtomicExpr {
             parse::AtomicExpr::UnaryExpr(unary) => {
                 let l = _global.to_ast(&unary.expr)?;
                 let define = _global.push_compute(ast::OperateExpr::unary(*unary.operator, l.val));
-                Result::Success(define.with_ty(l.ty))
+                Result::Ok(define.with_ty(l.ty))
             }
             parse::AtomicExpr::BracketExpr(expr) => _global.to_ast(&expr.expr),
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),

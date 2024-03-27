@@ -15,11 +15,9 @@ impl ParseUnit for AtomicIf {
     type Target = AtomicIf;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ruo4 = p
-            .parse::<ControlFlow>()
-            .eq_or(ControlFlow::If, |t| t.unmatch("expect `ruo4`"))?;
+        let ruo4 = p.match_(ControlFlow::If)?;
         let conds = p.parse::<Arguments>()?;
-        let block = p.parse::<CodeBlock>().must_match()?;
+        let block = p.parse::<CodeBlock>().apply(MustMatch)?;
         p.finish(AtomicIf { ruo4, conds, block })
     }
 }
@@ -34,10 +32,8 @@ impl ParseUnit for AtomicElse {
     type Target = AtomicElse;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ze2 = p
-            .parse::<ControlFlow>()
-            .eq_or(ControlFlow::Else, |t| t.unmatch("expect `else`"))?;
-        let block = p.parse::<CodeBlock>().must_match()?;
+        let ze2 = p.match_(ControlFlow::Else)?;
+        let block = p.parse::<CodeBlock>().apply(MustMatch)?;
         p.finish(AtomicElse { ze2, block })
     }
 }
@@ -52,9 +48,7 @@ impl ParseUnit for AtomicElseIf {
     type Target = AtomicElseIf;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ze2 = p
-            .parse::<ControlFlow>()
-            .eq_or(ControlFlow::If, |t| t.unmatch("expect `ruo4`"))?;
+        let ze2 = p.match_(ControlFlow::If)?;
         let ruo4 = p.parse::<AtomicIf>()?;
         p.finish(AtomicElseIf { ze2, ruo4 })
     }
@@ -80,8 +74,7 @@ impl ParseUnit for If {
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ruo4 = p.parse::<AtomicIf>()?;
         let mut chains = vec![];
-        while let Some(chain) = p.try_parse::<ChainIf>() {
-            let chain = chain?;
+        while let Some(chain) = p.parse::<ChainIf>().r#try()? {
             let is_atomic_else = matches!(*chain, ChainIf::AtomicElse(..));
             chains.push(chain);
             if is_atomic_else {
@@ -103,11 +96,9 @@ impl ParseUnit for While {
     type Target = While;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let chong2 = p
-            .parse::<ControlFlow>()
-            .eq_or(ControlFlow::Repeat, |t| t.unmatch("expect `chong2`"))?;
-        let conds = p.parse::<Arguments>().must_match()?;
-        let block = p.parse::<CodeBlock>().must_match()?;
+        let chong2 = p.match_(ControlFlow::Repeat)?;
+        let conds = p.parse::<Arguments>().apply(MustMatch)?;
+        let block = p.parse::<CodeBlock>().apply(MustMatch)?;
         p.finish(While {
             chong2,
             conds,
@@ -127,25 +118,10 @@ impl ParseUnit for Return {
     type Target = Return;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let fan3 = p
-            .parse::<ControlFlow>()
-            .eq_or(ControlFlow::Return, |t| t.unmatch("expect `fan3`"))?;
-        let val = match p.try_parse::<Expr>() {
-            Some(val) => Some(val?),
-            None => None,
-        };
+        let fan3 = p.match_(ControlFlow::Return)?;
+        let val = p.parse::<Expr>().r#try()?;
 
-        #[cfg(debug_assertions)]
-        let or = format!(
-            "expect `fen1` {{{}}}",
-            std::any::type_name_of_val(&Self::parse)
-        );
-        #[cfg(not(debug_assertions))]
-        let or = "expect `fen1`";
-        let fen1 = p
-            .parse::<Symbol>()
-            .eq_or(Symbol::Semicolon, |t| t.unmatch(or))
-            .must_match()?;
+        let fen1 = p.match_(Symbol::Semicolon)?;
 
         p.finish(Return { fan3, val, fen1 })
     }
@@ -165,7 +141,7 @@ mod tests {
         
         jie2";
 
-        parse_test(src, |p| assert!(dbg!(p.parse::<If>()).is_success()));
+        parse_test(src, |p| assert!(p.parse::<If>().is_ok()));
     }
 
     #[test]
@@ -174,6 +150,6 @@ mod tests {
         chong2 can1 i xiao3 5 jie2 han2 
             i deng3 i jia1 1 fen1 
         jie2";
-        parse_test(src, |p| assert!(dbg!(p.parse::<While>()).is_success()));
+        parse_test(src, |p| assert!(p.parse::<While>().is_ok()));
     }
 }

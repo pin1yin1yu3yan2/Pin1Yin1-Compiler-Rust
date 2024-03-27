@@ -38,7 +38,7 @@ macro_rules! complex_pu {
 
                     .or_try::<Self, _>(|p| {
                         $variant::parse(p)
-                            .map_pu(<$enum_name>::$variant)
+                            .map(|pu| pu.map(<$enum_name>::$variant))
                     })
                 )*
                 .finish()

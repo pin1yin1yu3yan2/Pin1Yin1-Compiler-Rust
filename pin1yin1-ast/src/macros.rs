@@ -19,20 +19,6 @@ macro_rules! keywords {
             )*
         }
 
-        #[cfg(feature = "parser")]
-        impl $enum_name {
-            pub fn parse_or_unmatch(self, p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
-                use pin1yin1_parser::WithSelection;
-                p.parse::<Self>()
-                    .match_or(|e| e.unmatch(format!("expect {} `{self}`, but unmatched", stringify!($enum_name))))
-                    .eq_or(self, |t| t.unmatch(format!("expect `{self}`")))
-            }
-
-            pub fn parse_or_failed(self, p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
-                self.parse_or_unmatch(p).must_match()
-            }
-        }
-
         impl std::fmt::Display for $enum_name {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
                 match self {
@@ -47,7 +33,7 @@ macro_rules! keywords {
 
             fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
                 use std::collections::HashMap;
-                use pin1yin1_parser::WithSelection;
+                use pin1yin1_parser::WithSpan;
 
                 lazy_static::lazy_static! {
                     static ref MAP: HashMap<Vec<char>, $enum_name> = {
@@ -59,9 +45,13 @@ macro_rules! keywords {
                     };
                 }
 
-                let s = *p.once(pin1yin1_parser::Parser::get_chars)?;
-                let opt = MAP.get(s).copied().map(|t| p.make_token(t));
-                pin1yin1_parser::ParseResult::from_option(opt,|| p.unmatch(format!("non of {} matched", stringify!($enum_name))))
+
+                let s = p.get_chars()?;
+                let s = &**s;
+                let opt = MAP.get(s).copied().map(|t| p.make_pu(t));
+
+                let error = || p.make_error(format!("non of {} matched", stringify!($enum_name)),pin1yin1_parser::ErrorKind::Unmatch);
+                opt.ok_or_else(error)
             }
         }
 

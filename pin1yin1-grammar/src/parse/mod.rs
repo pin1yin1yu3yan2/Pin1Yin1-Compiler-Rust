@@ -4,6 +4,10 @@ mod controlflow;
 mod expr;
 mod into_ast;
 mod statements;
+/// we still decide to keep [`Rule`] in [`FnDefine::parse`], [`VarDefine::parse`],[`FnDefine::parse`] and [`VarAssign::parse`],
+/// because its a kind of trying: rebuild
+///
+/// but for better code quality, [`Rule`] may be removed in future
 mod syntax;
 mod types;
 
@@ -15,15 +19,25 @@ pub use syntax::*;
 pub use types::*;
 
 #[derive(Debug, Clone)]
-pub struct Ident {
-    pub ident: String,
-}
+pub struct Ident(String);
 
 impl std::ops::Deref for Ident {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        &self.ident
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Ident {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl PartialEq<str> for Ident {
+    fn eq(&self, other: &str) -> bool {
+        self.0.eq(other)
     }
 }
 
@@ -31,10 +45,14 @@ impl ParseUnit for Ident {
     type Target = Ident;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ident = p
-            .get_chars()
-            .which_or(|s| !s.is_empty(), |s| s.unmatch("empty ident!"))
-            .which_or(|s| !s[0].is_ascii_digit(), |s| s.unmatch("bad ident"))?;
+        let ident = p.get_chars()?;
+
+        if ident.is_empty() {
+            return p.unmatch("empty ident!");
+        }
+        if ident[0].is_ascii_digit() {
+            return p.unmatch("bad ident!");
+        }
 
         use crate::keywords::*;
 
@@ -48,20 +66,18 @@ impl ParseUnit for Ident {
             return p.unmatch("keeping keywords could not be ident");
         }
 
-        p.finish(Ident {
-            ident: ident.take().iter().collect(),
-        })
+        let t = Ident(ident.iter().collect());
+        p.finish(t)
     }
 }
 
 pub fn do_parse(parser: &mut Parser) -> Result<Vec<PU<Statement>>> {
     let mut stmts = vec![];
-    while let Some(result) = parser.try_parse::<Statement>() {
-        let stmt = result.to_result()?;
+    while let Some(stmt) = parser.parse::<Statement>().r#try()? {
         stmts.push(stmt);
     }
 
-    Result::Success(stmts)
+    Result::Ok(stmts)
 }
 
 #[cfg(test)]
@@ -73,21 +89,21 @@ mod tests {
     #[test]
     fn good_ident() {
         parse_test("*)(&%^&*a(*&^%", |p| {
-            assert!((p.parse::<Ident>()).is_success());
+            assert!((p.parse::<Ident>()).is_ok());
         })
     }
 
     #[test]
     fn bad_ident() {
         parse_test("1*)(&%^&*a(*&^%", |p| {
-            assert!(p.parse::<Ident>().is_unmatch());
+            assert!(p.parse::<Ident>().is_err());
         })
     }
 
     #[test]
     fn e4chou4de1_ident() {
         fn is_e4chou4de1<P: ParseUnit>(r: ParseResult<P>) -> bool {
-            r.is_unmatch()
+            r.is_err()
         }
 
         parse_test("114514", |p| {
@@ -99,12 +115,12 @@ mod tests {
     fn double_idnet() {
         parse_test("a b", |p| {
             let a = p.parse::<Ident>();
-            assert!(a.is_success());
-            assert_eq!(a.success().unwrap().ident, "a");
+            assert!(a.is_ok());
+            assert_eq!(a.unwrap().0, "a");
 
             let b = p.parse::<Ident>();
-            assert!(b.is_success());
-            assert_eq!(b.success().unwrap().ident, "b");
+            assert!(b.is_ok());
+            assert_eq!(b.unwrap().0, "b");
         })
     }
 }

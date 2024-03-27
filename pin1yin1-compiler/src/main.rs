@@ -14,15 +14,20 @@ fn main() {
     let path = "/home/yiyue/Pin1Yin1-rustc/test.py1";
     let src = std::fs::read_to_string(path).unwrap();
 
-    let source = Source::new(path, src.chars());
-    let mut parser = Parser::<'_, char>::new(&source);
+    let source = Source::from_iter(path, src.chars());
+    let mut parser = Parser::<char>::new(source);
 
-    let pus = do_parse(&mut parser).handle_error(&parser).unwrap();
+    let pus = do_parse(&mut parser)
+        .map_err(|e| parser.handle_error(e))
+        .unwrap();
 
     let context = Context::create();
 
     let mut global = Global::new();
-    global.load(&pus).handle_error(&parser).unwrap();
+    global
+        .load(&pus)
+        .map_err(|e| parser.handle_error(e))
+        .unwrap();
 
     let ast = global.finish();
 

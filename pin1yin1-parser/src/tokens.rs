@@ -6,21 +6,21 @@ use std::fmt::Debug;
 /// be different from &[char], this type contains
 /// two data: the start of the selection, and the end of the selection
 #[derive(Debug, Clone, Copy)]
-pub struct Selection {
+pub struct Span {
     pub(crate) start: usize,
     pub(crate) end: usize,
 }
 
-impl Selection {
+impl Span {
     pub fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
 
-    pub fn merge(self, rhs: Selection) -> Self {
+    pub fn merge(self, rhs: Span) -> Self {
         let start = self.start.min(rhs.start);
         let end = self.end.max(rhs.end);
 
-        Selection::new(start, end)
+        Span::new(start, end)
     }
 
     pub fn len(&self) -> usize {
@@ -32,26 +32,26 @@ impl Selection {
     }
 }
 
-impl WithSelection for Selection {
-    fn get_selection(&self) -> Selection {
+impl WithSpan for Span {
+    fn get_span(&self) -> Span {
         *self
     }
 }
 
 /// a type which implemented [`ParseUnit<S>`] with source code it selected
-pub struct PU<P: ParseUnit<S>, S: Copy = char> {
-    pub(crate) selection: Selection,
+pub struct PU<P: ParseUnit<S>, S = char> {
+    pub(crate) selection: Span,
     pub(crate) target: P::Target,
 }
 
-impl<P: ParseUnit<S>, S: Copy> WithSelection for PU<P, S> {
-    fn get_selection(&self) -> Selection {
+impl<P: ParseUnit<S>, S> WithSpan for PU<P, S> {
+    fn get_span(&self) -> Span {
         self.selection
     }
 }
 
-impl<S: Copy, P: ParseUnit<S>> PU<P, S> {
-    pub fn new(selection: Selection, inner: P::Target) -> Self {
+impl<S, P: ParseUnit<S>> PU<P, S> {
+    pub fn new(selection: Span, inner: P::Target) -> Self {
         Self {
             selection,
             target: inner,
@@ -72,7 +72,7 @@ impl<S: Copy, P: ParseUnit<S>> PU<P, S> {
     }
 }
 
-impl<S: Copy, P: ParseUnit<S>> Debug for PU<P, S>
+impl<S, P: ParseUnit<S>> Debug for PU<P, S>
 where
     P::Target: Debug,
 {
@@ -84,7 +84,7 @@ where
     }
 }
 
-impl<S: Copy, P: ParseUnit<S>> Clone for PU<P, S>
+impl<S, P: ParseUnit<S>> Clone for PU<P, S>
 where
     P::Target: Clone,
 {
@@ -96,9 +96,9 @@ where
     }
 }
 
-impl<S: Copy, P: ParseUnit<S>> Copy for PU<P, S> where P::Target: Copy {}
+impl<S, P: ParseUnit<S>> Copy for PU<P, S> where P::Target: Copy {}
 
-impl<S: Copy, P: ParseUnit<S>> std::ops::Deref for PU<P, S> {
+impl<S, P: ParseUnit<S>> std::ops::Deref for PU<P, S> {
     type Target = P::Target;
 
     fn deref(&self) -> &Self::Target {
@@ -106,7 +106,7 @@ impl<S: Copy, P: ParseUnit<S>> std::ops::Deref for PU<P, S> {
     }
 }
 
-impl<S: Copy, P: ParseUnit<S>> std::ops::DerefMut for PU<P, S> {
+impl<S, P: ParseUnit<S>> std::ops::DerefMut for PU<P, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.target
     }

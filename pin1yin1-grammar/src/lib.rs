@@ -9,7 +9,7 @@ use pin1yin1_ast::keywords;
 fn parse_test(chars: &str, tester: impl FnOnce(&mut pin1yin1_parser::Parser)) {
     use pin1yin1_parser::Source;
 
-    let source = Source::new("test.py1", chars.chars());
-    let mut parser = pin1yin1_parser::Parser::<'_, char>::new(&source);
+    let source = Source::from_iter("test.py1", chars.chars());
+    let mut parser = pin1yin1_parser::Parser::<char>::new(source);
     tester(&mut parser);
 }

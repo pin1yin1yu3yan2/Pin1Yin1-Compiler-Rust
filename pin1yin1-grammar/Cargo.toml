@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 pin1yin1-parser = { path = "../pin1yin1-parser" }
-pin1yin1-ast = { path = "../pin1yin1-ast" }
+pin1yin1-ast = { path = "../pin1yin1-ast", features = ["parser"] }

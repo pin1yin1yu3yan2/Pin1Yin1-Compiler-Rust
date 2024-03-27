@@ -11,7 +11,8 @@ impl ParseUnit for TypeConstExtend {
     type Target = TypeConstExtend;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = BasicExtenWord::Const.parse_or_unmatch(p)?.take();
+        let keyword = p.match_(BasicExtenWord::Const)?.take();
+
         p.finish(TypeConstExtend { keyword })
     }
 }
@@ -27,12 +28,8 @@ impl ParseUnit for TypeArrayExtend {
     type Target = TypeArrayExtend;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = BasicExtenWord::Array.parse_or_unmatch(p)?;
-
-        let size = match p.try_parse::<usize>() {
-            Some(s) => Some(s?),
-            None => None,
-        };
+        let keyword = p.match_(BasicExtenWord::Array)?;
+        let size = p.parse::<usize>().r#try()?;
         p.finish(TypeArrayExtend { keyword, size })
     }
 }
@@ -47,8 +44,7 @@ impl ParseUnit for TypeReferenceExtend {
     type Target = TypeReferenceExtend;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = BasicExtenWord::Reference.parse_or_unmatch(p)?.take();
-
+        let keyword = p.match_(BasicExtenWord::Reference)?.take();
         p.finish(TypeReferenceExtend { keyword })
     }
 }
@@ -63,7 +59,7 @@ impl ParseUnit for TypePointerExtend {
     type Target = TypePointerExtend;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = BasicExtenWord::Pointer.parse_or_unmatch(p)?.take();
+        let keyword = p.match_(BasicExtenWord::Pointer)?.take();
         p.finish(TypePointerExtend { keyword })
     }
 }
@@ -88,10 +84,9 @@ impl ParseUnit for TypeWidthExtend {
     type Target = TypeWidthExtend;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = BasicExtenWord::Width.parse_or_unmatch(p)?;
-        let width = p
-            .parse::<usize>()
-            .map_err(|e| e.unmatch("usage: kaun1 <width> "))?;
+        let keyword = p.match_(BasicExtenWord::Width)?;
+        let width = p.parse::<usize>()?;
+
         p.finish(TypeWidthExtend { keyword, width })
     }
 }
@@ -132,12 +127,12 @@ pub struct TypeDefine {
 
 impl TypeDefine {
     pub(crate) fn to_ast_ty(&self) -> Result<crate::ast::TypeDefine> {
-        Result::from_result(self.clone().try_into())
+        self.clone().try_into()
     }
 }
 
 impl TryFrom<TypeDefine> for crate::ast::TypeDefine {
-    type Error = pin1yin1_parser::ParseError;
+    type Error = pin1yin1_parser::Error;
 
     fn try_from(value: crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
         /*
@@ -189,7 +184,7 @@ impl TryFrom<TypeDefine> for crate::ast::TypeDefine {
                 return Err(sign.make_error(
                     format!(
                         "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                        value.ty.ident
+                        *value.ty
                     ),
                     ErrorKind::Semantic,
                 ));
@@ -198,12 +193,12 @@ impl TryFrom<TypeDefine> for crate::ast::TypeDefine {
                 return Err(width.make_error(
                     format!(
                         "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                        value.ty.ident
+                        *value.ty
                     ),
                     ErrorKind::Semantic,
                 ));
             }
-            value.ty.take().ident
+            value.ty.take().0
         };
 
         if value.const_.is_none() && value.decorators.is_empty() {
@@ -242,13 +237,13 @@ impl ParseUnit for TypeDefine {
     type Target = TypeDefine;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let const_ = p.parse::<TypeConstExtend>().success();
+        let const_ = p.parse::<TypeConstExtend>().r#try()?;
         let mut decorators = vec![];
-        while let Some(decorator) = p.try_parse::<TypeDecorators>() {
-            decorators.push(decorator?);
+        while let Some(decorator) = p.parse::<TypeDecorators>().r#try()? {
+            decorators.push(decorator);
         }
-        let width = p.parse::<TypeWidthExtend>().success();
-        let sign = p.parse::<TypeSignExtend>().success();
+        let width = p.parse::<TypeWidthExtend>().r#try()?;
+        let sign = p.parse::<TypeSignExtend>().r#try()?;
         let ty = p.parse::<Ident>()?;
         p.finish(TypeDefine {
             const_,
@@ -269,7 +264,7 @@ mod tests {
     #[test]
     fn fucking_type() {
         parse_test("yin3 zu3 114514 kuan1 32 wu2fu2 zheng3", |p| {
-            assert!(p.parse::<TypeDefine>().is_success())
+            assert!(p.parse::<TypeDefine>().is_ok())
         })
     }
 }

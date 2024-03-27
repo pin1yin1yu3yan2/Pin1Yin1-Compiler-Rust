@@ -3,50 +3,90 @@ use crate::*;
 // TODO: multiple selections, multiple reasons for more friendlier error messages
 // TODO: lazy eval error messages for better performance
 
-/// error type with a [`Selection`] and a [`String`] as reason
-///
-///
-///
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Error {
-    pub(crate) selection: Selection,
+    pub(crate) span: Span,
     pub(crate) reason: String,
+    pub(crate) kind: ErrorKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    Unmatch,
+    Semantic,
+    OtherError,
 }
 
 impl Error {
-    pub fn new(selection: Selection, reason: String) -> Self {
-        Self { selection, reason }
+    pub fn new(span: Span, reason: impl Into<String>, kind: ErrorKind) -> Self {
+        Self {
+            span,
+            reason: reason.into(),
+            kind,
+        }
     }
 
-    pub fn emit(mut self, reason: impl Into<String>) -> Self {
-        self.reason = reason.into();
+    pub fn map(mut self, new_reason: impl Into<String>) -> Self {
+        self.reason = new_reason.into();
+        self
+    }
+
+    pub fn kind(&self) -> ErrorKind {
+        self.kind
+    }
+
+    pub fn to_error(mut self) -> Self {
+        self.kind = ErrorKind::OtherError;
+        self
+    }
+
+    pub fn to_unmatch(mut self) -> Self {
+        self.kind = ErrorKind::Unmatch;
         self
     }
 }
 
-pub trait WithSelection {
-    fn get_selection(&self) -> Selection;
-
-    /// make a new [`Error`] with the given value and parser's selection
-    fn new_error(&self, reason: impl Into<String>) -> Error {
-        Error::new(self.get_selection(), reason.into())
-    }
-
-    fn make_error(&self, reason: impl Into<String>, kind: ErrorKind) -> ParseError {
-        ParseError::new(self.new_error(reason), kind)
-    }
-
-    fn unmatch<T>(&self, reason: impl Into<String>) -> Result<T> {
-        Result::Failed(self.make_error(reason, ErrorKind::Unmatch))
-    }
-
-    fn throw<T>(&self, reason: impl Into<String>) -> Result<T> {
-        Result::Failed(self.make_error(reason, ErrorKind::OtherError))
+impl<T> From<Error> for Result<T> {
+    fn from(value: Error) -> Self {
+        Result::Err(value)
     }
 }
 
-impl WithSelection for Error {
-    fn get_selection(&self) -> Selection {
-        self.selection
+impl<T> TryFrom<Result<T>> for Error {
+    type Error = T;
+
+    fn try_from(
+        value: Result<T>,
+    ) -> std::prelude::v1::Result<Self, <Error as TryFrom<Result<T>>>::Error> {
+        match value {
+            Result::Ok(success) => Err(success),
+            Result::Err(e) => Ok(e),
+        }
+    }
+}
+
+pub trait WithSpan {
+    fn get_span(&self) -> Span;
+
+    fn make_error(&self, reason: impl Into<String>, kind: ErrorKind) -> Error {
+        Error::new(self.get_span(), reason, kind)
+    }
+
+    fn unmatch<T>(&self, reason: impl Into<String>) -> Result<T> {
+        Err(self.make_error(reason, ErrorKind::Unmatch))
+    }
+
+    fn throw<T>(&self, reason: impl Into<String>) -> Result<T> {
+        Err(self.make_error(reason, ErrorKind::OtherError))
+    }
+
+    fn make_pu<P: ParseUnit<S>, S>(&self, target: P::Target) -> PU<P, S> {
+        PU::new(self.get_span(), target)
+    }
+}
+
+impl WithSpan for Error {
+    fn get_span(&self) -> Span {
+        self.span
     }
 }

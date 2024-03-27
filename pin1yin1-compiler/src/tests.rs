@@ -5,14 +5,18 @@ use pin1yin1_grammar::{parse::do_parse, semantic::Global};
 use pin1yin1_parser::*;
 
 fn get_ast(src: &str) -> Vec<Statement> {
-    let source = Source::new("compile_test.py1", src.chars());
+    let source = Source::from_iter("compiler_test.py1", src.chars());
+    let mut parser = Parser::<char>::new(source);
 
-    let mut parser = Parser::<'_, char>::new(&source);
-    let pus = do_parse(&mut parser).handle_error(&parser).unwrap();
+    let pus = do_parse(&mut parser)
+        .map_err(|e| parser.handle_error(e))
+        .unwrap();
 
     let mut global = Global::new();
-
-    global.load(&pus).handle_error(&parser).unwrap();
+    global
+        .load(&pus)
+        .map_err(|e| parser.handle_error(e))
+        .unwrap();
     global.finish()
 }
 
