@@ -1,11 +1,7 @@
+use pyir::ops::{self, Operators};
+
 use super::*;
-use crate::{
-    complex_pu,
-    keywords::{
-        operators::{self, OperatorAssociativity},
-        syntax::Symbol,
-    },
-};
+use crate::{complex_pu, lex::syntax::Symbol, ops::OperatorAssociativity};
 
 #[derive(Debug, Clone)]
 pub struct CharLiteral {
@@ -204,7 +200,7 @@ pub type Variable = Ident;
 
 #[derive(Debug, Clone)]
 pub struct UnaryExpr {
-    pub operator: PU<operators::Operators>,
+    pub operator: PU<Operators>,
     // using box, or cycle in AtomicExpr
     pub expr: Box<PU<AtomicExpr>>,
 }
@@ -213,7 +209,7 @@ impl ParseUnit for UnaryExpr {
     type Target = UnaryExpr;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let operator = p.parse::<operators::Operators>()?;
+        let operator = p.parse::<Operators>()?;
         if operator.associativity() != OperatorAssociativity::Unary {
             return operator.throw("unary expr must start with an unary operator!");
         }
@@ -257,7 +253,7 @@ complex_pu! {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Atomic(AtomicExpr),
-    Binary(Box<PU<Expr>>, PU<operators::Operators>, Box<PU<Expr>>),
+    Binary(Box<PU<Expr>>, PU<Operators>, Box<PU<Expr>>),
 }
 
 impl ParseUnit for Expr {
@@ -268,7 +264,7 @@ impl ParseUnit for Expr {
         let mut ops = vec![];
 
         let get_binary = |p: &mut Parser| {
-            let operator = p.parse::<operators::Operators>()?;
+            let operator = p.parse::<Operators>()?;
             if operator.associativity() != OperatorAssociativity::Binary {
                 operator.throw("atomic exprs must be connected with binary operators!")
             } else {
@@ -281,16 +277,16 @@ impl ParseUnit for Expr {
 
             if ops
                 .last()
-                .is_some_and(|p: &PU<operators::Operators>| p.priority() <= op.priority())
+                .is_some_and(|p: &PU<Operators>| p.priority() <= op.priority())
             {
                 let rhs = Box::new(exprs.pop().unwrap());
                 let op = ops.pop().unwrap();
                 let lhs = Box::new(exprs.pop().unwrap());
 
-                let selection = lhs.get_span().merge(rhs.get_span());
+                let span = lhs.get_span().merge(rhs.get_span());
 
                 let binary = Expr::Binary(lhs, op, rhs);
-                exprs.push(PU::new(selection, binary));
+                exprs.push(PU::new(span, binary));
             }
 
             exprs.push(expr);
@@ -302,10 +298,10 @@ impl ParseUnit for Expr {
             let op = ops.pop().unwrap();
             let lhs = Box::new(exprs.pop().unwrap());
 
-            let selection = lhs.get_span().merge(rhs.get_span());
+            let span = lhs.get_span().merge(rhs.get_span());
 
             let binary = Expr::Binary(lhs, op, rhs);
-            exprs.push(PU::new(selection, binary));
+            exprs.push(PU::new(span, binary));
         }
 
         // what jb

@@ -1,4 +1,4 @@
-use crate::keywords::operators::Operators;
+use crate::ops::Operators;
 
 pub type Statements = Vec<Statement>;
 
@@ -95,7 +95,6 @@ pub struct VarDefine {
     #[serde(rename = "type")]
     pub ty: TypeDefine,
     pub name: String,
-    /// `init` must be an `atomic expr`
     pub init: Option<Variable>,
 }
 
@@ -288,7 +287,6 @@ pub enum TypeDecorators {
     // #[deprecated = "unclear semantics"]
     Const,
     // TODO: remove this varient
-    // hmm, `kuan1` has been removed, lol
     Array,
     Reference,
     Pointer,

@@ -1,20 +1,16 @@
 use pin1yin1_parser::*;
 
-mod controlflow;
 mod expr;
-mod into_ast;
-mod statements;
-/// we still decide to keep [`Rule`] in [`FnDefine::parse`], [`VarDefine::parse`],[`FnDefine::parse`] and [`VarAssign::parse`],
-/// because its a kind of trying: rebuild
-///
-/// but for better code quality, [`Rule`] may be removed in future
+mod flow;
+mod item;
+mod stmt;
 mod syntax;
 mod types;
 
-pub use controlflow::*;
 pub use expr::*;
-pub use into_ast::*;
-pub use statements::*;
+pub use flow::*;
+pub use item::*;
+pub use stmt::*;
 pub use syntax::*;
 pub use types::*;
 
@@ -54,11 +50,12 @@ impl ParseUnit for Ident {
             return p.unmatch("bad ident!");
         }
 
-        use crate::keywords::*;
+        use crate::lex::*;
+        use pyir::ops;
 
         // keeping keywords cant be used as identifiers
-        if operators::KEPPING_KEYWORDS.contains(*ident)
-            || operators::sub_classes::KEPPING_KEYWORDS.contains(*ident)
+        if ops::KEPPING_KEYWORDS.contains(*ident)
+            || ops::sub_classes::KEPPING_KEYWORDS.contains(*ident)
             || preprocess::KEPPING_KEYWORDS.contains(*ident)
             || syntax::KEPPING_KEYWORDS.contains(*ident)
             || types::KEPPING_KEYWORDS.contains(*ident)

@@ -1,6 +1,4 @@
-use crate::keywords;
-
-keywords! {
+pin1yin1_parser::keywords! {
     // keywords PrimitiveType {
     //     "zheng3" -> Integer,
     //     "fu2"    -> Float,

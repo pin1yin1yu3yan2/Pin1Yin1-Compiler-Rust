@@ -1,6 +1,4 @@
-use crate::keywords;
-
-keywords! {
+pin1yin1_parser::keywords! {
     keywords StructsDefinition {
         "lei4"     -> Classs,
         "mei2"     -> Enum,

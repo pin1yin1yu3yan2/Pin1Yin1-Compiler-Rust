@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     complex_pu,
-    keywords::syntax::{ControlFlow, Symbol},
+    lex::syntax::{ControlFlow, Symbol},
 };
 
 #[derive(Debug, Clone)]

@@ -1,5 +1,78 @@
-macro_rules! Operators {
+/// use to define some keyword
+///
+/// you should only use at most one keywords! macro in a mod
+#[macro_export]
+macro_rules! keywords {
+    ($(
+        $(#[$metas:meta])*
+        keywords $enum_name:ident
+        { $(
+            $string:literal -> $var:ident,
+        )*}
+    )*) => {
+        $(
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        $(#[$metas])*
+        pub enum $enum_name {
+            $(
+                $var,
+            )*
+        }
+
+        impl std::fmt::Display for $enum_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
+                match self {
+                    $(Self::$var => write!(f, "{}", $string),)*
+                }
+            }
+        }
+
+        impl pin1yin1_parser::ParseUnit for $enum_name {
+            type Target = $enum_name;
+
+            fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
+                use std::collections::HashMap;
+                use pin1yin1_parser::WithSpan;
+
+                $crate::lazy_static::lazy_static! {
+                    static ref MAP: HashMap<Vec<char>, $enum_name> = {
+                        let mut _map = HashMap::new();
+                        $(
+                            _map.insert($string.chars().collect::<Vec<_>>(), $enum_name::$var);
+                        )*
+                        _map
+                    };
+                }
+
+
+                let s = p.get_chars()?;
+                let s = &**s;
+                let opt = MAP.get(s).copied().map(|t| p.make_pu(t));
+
+                let error = || p.make_error(format!("non of {} matched", stringify!($enum_name)),pin1yin1_parser::ErrorKind::Unmatch);
+                opt.ok_or_else(error)
+            }
+        }
+
+        )*
+
+
+        $crate::lazy_static::lazy_static! {
+            pub static ref KEPPING_KEYWORDS: std::collections::HashSet<Vec<char>> = {
+                let mut set = std::collections::HashSet::<Vec<char>>::default();
+                $($(
+                    set.insert($string.chars().collect::<Vec<_>>());
+                )*)*
+                set
+            };
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! operators {
     (
+        $(#[$metas:meta])*
         $(
             symbols $sub_class:ident {
                 $($string:literal -> $var:ident : $ass:ident $priority:expr),*
@@ -7,18 +80,21 @@ macro_rules! Operators {
         )*
 
     ) => {
+        $(#[$metas])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum OperatorAssociativity {
             Binary,
             Unary,
         }
 
+        $(#[$metas])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum OperatorTypes {
             $($sub_class,)*
         }
 
         $crate::keywords! {
+            $(#[$metas])*
             keywords Operators {
                 $(
                     $($string -> $var,)*
@@ -100,44 +176,4 @@ macro_rules! Operators {
         )*
         }
     };
-}
-
-Operators! {
-    symbols AlgebraOperator {
-        "jia1"   -> Add : Binary 6,
-        "jian3"  -> Sub : Binary 6,
-        "cheng2" -> Mul : Binary 5,
-        "chu2"   -> Div : Binary 5,
-        "mo2"    -> Mod : Binary 5,
-        "mi4"    -> Pow : Binary 4,
-        "dui4"   -> Log : Binary 4
-    }
-    symbols CompareOperator {
-        "tong2"      -> Eq  : Binary 10,
-        "fei1tong2"  -> Neq : Binary 10,
-        "da4"        -> Gt  : Binary 8,
-        "xiao3"      -> Lt  : Binary 8,
-        "da4deng3"   -> Ge  : Binary 8,
-        "xiao3deng3" -> Le  : Binary 8
-    }
-    symbols LogicalOperator {
-        "yu3"  -> And : Binary 14,
-        "huo4" -> Or  : Binary 15,
-        "fei1" -> Not : Unary  3
-    }
-    symbols ArithmeticOperator {
-        "wei4yu3"     -> Band : Binary 11,
-        "wei4huo4"    -> Bor  : Binary 13,
-        "wei4fei1"    -> Bnot : Unary  3,
-        "wei4yi4huo4" -> Xor  : Binary 12,
-        "zuo3yi2"     -> Shl  : Binary 7,
-        "you4yi2"     -> Shr  : Binary 7
-    }
-    symbols SpecialOperator {
-        "qu3zhi3"   -> AddrOf     : Unary  3,
-        "fang3zhi3" -> Deref      : Unary  3,
-        "fang3su4"  -> GetElement : Binary 2,
-        "zhuan3"    -> Cast       : Unary  2,
-        "chang2du4" -> SizeOf     : Unary  3
-    }
 }

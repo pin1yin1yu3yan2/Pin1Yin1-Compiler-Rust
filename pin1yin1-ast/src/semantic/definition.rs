@@ -1,4 +1,4 @@
-use crate::ast;
+use crate::ir;
 use std::{collections::HashMap, marker::PhantomData};
 
 use crate::parse;
@@ -14,7 +14,6 @@ pub struct FnDefinition<'ast> {
     ///
     /// unsupport now
     pub overdrives: Vec<FnSign<'ast>>,
-
     pub raw_defines: Vec<&'ast parse::FnDefine>,
     _p: PhantomData<&'ast ()>,
 }
@@ -33,14 +32,13 @@ impl<'ast> FnDefinition<'ast> {
 #[derive(Debug, Clone)]
 pub struct FnSign<'ast> {
     pub mangle: String,
-    pub ty: ast::TypeDefine,
+    pub ty: ir::TypeDefine,
     pub params: Vec<Parameter<'ast>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Parameter<'ast> {
     pub name: String,
-
     pub var_def: VarDefinition<'ast>,
     pub _p: PhantomData<&'ast ()>,
 }
@@ -60,14 +58,14 @@ pub struct VarDefinitions<'ast> {
 
 #[derive(Debug, Clone)]
 pub struct VarDefinition<'ast> {
-    pub ty: ast::TypeDefine,
+    pub ty: ir::TypeDefine,
 
     pub raw_define: &'ast parse::VarDefine,
     _p: PhantomData<&'ast ()>,
 }
 
 impl<'ast> VarDefinition<'ast> {
-    pub fn new(ty: ast::TypeDefine, raw_define: &'ast parse::VarDefine) -> Self {
+    pub fn new(ty: ir::TypeDefine, raw_define: &'ast parse::VarDefine) -> Self {
         Self {
             ty,
 

@@ -1,10 +1,10 @@
 use crate::*;
 use std::fmt::Debug;
 
-/// an selection, means some characters that are selected in the source code
+/// an span, means some characters that are selected in the source code
 ///
 /// be different from &[char], this type contains
-/// two data: the start of the selection, and the end of the selection
+/// two data: the start of the span, and the end of the span
 #[derive(Debug, Clone, Copy)]
 pub struct Span {
     pub(crate) start: usize,
@@ -40,20 +40,20 @@ impl WithSpan for Span {
 
 /// a type which implemented [`ParseUnit<S>`] with source code it selected
 pub struct PU<P: ParseUnit<S>, S = char> {
-    pub(crate) selection: Span,
+    pub(crate) span: Span,
     pub(crate) target: P::Target,
 }
 
 impl<P: ParseUnit<S>, S> WithSpan for PU<P, S> {
     fn get_span(&self) -> Span {
-        self.selection
+        self.span
     }
 }
 
 impl<S, P: ParseUnit<S>> PU<P, S> {
-    pub fn new(selection: Span, inner: P::Target) -> Self {
+    pub fn new(span: Span, inner: P::Target) -> Self {
         Self {
-            selection,
+            span,
             target: inner,
         }
     }
@@ -68,7 +68,7 @@ impl<S, P: ParseUnit<S>> PU<P, S> {
     where
         M: FnOnce(P::Target) -> P2::Target,
     {
-        PU::new(self.selection, mapper(self.target))
+        PU::new(self.span, mapper(self.target))
     }
 }
 
@@ -78,7 +78,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("PU")
-            .field("selection", &"...")
+            .field("span", &"...")
             .field("target", &self.target)
             .finish()
     }
@@ -90,7 +90,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            selection: self.selection,
+            span: self.span,
             target: self.target.clone(),
         }
     }

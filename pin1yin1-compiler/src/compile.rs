@@ -10,7 +10,8 @@ use inkwell::{
     types::{BasicType, BasicTypeEnum},
     values::{BasicValue, BasicValueEnum},
 };
-use pin1yin1_ast::ast;
+
+use pyir::ir;
 
 pub struct CodeGen<'ctx> {
     context: &'ctx Context,
@@ -25,7 +26,7 @@ impl<'ctx> CodeGen<'ctx> {
     pub fn new(
         context: &'ctx Context,
         module: &str,
-        stmts: &[ast::Statement],
+        stmts: &[ir::Statement],
     ) -> Result<Self, Box<dyn Error>> {
         let module = context.create_module(module);
 
@@ -71,7 +72,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.global.regist_fn(name, val)
     }
 
-    fn type_cast(&self, ty: &ast::TypeDefine) -> BasicTypeEnum<'ctx> {
+    fn type_cast(&self, ty: &ir::TypeDefine) -> BasicTypeEnum<'ctx> {
         if ty.decorators.is_some() {
             todo!("decorators is not supported now...")
         }
@@ -87,31 +88,31 @@ impl<'ctx> CodeGen<'ctx> {
         .into()
     }
 
-    fn get_type(&self, expr: &ast::AtomicExpr) -> BasicTypeEnum {
+    fn get_type(&self, expr: &ir::AtomicExpr) -> BasicTypeEnum {
         match expr {
-            ast::AtomicExpr::Char(_) => self.context.i32_type().into(),
-            ast::AtomicExpr::String(str) => self
+            ir::AtomicExpr::Char(_) => self.context.i32_type().into(),
+            ir::AtomicExpr::String(str) => self
                 .context
                 .i8_type()
                 .array_type(str.as_bytes().len() as _)
                 .into(),
-            ast::AtomicExpr::Integer(_) => self.context.i64_type().into(),
-            ast::AtomicExpr::Float(_) => self.context.f32_type().into(),
-            ast::AtomicExpr::FnCall(_) => todo!(),
-            ast::AtomicExpr::Variable(name) => {
+            ir::AtomicExpr::Integer(_) => self.context.i64_type().into(),
+            ir::AtomicExpr::Float(_) => self.context.f32_type().into(),
+            ir::AtomicExpr::FnCall(_) => todo!(),
+            ir::AtomicExpr::Variable(name) => {
                 let get_var = &self.get_var(name);
                 get_var.get_type()
             }
         }
     }
 
-    fn atomic_epxr(&self, atomic: &ast::AtomicExpr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+    fn atomic_epxr(&self, atomic: &ir::AtomicExpr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
         match atomic {
-            ast::AtomicExpr::Char(c) => {
+            ir::AtomicExpr::Char(c) => {
                 // char -> u32
                 Ok(self.context.i32_type().const_int(*c as _, false).into())
             }
-            ast::AtomicExpr::String(s) => {
+            ir::AtomicExpr::String(s) => {
                 let u8 = self.context.i8_type();
                 let mut bytes = vec![];
                 for byte in s.bytes() {
@@ -120,13 +121,13 @@ impl<'ctx> CodeGen<'ctx> {
                 // &str -> &[u8]
                 Ok(u8.const_array(&bytes).into())
             }
-            ast::AtomicExpr::Integer(i) => {
+            ir::AtomicExpr::Integer(i) => {
                 Ok(self.context.i64_type().const_int(*i as _, false).into())
             }
-            ast::AtomicExpr::Float(f) => Ok(self.context.f64_type().const_float(*f).into()),
-            ast::AtomicExpr::Variable(v) => self.get_var(v).load(&self.builder),
+            ir::AtomicExpr::Float(f) => Ok(self.context.f64_type().const_float(*f).into()),
+            ir::AtomicExpr::Variable(v) => self.get_var(v).load(&self.builder),
 
-            ast::AtomicExpr::FnCall(fn_call) => {
+            ir::AtomicExpr::FnCall(fn_call) => {
                 let fn_ = self.get_fn(&fn_call.name);
                 let args = fn_call.args.iter().try_fold(vec![], |mut vec, arg| {
                     vec.push(self.atomic_epxr(arg)?.into());
@@ -144,7 +145,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn generate_stmts(&mut self, stmts: &[ast::Statement]) -> Result<&mut Self, BuilderError> {
+    fn generate_stmts(&mut self, stmts: &[ir::Statement]) -> Result<&mut Self, BuilderError> {
         for stmt in stmts {
             stmt.generate(self)?;
         }
@@ -171,22 +172,22 @@ pub trait Compile {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError>;
 }
 
-impl Compile for ast::Statement {
+impl Compile for ir::Statement {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         match self {
-            ast::Statement::FnDefine(f) => f.generate(state),
-            ast::Statement::Compute(c) => c.generate(state),
-            ast::Statement::VarDefine(v) => v.generate(state),
-            ast::Statement::VarStore(v) => v.generate(state),
-            ast::Statement::FnCall(f) => f.generate(state),
-            ast::Statement::If(i) => i.generate(state),
-            ast::Statement::While(w) => w.generate(state),
-            ast::Statement::Return(r) => r.generate(state),
-            ast::Statement::Block(b) => state.generate_stmts(b).map(|_| ()),
+            ir::Statement::FnDefine(f) => f.generate(state),
+            ir::Statement::Compute(c) => c.generate(state),
+            ir::Statement::VarDefine(v) => v.generate(state),
+            ir::Statement::VarStore(v) => v.generate(state),
+            ir::Statement::FnCall(f) => f.generate(state),
+            ir::Statement::If(i) => i.generate(state),
+            ir::Statement::While(w) => w.generate(state),
+            ir::Statement::Return(r) => r.generate(state),
+            ir::Statement::Block(b) => state.generate_stmts(b).map(|_| ()),
         }
     }
 }
-impl Compile for ast::FnDefine {
+impl Compile for ir::FnDefine {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let start_block = state.position_block;
 
@@ -219,15 +220,15 @@ impl Compile for ast::FnDefine {
         Ok(())
     }
 }
-impl Compile for ast::Compute {
+impl Compile for ir::Compute {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         match &self.eval {
-            ast::OperateExpr::Unary(_, _) => todo!(),
-            ast::OperateExpr::Binary(op, l, r) => {
+            ir::OperateExpr::Unary(_, _) => todo!(),
+            ir::OperateExpr::Binary(op, l, r) => {
                 let ty = state.get_type(l);
                 let l = state.atomic_epxr(l)?;
                 let r = state.atomic_epxr(r)?;
-                use pin1yin1_ast::keywords::operators::Operators;
+                use pyir::ops::Operators;
                 match op {
                     Operators::Add => {
                         let val: BasicValueEnum = if ty.is_int_type() {
@@ -281,7 +282,7 @@ impl Compile for ast::Compute {
     }
 }
 /// alloca, eval, store
-impl Compile for ast::VarDefine {
+impl Compile for ir::VarDefine {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let ty = state.type_cast(&self.ty);
         let pointer = state.builder.build_alloca(ty, &self.name)?;
@@ -297,7 +298,7 @@ impl Compile for ast::VarDefine {
     }
 }
 // eval, store
-impl Compile for ast::VarStore {
+impl Compile for ir::VarStore {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let val = state.atomic_epxr(&self.val)?;
         let s = state.get_var(&self.name);
@@ -306,7 +307,7 @@ impl Compile for ast::VarStore {
     }
 }
 // call
-impl Compile for ast::FnCall {
+impl Compile for ir::FnCall {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let fn_ = state.get_fn(&self.name);
         let args = self.args.iter().try_fold(vec![], |mut vec, arg| {
@@ -319,17 +320,17 @@ impl Compile for ast::FnCall {
         Ok(())
     }
 }
-impl Compile for ast::If {
+impl Compile for ir::If {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         todo!()
     }
 }
-impl Compile for ast::While {
+impl Compile for ir::While {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         todo!()
     }
 }
-impl Compile for ast::Return {
+impl Compile for ir::Return {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let val = match &self.val {
             Some(val) => Some(state.atomic_epxr(val)?),

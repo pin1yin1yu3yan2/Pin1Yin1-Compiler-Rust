@@ -312,7 +312,7 @@ impl<'p, S, P: ParseUnit<S>> Try<'p, P, S> {
             self.state = Some(
                 self.parser
                     .once(parser)
-                    .map(|pu| PU::new(pu.selection, pu.target)),
+                    .map(|pu| PU::new(pu.span, pu.target)),
             );
         }
         self

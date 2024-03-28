@@ -1,5 +1,6 @@
 use super::definition::{FnDefinitions, VarDefinitions};
-use crate::ast;
+use super::Ast;
+use crate::ir;
 use crate::{parse::*, semantic::definition};
 use pin1yin1_parser::*;
 use std::collections::HashMap;
@@ -24,31 +25,31 @@ impl<'ast> Global<'ast> {
         self.pools.last_mut().unwrap()
     }
 
-    pub(crate) fn push_stmt(&mut self, stmt: impl Into<ast::Statement>) {
+    pub(crate) fn push_stmt(&mut self, stmt: impl Into<ir::Statement>) {
         self.this_pool().stmts.push(stmt.into())
     }
 
-    pub fn finish(mut self) -> ast::Statements {
+    pub fn finish(mut self) -> ir::Statements {
         assert!(self.pools.len() == 1, "un closed parse!?");
         self.pools.pop().unwrap().stmts
     }
 
     // pub fn mangle(&mut self, name: &str) {}
 
-    pub fn push_compute<E>(&mut self, init: E) -> ast::Variable
+    pub fn push_compute<E>(&mut self, init: E) -> ir::Variable
     where
-        E: Into<ast::OperateExpr>,
+        E: Into<ir::OperateExpr>,
     {
         let name = format!("_{}", self.this_pool().alloc_id);
         self.this_pool().alloc_id += 1;
 
         let eval = init.into();
-        let compute = ast::Compute {
+        let compute = ir::Compute {
             name: name.clone(),
             eval,
         };
         self.this_pool().stmts.push(compute.into());
-        ast::AtomicExpr::Variable(name)
+        ir::AtomicExpr::Variable(name)
     }
 }
 
@@ -66,9 +67,9 @@ impl<'ast> Global<'ast> {
         Result::Ok(())
     }
 
-    pub(crate) fn spoce<T, F>(&mut self, f: F) -> Result<(ast::Statements, T)>
+    pub(crate) fn spoce<T, F>(&mut self, f: F) -> Result<(ir::Statements, T)>
     where
-        F: FnOnce(&mut Self) -> Result<T>,
+        F: FnOnce(&mut Global<'ast>) -> Result<T>,
     {
         let mut scope = Scope::new();
         scope.alloc_id = self.this_pool().alloc_id;
@@ -80,7 +81,7 @@ impl<'ast> Global<'ast> {
         Result::Ok((pool.stmts, t))
     }
 
-    pub(crate) fn fn_scope<T, F>(&mut self, fn_name: String, f: F) -> Result<(ast::Statements, T)>
+    pub(crate) fn fn_scope<T, F>(&mut self, fn_name: String, f: F) -> Result<(ir::Statements, T)>
     where
         F: FnOnce(&mut Self) -> Result<T>,
     {
@@ -131,12 +132,8 @@ impl<'ast> Global<'ast> {
         None
     }
 
-    pub fn to_ast_inner<A: Ast>(
-        &mut self,
-        s: &'ast A::Target,
-        selection: Span,
-    ) -> Result<A::Forward> {
-        A::to_ast(s, selection, self)
+    pub fn to_ast_inner<A: Ast>(&mut self, s: &'ast A::Target, span: Span) -> Result<A::Forward> {
+        A::to_ast(s, span, self)
     }
 
     pub fn to_ast<A: Ast>(&mut self, pu: &'ast PU<A>) -> Result<A::Forward> {
@@ -156,7 +153,7 @@ pub struct Scope<'ast> {
     // this kind of var definitions are only allowed to be used in a LocalPool
     pub fn_name: Option<String>,
     // statements in scope
-    pub stmts: ast::Statements,
+    pub stmts: ir::Statements,
     // a mangle for functions, variable, etc
     // TODO: no_mangle
     pub mangle: HashMap<String, Mangle>,

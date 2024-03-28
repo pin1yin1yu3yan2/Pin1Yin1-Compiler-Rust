@@ -1,10 +1,12 @@
-use crate::compile::CodeGen;
 use inkwell::{context::Context, execution_engine::JitFunction};
-use pin1yin1_ast::ast::Statement;
-use pin1yin1_grammar::{parse::do_parse, semantic::Global};
-use pin1yin1_parser::*;
 
-fn get_ast(src: &str) -> Vec<Statement> {
+use pin1yin1_ast::{parse::do_parse, semantic::Global};
+use pin1yin1_parser::{Parser, Source};
+use pyir::ir::{Statement, Statements};
+
+use crate::compile::CodeGen;
+
+fn get_ast(src: &str) -> Statements {
     let source = Source::from_iter("compiler_test.py1", src.chars());
     let mut parser = Parser::<char>::new(source);
 

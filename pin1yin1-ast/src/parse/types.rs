@@ -1,5 +1,5 @@
 use super::*;
-use crate::{complex_pu, keywords::types::BasicExtenWord};
+use crate::{complex_pu, lex::types::BasicExtenWord};
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
@@ -126,12 +126,12 @@ pub struct TypeDefine {
 }
 
 impl TypeDefine {
-    pub(crate) fn to_ast_ty(&self) -> Result<crate::ast::TypeDefine> {
+    pub(crate) fn to_ast_ty(&self) -> Result<crate::ir::TypeDefine> {
         self.clone().try_into()
     }
 }
 
-impl TryFrom<TypeDefine> for crate::ast::TypeDefine {
+impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
     type Error = pin1yin1_parser::Error;
 
     fn try_from(value: crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
@@ -207,20 +207,20 @@ impl TryFrom<TypeDefine> for crate::ast::TypeDefine {
 
         let mut decorators = vec![];
         if value.const_.is_some() {
-            decorators.push(crate::ast::TypeDecorators::Const);
+            decorators.push(crate::ir::TypeDecorators::Const);
         }
 
         for decorator in value.decorators {
             let decorator = match decorator.take() {
                 crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
-                    Some(size) => crate::ast::TypeDecorators::SizedArray(size.take()),
-                    None => crate::ast::TypeDecorators::Array,
+                    Some(size) => crate::ir::TypeDecorators::SizedArray(size.take()),
+                    None => crate::ir::TypeDecorators::Array,
                 },
                 crate::parse::TypeDecorators::TypeReferenceExtend(_) => {
-                    crate::ast::TypeDecorators::Reference
+                    crate::ir::TypeDecorators::Reference
                 }
                 crate::parse::TypeDecorators::TypePointerExtend(_) => {
-                    crate::ast::TypeDecorators::Pointer
+                    crate::ir::TypeDecorators::Pointer
                 }
             };
             decorators.push(decorator);

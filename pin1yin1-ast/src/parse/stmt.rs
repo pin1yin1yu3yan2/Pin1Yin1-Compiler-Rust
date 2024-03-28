@@ -1,6 +1,4 @@
-use super::controlflow::*;
-use super::expr::*;
-use super::syntax::*;
+use super::*;
 
 /// however, this is the "best" way
 macro_rules! statement_wrapper {
@@ -14,8 +12,8 @@ macro_rules! statement_wrapper {
         #[derive(Debug, Clone)]
         $(#[$metas])*
         pub struct $into {
-            pub inner: pin1yin1_parser::PU<$from>,
-            pub fen1: pin1yin1_parser::PU<$crate::keywords::syntax::Symbol>
+            inner: pin1yin1_parser::PU<$from>,
+            pub fen1: pin1yin1_parser::PU<$crate::lex::syntax::Symbol>
         }
 
         impl pin1yin1_parser::ParseUnit for $into {
@@ -24,8 +22,22 @@ macro_rules! statement_wrapper {
             fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
 
                 let inner = p.parse::<$from>()?;
-                let fen1 = p.match_($crate::keywords::syntax::Symbol::Semicolon)?;
+                let fen1 = p.match_($crate::lex::syntax::Symbol::Semicolon)?;
                 p.finish($into { inner, fen1 })
+            }
+        }
+
+        impl std::ops::Deref for $into {
+            type Target =  pin1yin1_parser::PU<$from>;
+
+            fn deref(&self) -> &Self::Target {
+                &self.inner
+            }
+        }
+
+        impl std::ops::DerefMut for $into {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.inner
             }
         }
 
