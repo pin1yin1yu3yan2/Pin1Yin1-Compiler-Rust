@@ -11,13 +11,15 @@ fn get_ast(src: &str) -> Statements {
     let mut parser = Parser::<char>::new(source);
 
     let pus = do_parse(&mut parser)
-        .map_err(|e| parser.handle_error(e))
+        .map_err(|e| parser.handle_error(e).unwrap())
+        .map_err(|e| eprintln!("{e}"))
         .unwrap();
 
     let mut global = Global::new();
     global
         .load(&pus)
-        .map_err(|e| parser.handle_error(e))
+        .map_err(|e| parser.handle_error(e).unwrap())
+        .map_err(|e| eprintln!("{e}"))
         .unwrap();
     global.finish()
 }
@@ -96,5 +98,31 @@ fn fn_call() {
 
         assert_eq!(jia.call(114513), 114514);
         assert_eq!(jia2.call(114512), 114514);
+    })
+}
+
+const MORE_OPERATOES: &str = "
+zheng3 yi can1 zheng3 x jie2
+han2
+    fan3 x zuo3yi2 2 fen1
+jie2
+
+fu2 cheng can1 fu2 x jie2
+han2
+    fan3 x cheng2 2 fen1
+jie2
+";
+
+#[test]
+fn more_operations() {
+    compile_tester(MORE_OPERATOES, |tester| unsafe {
+        type Cheng2 = unsafe extern "C" fn(f32) -> f32;
+        type Yi = unsafe extern "C" fn(i64) -> i64;
+
+        let cheng2: JitFunction<Cheng2> = tester.execution_engine.get_function("cheng").unwrap();
+        let yi: JitFunction<Yi> = tester.execution_engine.get_function("yi").unwrap();
+
+        assert_eq!(cheng2.call(114514.0 / 2.0), 114514.0);
+        assert_eq!(yi.call(114514 / 2), 114514);
     })
 }

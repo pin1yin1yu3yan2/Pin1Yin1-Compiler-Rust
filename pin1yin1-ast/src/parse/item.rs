@@ -2,17 +2,14 @@ use super::*;
 use crate::lex::syntax::Symbol;
 
 #[derive(Debug, Clone)]
-pub struct Comment {
-    pub shi4: PU<Symbol>,
-    pub jie2: PU<Symbol>,
-}
+pub struct Comment;
 
 impl ParseUnit for Comment {
     type Target = Comment;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let shi4 =
-            Equal::new(Symbol::Comment, |e| e.unmatch("not `shi4`")).mapper(Symbol::parse(p))?;
+        p.match_(Symbol::Comment)?;
+
         loop {
             let str = p.get_chars()?;
 
@@ -22,8 +19,7 @@ impl ParseUnit for Comment {
 
             const JIE2: &[char] = &['j', 'i', 'e', '2'];
             if *str == JIE2 {
-                let jie2 = str.map(|_| Symbol::EndOfBracket);
-                return p.finish(Comment { shi4, jie2 });
+                return p.finish(Comment {});
             }
         }
     }
@@ -33,9 +29,7 @@ impl ParseUnit for Comment {
 pub struct FnDefine {
     pub ty: PU<types::TypeDefine>,
     pub name: PU<Ident>,
-    pub can1: PU<Symbol>,
     pub params: PU<Parameters>,
-    pub jie2: PU<Symbol>,
     pub codes: PU<CodeBlock>,
 }
 
@@ -45,17 +39,13 @@ impl ParseUnit for FnDefine {
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         let ty = p.parse()?;
         let name = p.parse()?;
-        let can1 = p.match_(Symbol::Parameter)?;
         let params = p.parse()?;
-        let jie2 = p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
         let codes = p.parse().apply(MustMatch)?;
 
         p.finish(Self {
             ty,
             name,
-            can1,
             params,
-            jie2,
             codes,
         })
     }
@@ -63,22 +53,20 @@ impl ParseUnit for FnDefine {
 
 #[derive(Debug, Clone)]
 pub struct CodeBlock {
-    pub han2: PU<Symbol>,
     pub stmts: Vec<PU<Statement>>,
-    pub jie2: PU<Symbol>,
 }
 
 impl ParseUnit for CodeBlock {
     type Target = CodeBlock;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let han2 = p.match_(Symbol::Block)?;
+        p.match_(Symbol::Block)?;
         let mut stmts = vec![];
         while let Some(stmt) = p.parse().r#try()? {
             stmts.push(stmt)
         }
-        let jie2 = p.match_(Symbol::EndOfBracket)?;
-        p.finish(Self { han2, stmts, jie2 })
+        p.match_(Symbol::EndOfBracket)?;
+        p.finish(Self { stmts })
     }
 }
 

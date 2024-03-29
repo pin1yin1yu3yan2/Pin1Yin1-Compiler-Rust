@@ -35,11 +35,10 @@ macro_rules! complex_pu {
             {
                 pin1yin1_parser::Try::new(p)
                 $(
-
-                    .or_try::<Self, _>(|p| {
-                        $variant::parse(p)
-                            .map(|pu| pu.map(<$enum_name>::$variant))
-                    })
+                .or_try::<Self, _>(|p| {
+                    p.once_no_try($variant::parse)
+                        .map(|pu| pu.map(<$enum_name>::$variant))
+                })
                 )*
                 .finish()
             }

@@ -7,7 +7,7 @@ use crate::*;
 /// [`ParseUnit::Target`] measn the actual type of the parse result
 ///
 /// S is the type of source
-pub trait ParseUnit<S = char>: Sized {
+pub trait ParseUnit<S = char>: Sized + Debug {
     type Target: Debug;
 
     fn parse(p: &mut Parser<S>) -> ParseResult<Self, S>;

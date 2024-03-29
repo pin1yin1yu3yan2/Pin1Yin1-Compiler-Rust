@@ -4,6 +4,21 @@ use crate::semantic;
 use crate::semantic::Global;
 use pin1yin1_parser::*;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedExpr {
+    pub ty: ir::TypeDefine,
+    pub val: ir::AtomicExpr,
+}
+
+impl TypedExpr {
+    pub fn new(ty: impl Into<ir::TypeDefine>, expr: impl Into<ir::AtomicExpr>) -> Self {
+        Self {
+            ty: ty.into(),
+            val: expr.into(),
+        }
+    }
+}
+
 pub trait Ast: ParseUnit {
     type Forward;
 
@@ -12,7 +27,7 @@ pub trait Ast: ParseUnit {
     /// was stored in the enum
     fn to_ast<'ast>(
         s: &'ast Self::Target,
-        _selection: Span,
+        span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward>;
 }
@@ -57,11 +72,11 @@ impl Ast for parse::Statement {
 }
 
 impl Ast for parse::FnCall {
-    type Forward = ir::TypedExpr;
+    type Forward = TypedExpr;
 
     fn to_ast<'ast>(
         fn_call: &'ast Self::Target,
-        _selection: Span,
+        span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let (tys, vals): (Vec<_>, Vec<_>) = fn_call
@@ -77,7 +92,7 @@ impl Ast for parse::FnCall {
             .unzip();
 
         let Some(fn_def) = _global.search_fn(&fn_call.fn_name) else {
-            return _selection.throw("use of undefined function");
+            return span.throw("use of undefined function");
         };
 
         // TOOD: overdrive support
@@ -85,7 +100,7 @@ impl Ast for parse::FnCall {
         let params = &fn_def.params;
 
         if params.len() != vals.len() {
-            return _selection.throw(format!(
+            return span.throw(format!(
                 "function {} exprct {} arguments, but {} arguments passed in",
                 *fn_call.fn_name,
                 params.len(),
@@ -103,13 +118,13 @@ impl Ast for parse::FnCall {
         }
 
         let fn_call = ir::FnCall {
-            name: fn_call.fn_name.to_string(),
+            fn_name: fn_call.fn_name.to_string(),
             args: vals.into_iter().collect(),
         };
 
         let ty = fn_def.ty.clone();
         let fn_call = ir::AtomicExpr::FnCall(fn_call);
-        Result::Ok(ir::TypedExpr::new(ty, fn_call))
+        Ok(TypedExpr::new(ty, fn_call))
     }
 }
 
@@ -118,7 +133,7 @@ impl Ast for parse::VarStore {
 
     fn to_ast<'ast>(
         var_store: &'ast Self::Target,
-        _selection: Span,
+        span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let name = var_store.name.clone();
@@ -126,13 +141,13 @@ impl Ast for parse::VarStore {
 
         let val = _global.to_ast(&var_store.assign.val)?;
         let Some((var_def, mutable)) = _global.search_var(&name) else {
-            return _selection.throw(format!("use of undefined variable {}", *name));
+            return span.throw(format!("use of undefined variable {}", *name));
         };
         if !mutable {
-            return _selection.throw(format!("cant assign to a immmutable variable {}", *name));
+            return span.throw(format!("cant assign to a immmutable variable {}", *name));
         }
         if var_def.ty != val.ty {
-            return _selection.throw(format!(
+            return span.throw(format!(
                 "tring to assign to variable with type {} from type {}",
                 var_def.ty, val.ty
             ));
@@ -150,7 +165,7 @@ impl Ast for parse::FnDefine {
 
     fn to_ast<'ast>(
         fn_define: &'ast Self::Target,
-        _selection: Span,
+        _span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let fn_name = fn_define.name.to_string();
@@ -235,7 +250,7 @@ impl Ast for parse::VarDefine {
 
     fn to_ast<'ast>(
         var_define: &'ast Self::Target,
-        _selection: Span,
+        span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         // TODO: testfor if  ty exist
@@ -245,7 +260,7 @@ impl Ast for parse::VarDefine {
             Some(init) => {
                 let init = _global.to_ast(&init.val)?;
                 if init.ty != ty {
-                    return _selection.throw(format!(
+                    return span.throw(format!(
                         "tring to define a variable with type {} from type {}",
                         ty, init.ty
                     ));
@@ -271,7 +286,7 @@ impl Ast for parse::If {
 
     fn to_ast<'ast>(
         if_: &'ast Self::Target,
-        _selection: Span,
+        _span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let mut branches = vec![_global.to_ast(&if_.ruo4)?];
@@ -303,7 +318,7 @@ impl Ast for parse::While {
 
     fn to_ast<'ast>(
         while_: &'ast Self::Target,
-        _selection: Span,
+        _span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let cond = _global.to_ast(&while_.conds)?;
@@ -318,7 +333,7 @@ impl Ast for parse::AtomicIf {
 
     fn to_ast<'ast>(
         atomic: &'ast Self::Target,
-        _selection: Span,
+        _span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let cond = _global.to_ast(&atomic.conds)?;
@@ -332,7 +347,7 @@ impl Ast for parse::Return {
 
     fn to_ast<'ast>(
         return_: &'ast Self::Target,
-        _selection: Span,
+        _span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let val = match &return_.val {
@@ -351,7 +366,7 @@ impl Ast for parse::CodeBlock {
 
     fn to_ast<'ast>(
         block: &'ast Self::Target,
-        _selection: Span,
+        _span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         _global
@@ -371,7 +386,7 @@ impl Ast for parse::Arguments {
 
     fn to_ast<'ast>(
         cond: &'ast Self::Target,
-        _selection: Span,
+        _span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         let (compute, last_cond) = _global.spoce(|_global| {
@@ -382,7 +397,7 @@ impl Ast for parse::Arguments {
             Result::Ok(last_cond)
         })?;
 
-        if last_cond.ty != ir::TypeDefine::bool() {
+        if last_cond.ty != ir::PrimitiveType::Bool {
             return cond.args.last().unwrap().throw("condition must be boolean");
         }
 
@@ -394,79 +409,95 @@ impl Ast for parse::Arguments {
 }
 
 impl Ast for parse::Expr {
-    type Forward = ir::TypedExpr;
+    type Forward = TypedExpr;
 
     fn to_ast<'ast>(
         expr: &'ast Self::Target,
-        _selection: Span,
+        span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         match expr {
-            parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, _selection, _global),
+            parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, span, _global),
             parse::Expr::Binary(l, o, r) => {
                 let l = _global.to_ast(l)?;
                 let r = _global.to_ast(r)?;
 
+                // TODO: type declaration
                 if l.ty != r.ty {
-                    return _selection.throw(format!(
+                    return span.throw(format!(
                         "operator around different type: `{}` and `{}`!",
                         l.ty, r.ty
                     ));
                 }
 
+                // TODO: operator -> function call
+                if !l.ty.is_primitive() {
+                    return span.throw("only operator around primitive types are supported");
+                }
+
                 let ty = if o.ty() == crate::ops::OperatorTypes::CompareOperator {
-                    ir::TypeDefine::bool()
+                    ir::PrimitiveType::Bool
                 } else {
-                    l.ty.clone()
+                    l.ty.clone().try_into().unwrap()
                 };
 
-                let define = _global.push_compute(ir::OperateExpr::binary(o.take(), l.val, r.val));
-                Result::Ok(define.with_ty(ty))
+                let expr =
+                    _global.push_compute(ty, ir::OperateExpr::binary(o.take(), l.val, r.val));
+                Result::Ok(TypedExpr::new(ty, expr))
             }
         }
     }
 }
 
 impl Ast for parse::AtomicExpr {
-    type Forward = ir::TypedExpr;
+    type Forward = TypedExpr;
 
     fn to_ast<'ast>(
         atomic: &'ast Self::Target,
-        _selection: Span,
+        span: Span,
         _global: &mut Global<'ast>,
     ) -> Result<Self::Forward> {
         match atomic {
-            parse::AtomicExpr::CharLiteral(char) => {
-                Result::Ok(ir::AtomicExpr::Char(char.parsed).with_ty(ir::TypeDefine::char()))
-            }
-            parse::AtomicExpr::StringLiteral(str) => Result::Ok(
-                ir::AtomicExpr::String(str.parsed.clone()).with_ty(ir::TypeDefine::string()),
-            ),
+            parse::AtomicExpr::CharLiteral(char) => Ok(TypedExpr::new(
+                ir::PrimitiveType::char(),
+                ir::AtomicExpr::Char(char.parsed),
+            )),
+            parse::AtomicExpr::StringLiteral(str) => Ok(TypedExpr::new(
+                ir::ComplexType::string(),
+                ir::AtomicExpr::String(str.parsed.clone()),
+            )),
             parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float { number, .. } => {
-                    Result::Ok(ir::AtomicExpr::Float(*number).with_ty(ir::TypeDefine::float()))
-                }
-                parse::NumberLiteral::Digit { number, .. } => {
-                    Result::Ok(ir::AtomicExpr::Integer(*number).with_ty(ir::TypeDefine::integer()))
-                }
+                parse::NumberLiteral::Float { number, .. } => Ok(TypedExpr::new(
+                    ir::PrimitiveType::F32,
+                    ir::AtomicExpr::Float(*number),
+                )),
+                parse::NumberLiteral::Digit { number, .. } => Ok(TypedExpr::new(
+                    ir::PrimitiveType::Usize,
+                    ir::AtomicExpr::Integer(*number),
+                )),
             },
-            parse::AtomicExpr::FnCall(fn_call) => {
-                parse::FnCall::to_ast(fn_call, _selection, _global)
-            }
+            parse::AtomicExpr::FnCall(fn_call) => parse::FnCall::to_ast(fn_call, span, _global),
             parse::AtomicExpr::Variable(var) => {
                 let Some(def) = _global.search_var(var) else {
-                    return _selection.throw("use of undefined variable");
+                    return span.throw("use of undefined variable");
                 };
 
-                Result::Ok(ir::AtomicExpr::Variable(var.to_string()).with_ty(def.0.ty.clone()))
+                Ok(TypedExpr::new(
+                    def.0.ty.clone(),
+                    ir::AtomicExpr::Variable(var.to_string()),
+                ))
             }
 
             // here, this is incorrect because operators may be overdriven
             // all operator overdriven must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
                 let l = _global.to_ast(&unary.expr)?;
-                let define = _global.push_compute(ir::OperateExpr::unary(*unary.operator, l.val));
-                Result::Ok(define.with_ty(l.ty))
+                if !l.ty.is_primitive() {
+                    return span.throw("only operator around primitive types are supported");
+                }
+                let ty = ir::PrimitiveType::try_from(l.ty).unwrap();
+                let expr = _global.push_compute(ty, ir::OperateExpr::unary(*unary.operator, l.val));
+                Result::Ok(TypedExpr::new(ty, expr))
             }
             parse::AtomicExpr::BracketExpr(expr) => _global.to_ast(&expr.expr),
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),

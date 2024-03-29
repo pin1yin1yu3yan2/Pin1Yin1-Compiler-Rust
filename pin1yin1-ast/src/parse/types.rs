@@ -135,12 +135,13 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
     type Error = pin1yin1_parser::Error;
 
     fn try_from(value: crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
+        use crate::ir::{ComplexType, PrimitiveType};
         /*
            int: sign, width
            float: width
         */
 
-        let ty = if &**value.ty == "zheng3" {
+        if &**value.ty == "zheng3" {
             // default to be i64
             let sign = value.sign.map(|pu| pu.sign).unwrap_or(true);
             let sign_char = if sign { 'i' } else { 'u' };
@@ -156,8 +157,10 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
                 64
             };
             value.width.map(|pu| *pu.width).unwrap_or(64);
-
-            format!("{sign_char}{width}")
+            return Ok(format!("{sign_char}{width}")
+                .parse::<PrimitiveType>()
+                .unwrap()
+                .into());
         } else if &**value.ty == "fu2" {
             // default to be f32
             if let Some(sign) = value.sign {
@@ -178,31 +181,32 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
             } else {
                 32
             };
-            format!("f{width}")
-        } else {
-            if let Some(sign) = value.sign {
-                return Err(sign.make_error(
-                    format!(
-                        "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                        *value.ty
-                    ),
-                    ErrorKind::Semantic,
-                ));
-            }
-            if let Some(width) = value.width {
-                return Err(width.make_error(
-                    format!(
-                        "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                        *value.ty
-                    ),
-                    ErrorKind::Semantic,
-                ));
-            }
-            value.ty.take().0
-        };
+
+            return Ok(format!("f{width}").parse::<PrimitiveType>().unwrap().into());
+        }
+
+        if let Some(sign) = value.sign {
+            return Err(sign.make_error(
+                format!(
+                    "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
+                    *value.ty
+                ),
+                ErrorKind::Semantic,
+            ));
+        }
+        if let Some(width) = value.width {
+            return Err(width.make_error(
+                format!(
+                    "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
+                    *value.ty
+                ),
+                ErrorKind::Semantic,
+            ));
+        }
+        let ty = value.ty.take().0;
 
         if value.const_.is_none() && value.decorators.is_empty() {
-            return Ok(Self::no_decorators(ty));
+            return Ok(ComplexType::no_decorators(ty).into());
         }
 
         let mut decorators = vec![];
@@ -226,10 +230,11 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
             decorators.push(decorator);
         }
 
-        Ok(Self {
+        Ok(ComplexType {
             decorators: decorators.into(),
             ty,
-        })
+        }
+        .into())
     }
 }
 

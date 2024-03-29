@@ -15,6 +15,8 @@ pub enum ErrorKind {
     Unmatch,
     Semantic,
     OtherError,
+    /// Debug only
+    NotError,
 }
 
 impl Error {

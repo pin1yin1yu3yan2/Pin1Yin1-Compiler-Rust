@@ -6,7 +6,6 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct AtomicIf {
-    pub ruo4: PU<ControlFlow>,
     pub conds: PU<Arguments>,
     pub block: PU<CodeBlock>,
 }
@@ -15,16 +14,15 @@ impl ParseUnit for AtomicIf {
     type Target = AtomicIf;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ruo4 = p.match_(ControlFlow::If)?;
+        p.match_(ControlFlow::If)?;
         let conds = p.parse::<Arguments>()?;
         let block = p.parse::<CodeBlock>().apply(MustMatch)?;
-        p.finish(AtomicIf { ruo4, conds, block })
+        p.finish(AtomicIf { conds, block })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct AtomicElse {
-    pub ze2: PU<ControlFlow>,
     pub block: PU<CodeBlock>,
 }
 
@@ -32,15 +30,14 @@ impl ParseUnit for AtomicElse {
     type Target = AtomicElse;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ze2 = p.match_(ControlFlow::Else)?;
+        p.match_(ControlFlow::Else)?;
         let block = p.parse::<CodeBlock>().apply(MustMatch)?;
-        p.finish(AtomicElse { ze2, block })
+        p.finish(AtomicElse { block })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct AtomicElseIf {
-    pub ze2: PU<ControlFlow>,
     pub ruo4: PU<AtomicIf>,
 }
 
@@ -48,9 +45,9 @@ impl ParseUnit for AtomicElseIf {
     type Target = AtomicElseIf;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ze2 = p.match_(ControlFlow::If)?;
+        p.match_(ControlFlow::If)?;
         let ruo4 = p.parse::<AtomicIf>()?;
-        p.finish(AtomicElseIf { ze2, ruo4 })
+        p.finish(AtomicElseIf { ruo4 })
     }
 }
 
@@ -87,7 +84,6 @@ impl ParseUnit for If {
 
 #[derive(Debug, Clone)]
 pub struct While {
-    pub chong2: PU<ControlFlow>,
     pub conds: PU<Arguments>,
     pub block: PU<CodeBlock>,
 }
@@ -96,34 +92,27 @@ impl ParseUnit for While {
     type Target = While;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let chong2 = p.match_(ControlFlow::Repeat)?;
+        p.match_(ControlFlow::Repeat)?;
         let conds = p.parse::<Arguments>().apply(MustMatch)?;
         let block = p.parse::<CodeBlock>().apply(MustMatch)?;
-        p.finish(While {
-            chong2,
-            conds,
-            block,
-        })
+        p.finish(While { conds, block })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Return {
-    pub fan3: PU<ControlFlow>,
     pub val: Option<PU<Expr>>,
-    pub fen1: PU<Symbol>,
 }
 
 impl ParseUnit for Return {
     type Target = Return;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let fan3 = p.match_(ControlFlow::Return)?;
+        p.match_(ControlFlow::Return)?;
         let val = p.parse::<Expr>().r#try()?;
+        p.match_(Symbol::Semicolon)?;
 
-        let fen1 = p.match_(Symbol::Semicolon)?;
-
-        p.finish(Return { fan3, val, fen1 })
+        p.finish(Return { val })
     }
 }
 

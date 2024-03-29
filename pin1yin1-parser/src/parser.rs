@@ -1,11 +1,14 @@
 use crate::*;
 
+/// cahce for [`ParseUnit`], increse the parse speed for [[char]]
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ParserCache {
     /// really cache
     pub(crate) span: Span,
     /// the idx of the fist character in the cache
     pub(crate) first_index: usize,
+    /// be different from [`Self::first_index`], this is the index that after [`Parser::skip_whitespace`]
+    pub(crate) start_index: usize,
     /// the idx of the next character in the cache
     ///
     /// [`Self::chars_cache_idx`] + [`Self::chars_cache.len()`]
@@ -14,6 +17,7 @@ pub(crate) struct ParserCache {
 
 #[derive(Default, Debug, Clone, Copy)]
 pub(crate) struct ParserState {
+    /// the index of the first character in this [`ParseUnit`]
     start_idx: Option<usize>,
     /// parse state: the index of the current character in this [`ParseUnit`]
     idx: usize,
@@ -27,17 +31,125 @@ impl ParserState {
         }
     }
 
+    /// foward tmp parser's work to main parser
+
+    pub(crate) fn force_sync(mut self, tmp: &ParserState) -> Self {
+        self.idx = tmp.idx;
+        self.start_idx = self.start_idx.or(tmp.start_idx);
+        self
+    }
+
     /// sync [`ParserState`] with the parsing result from a temp sub parser's [`ParserState`]
-    pub(crate) fn sync_with<S, P>(mut self, tmp: &ParserState, result: &ParseResult<P, S>) -> Self
+    pub(crate) fn sync_with<S, P>(self, tmp: &ParserState, result: &ParseResult<P, S>) -> Self
     where
         P: ParseUnit<S>,
     {
         if result.is_ok() {
-            // foward tmp parser's work to main parser
-            self.idx = tmp.idx;
-            self.start_idx = self.start_idx.or(tmp.start_idx);
+            self.force_sync(tmp)
+        } else {
+            self
         }
-        self
+    }
+}
+
+#[cfg(feature = "parser_calling_tree")]
+mod calling_tree {
+    use crate::{ErrorKind, ParseUnit, Span, WithSpan};
+
+    #[derive(Clone, Copy)]
+    pub enum Calling {
+        Start,
+        Success(Span),
+        Err(ErrorKind, Span),
+    }
+
+    impl Calling {
+        /// Returns `true` if the calling is [`Start`].
+        ///
+        /// [`Start`]: Calling::Start
+        #[must_use]
+        pub fn is_start(&self) -> bool {
+            matches!(self, Self::Start)
+        }
+    }
+
+    impl<P: ParseUnit<S>, S> From<&super::ParseResult<P, S>> for Calling {
+        fn from(value: &super::ParseResult<P, S>) -> Self {
+            match value {
+                Ok(o) => Self::Success(o.get_span()),
+                Err(e) => Self::Err(e.kind(), e.get_span()),
+            }
+        }
+    }
+
+    impl std::fmt::Debug for Calling {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Start => write!(f, "Start: "),
+                Self::Success(span) => write!(f, "Success<{span}>"),
+                Self::Err(arg0, span) => write!(f, "{:?}<{span}>", arg0),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    enum Record {
+        Normal { pu: &'static str, call: Calling },
+        Custom { msg: String },
+    }
+
+    impl Record {
+        fn print(&self, depth: &mut usize, f: &mut impl std::fmt::Write) -> std::fmt::Result {
+            match self {
+                Record::Normal { pu, call } => {
+                    if call.is_start() {
+                        for _ in 0..*depth {
+                            write!(f, "    ")?;
+                        }
+                        *depth += 1;
+                        writeln!(f, "{:?}{}", call, pu)
+                    } else {
+                        *depth -= 1;
+
+                        for _ in 0..*depth {
+                            write!(f, "    ")?;
+                        }
+                        writeln!(f, "{:?} {}", call, pu)
+                    }
+                }
+                Record::Custom { msg } => writeln!(f, "{msg}"),
+            }
+        }
+    }
+
+    #[derive(Default, Debug, Clone)]
+    pub struct CallingTree {
+        records: Vec<Record>,
+    }
+
+    impl CallingTree {
+        pub fn record_normal<P>(&mut self, call: Calling) {
+            self.records.push(Record::Normal {
+                pu: std::any::type_name::<P>(),
+                call,
+            });
+        }
+
+        pub fn record_custom(&mut self, msg: impl std::fmt::Display) {
+            self.records.push(Record::Custom {
+                msg: msg.to_string(),
+            });
+        }
+    }
+
+    impl std::fmt::Display for CallingTree {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut depth = 0;
+            for record in &self.records {
+                record.print(&mut depth, f)?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -46,10 +158,11 @@ impl ParserState {
 pub struct Parser<S = char> {
     /// source codes
     src: Source<S>,
-    /// parse state: the index of the first character in this [`ParseUnit`]
+
     state: ParserState,
-    /// cahce for [`ParseUnit`], increse the parse speed for [[char]]
     cache: ParserCache,
+    #[cfg(feature = "parser_calling_tree")]
+    calling_tree: calling_tree::CallingTree,
 }
 
 impl<S> WithSpan for Parser<S> {
@@ -77,15 +190,6 @@ impl<S> Parser<S> {
     pub(crate) fn peek(&self) -> Option<&S> {
         self.src.get(self.state.idx)
     }
-
-    /// Returns the [`Parser::start_idx`] of this [`Parser`].
-    ///
-    /// # Panics
-    ///
-    /// this method should never panic
-    pub(crate) fn start_idx(&self) -> usize {
-        self.state.start_idx.unwrap()
-    }
 }
 
 impl<S> Parser<S> {
@@ -96,9 +200,12 @@ impl<S> Parser<S> {
             state: ParserState::default(),
             cache: ParserCache {
                 span: Span::new(0, 0),
-                first_index: usize::MAX,
+                first_index: usize::MAX, //this is not rusty enough(
+                start_index: usize::MAX,
                 final_index: usize::MAX,
             },
+            #[cfg(feature = "parser_calling_tree")]
+            calling_tree: Default::default(),
         }
     }
 
@@ -123,6 +230,20 @@ impl<S> Parser<S> {
 }
 
 impl<S> Parser<S> {
+    /// Returns the [`Parser::start_idx`] of this [`Parser`].
+    ///
+    /// # Panics
+    ///
+    /// this method should never panic
+    pub(crate) fn start_idx(&self) -> usize {
+        self.state.start_idx.unwrap()
+    }
+
+    #[cfg(feature = "parser_calling_tree")]
+    pub fn get_calling_tree(&self) -> &calling_tree::CallingTree {
+        &self.calling_tree
+    }
+
     /// skip characters that that follow the given rule
     pub(crate) fn skip_while<Rule>(&mut self, rule: Rule) -> &mut Self
     where
@@ -154,31 +275,29 @@ impl Parser<char> {
 
     ///  very hot funtion!!!
     pub fn get_chars(&mut self) -> ParseResult<&[char], char> {
-        let mut state = self.state.fork();
-        self.state = state;
+        let state = self.state;
+        self.state = self.state.fork();
 
         let span = {
             let p = &mut *self;
             // reparse and cache the result
             if p.cache.first_index != p.state.idx {
                 p.cache.first_index = p.state.idx;
-                p.cache.span = p.skip_whitespace().take_while(chars_taking_rule);
+                p.skip_whitespace().start_taking();
+                p.cache.start_index = p.start_idx();
+                p.cache.span = p.take_while(chars_taking_rule);
                 p.cache.final_index = p.state.idx;
             } else {
                 // load from cache, call p.start_taking() to perform the right behavior
                 p.start_taking();
+                p.state.start_idx = p.state.start_idx.or(Some(p.cache.first_index));
                 p.state.idx = p.cache.final_index;
             }
 
             p.cache.span
         };
-        self.state = {
-            let tmp = &self.state;
-            // foward tmp parser's work to main parser
-            state.idx = tmp.idx;
-            state.start_idx = state.start_idx.or(tmp.start_idx);
-            state
-        };
+
+        self.state = state.force_sync(&self.state);
 
         self.finish(self.select(span))
     }
@@ -199,6 +318,28 @@ impl<S> Parser<S> {
         Try::new(self).or_try(p)
     }
 
+    /// be different from directly call, this kind of parse will log
+    /// (if parser_calling_tree feature enabled)
+    pub fn once_no_try<P, F>(&mut self, parser: F) -> ParseResult<P, S>
+    where
+        P: ParseUnit<S>,
+        F: FnOnce(&mut Parser<S>) -> ParseResult<P, S>,
+    {
+        #[cfg(feature = "parser_calling_tree")]
+        self.calling_tree
+            .record_normal::<P>(calling_tree::Calling::Start);
+
+        // do parsing
+        let result = parser(self);
+
+        #[cfg(feature = "parser_calling_tree")]
+        self.calling_tree
+            .record_normal::<P>(calling_tree::Calling::from(&result));
+
+        #[cfg_attr(not(feature = "parser_calling_tree"), allow(clippy::let_and_return))]
+        result
+    }
+
     /// try to parse, if the parsing Err, there will be no effect made on [`Parser`]
     ///
     /// you should not call [`ParseUnit::parse`] directly, using methods like [`Parser::once`]
@@ -210,39 +351,10 @@ impl<S> Parser<S> {
     {
         // create a temp parser and reset its state
 
-        let state = self.state.fork();
+        let state = self.state;
+        self.state = self.state.fork();
 
-        #[cfg(feature = "parser_calling_tree")]
-        let p_name = std::any::type_name::<P>();
-        #[cfg(feature = "parser_calling_tree")]
-        use std::sync::atomic::AtomicUsize;
-        #[cfg(feature = "parser_calling_tree")]
-        static DEPTH: AtomicUsize = AtomicUsize::new(0);
-        #[cfg(feature = "parser_calling_tree")]
-        {
-            for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
-                print!("    ")
-            }
-            println!("Start {p_name}");
-            DEPTH.fetch_add(1, std::sync::atomic::Ordering::Release);
-        }
-
-        // do parsing
-        self.state = state;
-        let result = parser(self);
-
-        #[cfg(feature = "parser_calling_tree")]
-        {
-            DEPTH.fetch_sub(1, std::sync::atomic::Ordering::Release);
-            for _ in 0..DEPTH.load(std::sync::atomic::Ordering::Acquire) {
-                print!("    ")
-            }
-            match &result {
-                Result::Ok(_) => println!("Ok: {p_name}"),
-                Result::Err(e) => println!("{:?}: {p_name}", e.kind()),
-            }
-        }
-
+        let result = self.once_no_try(parser);
         self.state = state.sync_with(&self.state, &result);
 
         result
@@ -302,18 +414,18 @@ impl<'p, S, P: ParseUnit<S>> Try<'p, P, S> {
         P1: ParseUnit<S, Target = P::Target>,
         F: FnOnce(&mut Parser<S>) -> ParseResult<P1, S>,
     {
-        if self.state.is_none()
-            || self.state.as_ref().is_some_and(|result| {
-                result
-                    .as_ref()
-                    .is_err_and(|e| e.kind() == ErrorKind::Unmatch)
-            })
-        {
-            self.state = Some(
-                self.parser
-                    .once(parser)
-                    .map(|pu| PU::new(pu.span, pu.target)),
-            );
+        let is_unmatch = self.state.as_ref().is_some_and(|result| {
+            result
+                .as_ref()
+                .is_err_and(|e| e.kind() == ErrorKind::Unmatch)
+        });
+
+        if self.state.is_none() || is_unmatch {
+            let state = self
+                .parser
+                .once(parser)
+                .map(|pu| PU::new(pu.span, pu.target));
+            self.state = Some(state);
         }
         self
     }

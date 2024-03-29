@@ -5,7 +5,6 @@ use crate::{complex_pu, lex::syntax::Symbol, ops::OperatorAssociativity};
 
 #[derive(Debug, Clone)]
 pub struct CharLiteral {
-    pub zi4: PU<Symbol>,
     pub unparsed: PU<String>,
     pub parsed: char,
 }
@@ -24,7 +23,7 @@ impl ParseUnit for CharLiteral {
     type Target = CharLiteral;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let zi4 = p.match_(Symbol::Char)?;
+        p.match_(Symbol::Char)?;
         let unparsed = p.parse::<String>()?;
         if !(unparsed.len() == 1 || unparsed.len() == 2 && unparsed.starts_with('_')) {
             return unparsed.throw(format!("Invalid CharLiteral {}", *unparsed));
@@ -35,17 +34,12 @@ impl ParseUnit for CharLiteral {
             escape(&unparsed, unparsed.as_bytes()[1] as _)?
         };
 
-        p.finish(CharLiteral {
-            zi4,
-            unparsed,
-            parsed,
-        })
+        p.finish(CharLiteral { unparsed, parsed })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct StringLiteral {
-    pub chuan4: PU<Symbol>,
     pub unparsed: PU<String>,
     pub parsed: String,
 }
@@ -54,7 +48,7 @@ impl ParseUnit for StringLiteral {
     type Target = StringLiteral;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let chuan4 = p.match_(Symbol::String)?;
+        p.match_(Symbol::String)?;
         let unparsed = p.parse::<String>()?;
 
         let mut next_escape = false;
@@ -73,11 +67,7 @@ impl ParseUnit for StringLiteral {
             return unparsed.throw("Invalid escape! maybe you losted a character");
         }
 
-        p.finish(StringLiteral {
-            chuan4,
-            unparsed,
-            parsed,
-        })
+        p.finish(StringLiteral { unparsed, parsed })
     }
 }
 
@@ -91,8 +81,7 @@ impl ParseUnit for NumberLiteral {
     type Target = NumberLiteral;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let number = *p.parse::<usize>()?;
-
+        let number = *p.parse::<usize>()?; // digit
         if p.once(|p| p.match_('.')).is_ok() {
             let decimal = p.parse::<usize>().r#try()?.map(|t| *t).unwrap_or(0) as f64;
             let decimal = decimal / 10f64.powi(decimal.log10().ceil() as _);
@@ -108,29 +97,16 @@ impl ParseUnit for NumberLiteral {
 #[derive(Debug, Clone)]
 pub struct Arguments {
     pub args: Vec<PU<Expr>>,
-    pub semicolons: Vec<PU<Symbol>>,
-}
-
-impl From<Vec<PU<Expr>>> for Arguments {
-    fn from(value: Vec<PU<Expr>>) -> Self {
-        Arguments {
-            args: value,
-            semicolons: Vec::new(),
-        }
-    }
-}
-
-impl From<Arguments> for Vec<PU<Expr>> {
-    fn from(value: Arguments) -> Self {
-        value.args
-    }
+    pub semicolons: Vec<Span>,
 }
 
 impl ParseUnit for Arguments {
     type Target = Arguments;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
+        p.match_(Symbol::Parameter)?;
         let Some(arg) = p.parse::<Expr>().r#try()? else {
+            p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
             return p.finish(Arguments {
                 args: vec![],
                 semicolons: vec![],
@@ -141,41 +117,38 @@ impl ParseUnit for Arguments {
         let mut semicolons = vec![];
 
         while let Some(semicolon) = p.match_(Symbol::Semicolon).r#try()? {
-            semicolons.push(semicolon);
+            semicolons.push(semicolon.get_span());
             args.push(p.parse::<Expr>()?);
         }
 
+        p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
         p.finish(Arguments { args, semicolons })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Initialization {
-    pub han2: PU<Symbol>,
     pub args: Vec<PU<AtomicExpr>>,
-    pub jie2: PU<Symbol>,
 }
 
 impl ParseUnit for Initialization {
     type Target = Initialization;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let han2 = p.match_(Symbol::Block)?;
+        p.match_(Symbol::Block)?;
         let mut args = vec![];
         while let Some(expr) = p.parse::<AtomicExpr>().r#try()? {
             args.push(expr);
         }
-        let jie2 = p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
-        p.finish(Initialization { han2, args, jie2 })
+        p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+        p.finish(Initialization { args })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct FnCall {
     pub fn_name: PU<Ident>,
-    pub han2: PU<Symbol>,
     pub args: PU<Arguments>,
-    pub jie2: PU<Symbol>,
 }
 
 impl ParseUnit for FnCall {
@@ -183,16 +156,9 @@ impl ParseUnit for FnCall {
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         let fn_name = p.parse::<Ident>()?;
-        let han2 = p.match_(Symbol::Parameter)?;
         let args = p.parse::<Arguments>()?;
-        let jie2 = p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
 
-        p.finish(FnCall {
-            fn_name,
-            han2,
-            args,
-            jie2,
-        })
+        p.finish(FnCall { fn_name, args })
     }
 }
 
@@ -220,20 +186,18 @@ impl ParseUnit for UnaryExpr {
 
 #[derive(Debug, Clone)]
 pub struct BracketExpr {
-    pub can1: PU<Symbol>,
     pub expr: Box<PU<Expr>>,
-    pub jie2: PU<Symbol>,
 }
 
 impl ParseUnit for BracketExpr {
     type Target = BracketExpr;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let can1 = p.match_(Symbol::Parameter)?;
+        p.match_(Symbol::Parameter)?;
         let expr = Box::new(p.parse::<Expr>()?);
-        let jie2 = p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+        p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
 
-        p.finish(BracketExpr { can1, expr, jie2 })
+        p.finish(BracketExpr { expr })
     }
 }
 

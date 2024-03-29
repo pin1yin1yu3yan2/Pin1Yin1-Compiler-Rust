@@ -4,7 +4,6 @@ use crate::lex::syntax::Symbol;
 
 #[derive(Debug, Clone)]
 pub struct VarAssign {
-    pub deng3: PU<Symbol>,
     pub val: PU<Expr>,
 }
 
@@ -12,9 +11,9 @@ impl ParseUnit for VarAssign {
     type Target = VarAssign;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let deng3 = p.match_(Symbol::Assign)?;
+        p.match_(Symbol::Assign)?;
         let val = p.parse()?;
-        p.finish(Self { deng3, val })
+        p.finish(Self { val })
     }
 }
 
@@ -84,29 +83,17 @@ impl ParseUnit for Parameter {
 #[derive(Debug, Clone)]
 pub struct Parameters {
     pub params: Vec<PU<Parameter>>,
-    pub semicolons: Vec<PU<Symbol>>,
-}
-
-impl From<Vec<PU<Parameter>>> for Parameters {
-    fn from(value: Vec<PU<Parameter>>) -> Self {
-        Self {
-            params: value,
-            semicolons: Vec::new(),
-        }
-    }
-}
-
-impl From<Parameters> for Vec<PU<Parameter>> {
-    fn from(value: Parameters) -> Self {
-        value.params
-    }
+    pub semicolons: Vec<Span>,
 }
 
 impl ParseUnit for Parameters {
     type Target = Parameters;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
+        p.match_(Symbol::Parameter)?;
         let Some(arg) = p.parse::<Parameter>().r#try()? else {
+            p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+
             return p.finish(Parameters {
                 params: vec![],
                 semicolons: vec![],
@@ -117,10 +104,11 @@ impl ParseUnit for Parameters {
         let mut semicolons = vec![];
 
         while let Some(semicolon) = p.match_(Symbol::Semicolon).r#try()? {
-            semicolons.push(semicolon);
+            semicolons.push(semicolon.get_span());
             params.push(p.parse::<Parameter>()?);
         }
 
+        p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
         p.finish(Parameters { params, semicolons })
     }
 }
@@ -140,11 +128,10 @@ mod tests {
 
     #[test]
     fn variable_define_init() {
-        parse_test("kuan1 32 zheng3 a deng3 114514 fen1", |p| {
-            assert!(p.parse::<Statement>().is_ok())
-        });
-        parse_test("kuan1 32 zheng3 a deng3 114514 fen1", |p| {
-            assert!(p.parse::<VarDefine>().is_ok())
+        let src = "kuan1 32 zheng3 a deng3 114514 fen1";
+        parse_test(src, |p| assert!(dbg!(p.parse::<VarDefine>()).is_ok()));
+        parse_test(src, |p| {
+            assert!(p.parse::<Statement>().is_ok());
         });
     }
 

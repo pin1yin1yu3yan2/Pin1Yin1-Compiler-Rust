@@ -36,8 +36,9 @@ impl<'ast> Global<'ast> {
 
     // pub fn mangle(&mut self, name: &str) {}
 
-    pub fn push_compute<E>(&mut self, init: E) -> ir::Variable
+    pub fn push_compute<T, E>(&mut self, ty: T, init: E) -> ir::Variable
     where
+        T: Into<ir::PrimitiveType>,
         E: Into<ir::OperateExpr>,
     {
         let name = format!("_{}", self.this_pool().alloc_id);
@@ -45,6 +46,7 @@ impl<'ast> Global<'ast> {
 
         let eval = init.into();
         let compute = ir::Compute {
+            ty: ty.into(),
             name: name.clone(),
             eval,
         };

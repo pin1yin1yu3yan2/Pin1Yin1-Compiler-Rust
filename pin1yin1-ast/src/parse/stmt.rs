@@ -85,10 +85,10 @@ macro_rules! statements {
             {
                 pin1yin1_parser::Try::new(p)
                 $(
-                    .or_try::<Self, _>(|p| {
-                        $variant::parse(p)
-                            .map(|pu| pu.map(|t |<$enum_name>::$variant(Box::new(t))))
-                    })
+                .or_try::<Self, _>(|p| {
+                    p.once_no_try($variant::parse)
+                        .map(|pu| pu.map(|t |<$enum_name>::$variant(Box::new(t))))
+                })
                 )*
                 .finish()
             }

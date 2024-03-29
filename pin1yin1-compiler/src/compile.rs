@@ -73,35 +73,24 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn type_cast(&self, ty: &ir::TypeDefine) -> BasicTypeEnum<'ctx> {
-        if ty.decorators.is_some() {
-            todo!("decorators is not supported now...")
-        }
-        let ty: &str = &ty.ty;
         match ty {
-            "i64" => self.context.i64_type(),
-            "i32" => self.context.i32_type(),
-            "i16" => self.context.i16_type(),
-            "i8" => self.context.i8_type(),
-            "zi4" => self.context.i32_type(),
-            _ => todo!("type {} is not supported now...", ty),
-        }
-        .into()
-    }
-
-    fn get_type(&self, expr: &ir::AtomicExpr) -> BasicTypeEnum {
-        match expr {
-            ir::AtomicExpr::Char(_) => self.context.i32_type().into(),
-            ir::AtomicExpr::String(str) => self
-                .context
-                .i8_type()
-                .array_type(str.as_bytes().len() as _)
-                .into(),
-            ir::AtomicExpr::Integer(_) => self.context.i64_type().into(),
-            ir::AtomicExpr::Float(_) => self.context.f32_type().into(),
-            ir::AtomicExpr::FnCall(_) => todo!(),
-            ir::AtomicExpr::Variable(name) => {
-                let get_var = &self.get_var(name);
-                get_var.get_type()
+            ir::TypeDefine::Primitive(ty) => match ty {
+                ir::PrimitiveType::Bool => self.context.bool_type().into(),
+                ir::PrimitiveType::I8 | ir::PrimitiveType::U8 => self.context.i8_type().into(),
+                ir::PrimitiveType::I16 | ir::PrimitiveType::U16 => self.context.i16_type().into(),
+                ir::PrimitiveType::I32 | ir::PrimitiveType::U32 => self.context.i32_type().into(),
+                ir::PrimitiveType::I64 | ir::PrimitiveType::U64 => self.context.i64_type().into(),
+                ir::PrimitiveType::I128 | ir::PrimitiveType::U128 => {
+                    self.context.i128_type().into()
+                }
+                ir::PrimitiveType::Usize | ir::PrimitiveType::Isize => {
+                    self.context.i64_type().into()
+                }
+                ir::PrimitiveType::F32 => self.context.f32_type().into(),
+                ir::PrimitiveType::F64 => self.context.f64_type().into(),
+            },
+            ir::TypeDefine::Complex(_ty) => {
+                todo!()
             }
         }
     }
@@ -128,7 +117,7 @@ impl<'ctx> CodeGen<'ctx> {
             ir::AtomicExpr::Variable(v) => self.get_var(v).load(&self.builder),
 
             ir::AtomicExpr::FnCall(fn_call) => {
-                let fn_ = self.get_fn(&fn_call.name);
+                let fn_ = self.get_fn(&fn_call.fn_name);
                 let args = fn_call.args.iter().try_fold(vec![], |mut vec, arg| {
                     vec.push(self.atomic_epxr(arg)?.into());
                     Ok(vec)
@@ -136,7 +125,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                 let val = self
                     .builder
-                    .build_call(fn_, &args, &fn_call.name)?
+                    .build_call(fn_, &args, &fn_call.fn_name)?
                     .try_as_basic_value()
                     // TODO: `kong1` as return type
                     .unwrap_left();
@@ -208,7 +197,7 @@ impl Compile for ir::FnDefine {
                 .iter()
                 .enumerate()
                 .map(|(idx, param)| (param.name.clone(), fn_.get_nth_param(idx as _).unwrap()))
-                .map(|(name, param)| (name, ComputeResult { inner: param }));
+                .map(|(name, param)| (name, ComputeResult { val: param }));
             state.global.regist_params(params);
             let entry = state.context.append_basic_block(fn_, "entry");
             state.builder.position_at_end(entry);
@@ -222,59 +211,19 @@ impl Compile for ir::FnDefine {
 }
 impl Compile for ir::Compute {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
+        let builder = &state.builder;
         match &self.eval {
-            ir::OperateExpr::Unary(_, _) => todo!(),
+            ir::OperateExpr::Unary(op, val) => {
+                let val = state.atomic_epxr(val)?;
+                let val = crate::primitive::unary_compute(builder, self.ty, *op, val, &self.name)?;
+                state.regist_var(self.name.to_owned(), ComputeResult { val })
+            }
             ir::OperateExpr::Binary(op, l, r) => {
-                let ty = state.get_type(l);
                 let l = state.atomic_epxr(l)?;
                 let r = state.atomic_epxr(r)?;
-                use pyir::ops::Operators;
-                match op {
-                    Operators::Add => {
-                        let val: BasicValueEnum = if ty.is_int_type() {
-                            state
-                                .builder
-                                .build_int_add(l.into_int_value(), r.into_int_value(), &self.name)?
-                                .into()
-                        } else if ty.is_float_type() {
-                            state
-                                .builder
-                                .build_float_add(
-                                    l.into_float_value(),
-                                    r.into_float_value(),
-                                    &self.name,
-                                )?
-                                .into()
-                        } else {
-                            todo!()
-                        };
-                        let imv = ComputeResult { inner: val };
-                        state.regist_var(self.name.clone(), imv);
-                    }
-                    Operators::Sub => {
-                        let val: BasicValueEnum = if ty.is_int_type() {
-                            state
-                                .builder
-                                .build_int_sub(l.into_int_value(), r.into_int_value(), &self.name)?
-                                .into()
-                        } else if ty.is_float_type() {
-                            state
-                                .builder
-                                .build_float_sub(
-                                    l.into_float_value(),
-                                    r.into_float_value(),
-                                    &self.name,
-                                )?
-                                .into()
-                        } else {
-                            todo!()
-                        };
-                        let imv = ComputeResult { inner: val };
-                        state.regist_var(self.name.clone(), imv);
-                    }
-
-                    _ => unimplemented!("OP: {op:?}"),
-                }
+                let val =
+                    crate::primitive::binary_compute(builder, self.ty, *op, l, r, &self.name)?;
+                state.regist_var(self.name.to_owned(), ComputeResult { val })
             }
         };
 
@@ -309,14 +258,14 @@ impl Compile for ir::VarStore {
 // call
 impl Compile for ir::FnCall {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
-        let fn_ = state.get_fn(&self.name);
+        let fn_ = state.get_fn(&self.fn_name);
         let args = self.args.iter().try_fold(vec![], |mut vec, arg| {
             vec.push(state.atomic_epxr(arg)?.into());
             Ok(vec)
         })?;
 
         // droped
-        state.builder.build_call(fn_, &args, &self.name)?;
+        state.builder.build_call(fn_, &args, &self.fn_name)?;
         Ok(())
     }
 }

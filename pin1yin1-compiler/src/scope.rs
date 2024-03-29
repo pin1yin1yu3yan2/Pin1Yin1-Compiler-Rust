@@ -107,12 +107,12 @@ impl<'ctx> Variable<'ctx> for AllocVariable<'ctx> {
 
 #[derive(Debug, Clone)]
 pub struct ComputeResult<'ctx> {
-    pub inner: BasicValueEnum<'ctx>,
+    pub val: BasicValueEnum<'ctx>,
 }
 
 impl<'ctx> Variable<'ctx> for ComputeResult<'ctx> {
     fn load(&self, _builder: &Builder<'ctx>) -> Result<BasicValueEnum<'ctx>, BuilderError> {
-        Ok(self.inner)
+        Ok(self.val)
     }
 
     fn store(
@@ -124,6 +124,6 @@ impl<'ctx> Variable<'ctx> for ComputeResult<'ctx> {
     }
 
     fn get_type(&self) -> BasicTypeEnum<'ctx> {
-        self.inner.get_type()
+        self.val.get_type()
     }
 }

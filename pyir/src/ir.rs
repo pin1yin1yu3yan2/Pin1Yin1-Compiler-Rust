@@ -72,40 +72,16 @@ mod from_impls {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct FnDefine {
-    #[serde(rename = "type")]
-    pub ty: TypeDefine,
-    pub name: String,
-    pub params: Parameters,
-    pub body: Statements,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct Compute {
-    // we can know this in code generation
-    // #[serde(rename = "type")]
-    // pub ty: TypeDefine,
-    pub name: String,
-    pub eval: OperateExpr,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct VarDefine {
-    #[serde(rename = "type")]
-    pub ty: TypeDefine,
-    pub name: String,
-    pub init: Option<Variable>,
-}
-
 /// this kind of expr is the most general expression
 ///
 /// [`AtomicExpr::Char`], [`AtomicExpr::String`], [`AtomicExpr::Integer`] and [`AtomicExpr::Float`]
 /// mean literals
 ///
+/// type of literals are needed to be declared in operators, because `1` can mean `i8`, `i32`, etc.
+///
 /// [`AtomicExpr::Variable`] and [`AtomicExpr::FnCall`] are folded expression,for example,
 /// [`OperateExpr::Binary`] and [`OperateExpr::Unary`] will be transformed into a [`VarDefine`],
-/// and its result(a variable) will be treated as [`AtomicExpr::Variable`]
+/// and its result(a variable) will be used as [`AtomicExpr::Variable`]
 ///
 /// using this way to avoid expressions' tree, and make llvm-ir generation much easier
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
@@ -120,30 +96,275 @@ pub enum AtomicExpr {
     // Initialization(Vec<Expr>),
 }
 
-impl AtomicExpr {
-    pub fn with_ty(self, ty: TypeDefine) -> TypedExpr {
-        TypedExpr { ty, val: self }
+/// comes from [`Compute`] or just a
+pub type Variable = AtomicExpr;
+pub type Variables = Vec<Variable>;
+
+/// [`OperateExpr::Unary`] and [`OperateExpr::Binary`] are normal operations aroud primitives
+///
+/// computes around non-primitive types are turned into [FnCall]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub enum OperateExpr {
+    Unary(Operators, AtomicExpr),
+    Binary(Operators, AtomicExpr, AtomicExpr),
+}
+
+impl OperateExpr {
+    pub fn binary(op: Operators, l: impl Into<AtomicExpr>, r: impl Into<AtomicExpr>) -> Self {
+        Self::Binary(op, l.into(), r.into())
+    }
+
+    pub fn unary(op: Operators, v: impl Into<AtomicExpr>) -> Self {
+        Self::Unary(op, v.into())
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct TypedExpr {
-    #[serde(rename = "type")]
-    pub ty: TypeDefine,
-    pub val: AtomicExpr,
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq)]
+pub enum PrimitiveType {
+    Bool, // boolean
+    I8,
+    U8,
+    I16,
+    U16,
+    I32,
+    U32, // char
+    I64,
+    U64,
+    I128,
+    U128,
+    Usize,
+    Isize,
+    F32,
+    F64,
 }
 
-impl TypedExpr {
-    pub fn new(ty: TypeDefine, expr: impl Into<AtomicExpr>) -> Self {
-        Self {
-            ty,
-            val: expr.into(),
+impl PrimitiveType {
+    pub fn char() -> Self {
+        Self::U32
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, Self::F32 | Self::F64)
+    }
+
+    pub fn is_integer(&self) -> bool {
+        !self.is_float() && self != &Self::Bool
+    }
+
+    pub fn is_signed(&self) -> bool {
+        matches!(
+            self,
+            Self::I8 | Self::I16 | Self::I32 | Self::I64 | Self::I128 | Self::Isize
+        )
+    }
+
+    pub fn is_unsigned(&self) -> bool {
+        matches!(
+            self,
+            Self::U8 | Self::U16 | Self::U32 | Self::U64 | Self::U128 | Self::Usize
+        )
+    }
+}
+
+impl std::str::FromStr for PrimitiveType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "i1" => Ok(Self::Bool),
+            "i8" => Ok(Self::I8),
+            "u8" => Ok(Self::U8),
+            "i16" => Ok(Self::I16),
+            "u16" => Ok(Self::U16),
+            "i32" => Ok(Self::I32),
+            "u32" => Ok(Self::U32),
+            "i64" => Ok(Self::I64),
+            "u64" => Ok(Self::U64),
+            "i128" => Ok(Self::I128),
+            "u128" => Ok(Self::U128),
+            "f32" => Ok(Self::F32),
+            "f64" => Ok(Self::F64),
+            _ => Err(()),
         }
     }
 }
 
-pub type Variable = AtomicExpr;
-pub type Variables = Vec<Variable>;
+impl std::fmt::Display for PrimitiveType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // hmmm...
+        write!(f, "{}", format!("{self:?}").to_ascii_lowercase())
+    }
+}
+
+/// computing aroud primitive types
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct Compute {
+    /// computing is around same types
+    ///
+    /// this is [`OperateExpr::Binary`] or [`OperateExpr::Unary`]'s type
+    #[serde(rename = "type")]
+    pub ty: PrimitiveType,
+    pub name: String,
+    pub eval: OperateExpr,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeDecorators {
+    // #[deprecated = "unclear semantics"]
+    Const,
+    // TODO: remove this varient
+    Array,
+    Reference,
+    Pointer,
+    SizedArray(usize),
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct ComplexType {
+    /// use option to avoid memory allocation sometimes
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decorators: Option<Vec<TypeDecorators>>,
+    #[serde(rename = "type")]
+    pub ty: String,
+}
+
+impl ComplexType {
+    pub fn no_decorators(ty: String) -> Self {
+        Self {
+            decorators: None,
+            ty,
+        }
+    }
+
+    pub fn string() -> Self {
+        Self {
+            decorators: Some(vec![TypeDecorators::Array]),
+            ty: "u8".to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for ComplexType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(decorators) = &self.decorators {
+            for dec in decorators {
+                match dec {
+                    TypeDecorators::Const => write!(f, "const "),
+                    TypeDecorators::Array => write!(f, "[] "),
+                    TypeDecorators::Reference => write!(f, "& "),
+                    TypeDecorators::Pointer => write!(f, "* "),
+                    TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
+                }?;
+            }
+        }
+
+        write!(f, "{}", self.ty)
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub enum TypeDefine {
+    Primitive(PrimitiveType),
+    Complex(ComplexType),
+}
+
+impl TypeDefine {
+    /// Returns `true` if the type define is [`Primitive`].
+    ///
+    /// [`Primitive`]: TypeDefine::Primitive
+    #[must_use]
+    pub fn is_primitive(&self) -> bool {
+        matches!(self, Self::Primitive(..))
+    }
+
+    /// Returns `true` if the type define is [`Complex`].
+    ///
+    /// [`Complex`]: TypeDefine::Complex
+    #[must_use]
+    pub fn is_complex(&self) -> bool {
+        matches!(self, Self::Complex(..))
+    }
+}
+
+impl std::fmt::Display for TypeDefine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeDefine::Primitive(ty) => write!(f, "{}", ty),
+            TypeDefine::Complex(ty) => write!(f, "{}", ty),
+        }
+    }
+}
+
+impl From<ComplexType> for TypeDefine {
+    fn from(v: ComplexType) -> Self {
+        Self::Complex(v)
+    }
+}
+
+impl From<PrimitiveType> for TypeDefine {
+    fn from(v: PrimitiveType) -> Self {
+        Self::Primitive(v)
+    }
+}
+
+impl TryFrom<TypeDefine> for PrimitiveType {
+    type Error = TypeDefine;
+
+    fn try_from(value: TypeDefine) -> Result<Self, Self::Error> {
+        match value {
+            TypeDefine::Primitive(p) => Ok(p),
+            TypeDefine::Complex(_) => Err(value),
+        }
+    }
+}
+
+impl TryFrom<TypeDefine> for ComplexType {
+    type Error = TypeDefine;
+
+    fn try_from(value: TypeDefine) -> Result<Self, Self::Error> {
+        match value {
+            TypeDefine::Primitive(_) => Err(value),
+            TypeDefine::Complex(c) => Ok(c),
+        }
+    }
+}
+
+impl PartialEq<PrimitiveType> for TypeDefine {
+    fn eq(&self, other: &PrimitiveType) -> bool {
+        match self {
+            TypeDefine::Primitive(s) => s == other,
+            TypeDefine::Complex(_) => false,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct Parameter {
+    #[serde(rename = "type")]
+    pub ty: TypeDefine,
+    /// using string because its the name of parameter, not a value
+    pub name: String,
+}
+
+pub type Parameters = Vec<Parameter>;
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct FnDefine {
+    #[serde(rename = "type")]
+    pub ty: TypeDefine,
+    pub name: String,
+    pub params: Parameters,
+    pub body: Statements,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct VarDefine {
+    #[serde(rename = "type")]
+    pub ty: TypeDefine,
+    pub name: String,
+    pub init: Option<Variable>,
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct VarStore {
@@ -153,7 +374,8 @@ pub struct VarStore {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct FnCall {
-    pub name: String,
+    #[serde(rename = "fn")]
+    pub fn_name: String,
     pub args: Variables,
 }
 
@@ -185,112 +407,7 @@ pub struct While {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct Return {
-    /// here, this should be [`Option<Variable>`]
-    ///
-    /// but that's llvm's work! we just bind a literal to a variable,
-    /// and return it
-    ///
-    /// llvm will and should opt this(
     pub val: Option<Variable>,
-}
-
-/// [`OperateExpr::Unary`] and [`OperateExpr::Binary`] are normal operations aroud
-/// primitives
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub enum OperateExpr {
-    Unary(Operators, AtomicExpr),
-    Binary(Operators, AtomicExpr, AtomicExpr),
-}
-
-impl OperateExpr {
-    pub fn binary(op: Operators, l: impl Into<AtomicExpr>, r: impl Into<AtomicExpr>) -> Self {
-        Self::Binary(op, l.into(), r.into())
-    }
-
-    pub fn unary(op: Operators, v: impl Into<AtomicExpr>) -> Self {
-        Self::Unary(op, v.into())
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct Parameter {
-    #[serde(rename = "type")]
-    pub ty: TypeDefine,
-    /// using string because its the name of parameter, not a value
-    pub name: String,
-}
-
-pub type Parameters = Vec<Parameter>;
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct TypeDefine {
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub decorators: Option<Vec<TypeDecorators>>,
-    #[serde(rename = "type")]
-    pub ty: String,
-}
-
-impl TypeDefine {
-    pub fn no_decorators(ty: impl Into<String>) -> Self {
-        Self {
-            decorators: None,
-            ty: ty.into(),
-        }
-    }
-
-    pub fn integer() -> Self {
-        Self::no_decorators("i64")
-    }
-    pub fn float() -> Self {
-        Self::no_decorators("f32")
-    }
-    pub fn char() -> Self {
-        Self::no_decorators("zi4")
-    }
-    pub fn string() -> Self {
-        Self {
-            decorators: vec![TypeDecorators::Array].into(),
-            ty: "zi4".into(),
-        }
-    }
-    pub fn bool() -> Self {
-        Self::no_decorators("bu4")
-    }
-
-    #[deprecated = "this is not going to be implemented in pin1yin1"]
-    pub fn complex() -> Self {
-        Self::no_decorators("zu1")
-    }
-}
-
-impl std::fmt::Display for TypeDefine {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(decorators) = &self.decorators {
-            for dec in decorators {
-                match dec {
-                    TypeDecorators::Const => write!(f, "const "),
-                    TypeDecorators::Array => write!(f, "[] "),
-                    TypeDecorators::Reference => write!(f, "& "),
-                    TypeDecorators::Pointer => write!(f, "* "),
-                    TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
-                }?;
-            }
-        }
-
-        write!(f, "{}", self.ty)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TypeDecorators {
-    // #[deprecated = "unclear semantics"]
-    Const,
-    // TODO: remove this varient
-    Array,
-    Reference,
-    Pointer,
-    SizedArray(usize),
 }
 
 mod serde_ {
