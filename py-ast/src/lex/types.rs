@@ -1,4 +1,4 @@
-pin1yin1_parser::keywords! {
+terl::keywords! {
     // keywords PrimitiveType {
     //     "zheng3" -> Integer,
     //     "fu2"    -> Float,

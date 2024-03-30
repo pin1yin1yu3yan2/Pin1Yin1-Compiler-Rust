@@ -1,4 +1,4 @@
-pin1yin1_parser::operators! {
+terl::operators! {
     #[derive(serde::Serialize,serde::Deserialize)]
     symbols AlgebraOperator {
         "jia1"   -> Add : Binary 6,

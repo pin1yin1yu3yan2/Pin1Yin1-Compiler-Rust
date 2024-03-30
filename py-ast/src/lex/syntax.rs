@@ -1,4 +1,4 @@
-pin1yin1_parser::keywords! {
+terl::keywords! {
     keywords StructsDefinition {
         "lei4"     -> Classs,
         "mei2"     -> Enum,

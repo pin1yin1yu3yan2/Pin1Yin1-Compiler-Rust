@@ -2,8 +2,8 @@ use super::definition::{FnDefinitions, VarDefinitions};
 use super::Ast;
 use crate::ir;
 use crate::{parse::*, semantic::definition};
-use pin1yin1_parser::*;
 use std::collections::HashMap;
+use terl::*;
 
 pub struct Global<'ast> {
     // this kind of variables can be accessed cross fn define

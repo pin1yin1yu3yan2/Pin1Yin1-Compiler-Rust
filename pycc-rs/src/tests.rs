@@ -1,8 +1,8 @@
 use inkwell::{context::Context, execution_engine::JitFunction};
 
-use pin1yin1_ast::{parse::do_parse, semantic::Global};
-use pin1yin1_parser::{Parser, Source};
+use py_ast::{parse::do_parse, semantic::Global};
 use pyir::ir::{Statement, Statements};
+use terl::{Parser, Source};
 
 use crate::compile::CodeGen;
 

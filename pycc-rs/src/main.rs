@@ -6,9 +6,9 @@ mod tests;
 
 use crate::compile::CodeGen;
 use inkwell::{context::Context, execution_engine::JitFunction};
-use pin1yin1_ast::{parse::do_parse, semantic::Global};
-use pin1yin1_parser::*;
+use py_ast::{parse::do_parse, semantic::Global};
 use pyir::ir::Statements;
+use terl::*;
 
 fn main() {
     let path = "/home/yiyue/Pin1Yin1-rustc/test.py1";

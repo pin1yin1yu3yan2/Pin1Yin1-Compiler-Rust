@@ -1,8 +1,8 @@
 [package]
-name = "pin1yin1-ast"
+name = "py-ast"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-pin1yin1-parser = { path = "../pin1yin1-parser" }
+terl = { path = "../terl" }
 pyir = { path = "../pyir", features = ["parser"] }

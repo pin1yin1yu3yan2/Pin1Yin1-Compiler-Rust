@@ -132,7 +132,7 @@ impl TypeDefine {
 }
 
 impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
-    type Error = pin1yin1_parser::Error;
+    type Error = terl::Error;
 
     fn try_from(value: crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
         use crate::ir::{ComplexType, PrimitiveType};

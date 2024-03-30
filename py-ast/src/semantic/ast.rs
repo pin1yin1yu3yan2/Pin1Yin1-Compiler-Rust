@@ -2,7 +2,7 @@ use crate::ir;
 use crate::parse;
 use crate::semantic;
 use crate::semantic::Global;
-use pin1yin1_parser::*;
+use terl::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedExpr {

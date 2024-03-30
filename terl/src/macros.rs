@@ -27,12 +27,12 @@ macro_rules! keywords {
             }
         }
 
-        impl pin1yin1_parser::ParseUnit for $enum_name {
+        impl terl::ParseUnit for $enum_name {
             type Target = $enum_name;
 
-            fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
+            fn parse(p: &mut terl::Parser) -> terl::ParseResult<Self> {
                 use std::collections::HashMap;
-                use pin1yin1_parser::WithSpan;
+                use terl::WithSpan;
 
                 $crate::lazy_static::lazy_static! {
                     static ref MAP: HashMap<Vec<char>, $enum_name> = {
@@ -49,7 +49,7 @@ macro_rules! keywords {
                 let s = &**s;
                 let opt = MAP.get(s).copied().map(|t| p.make_pu(t));
 
-                let error = || p.make_error(format!("non of {} matched", stringify!($enum_name)),pin1yin1_parser::ErrorKind::Unmatch);
+                let error = || p.make_error(format!("non of {} matched", stringify!($enum_name)),terl::ErrorKind::Unmatch);
                 opt.ok_or_else(error)
             }
         }

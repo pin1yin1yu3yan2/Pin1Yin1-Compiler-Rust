@@ -12,14 +12,14 @@ macro_rules! statement_wrapper {
         #[derive(Debug, Clone)]
         $(#[$metas])*
         pub struct $into {
-            inner: pin1yin1_parser::PU<$from>,
-            pub fen1: pin1yin1_parser::PU<$crate::lex::syntax::Symbol>
+            inner: terl::PU<$from>,
+            pub fen1: terl::PU<$crate::lex::syntax::Symbol>
         }
 
-        impl pin1yin1_parser::ParseUnit for $into {
+        impl terl::ParseUnit for $into {
             type Target = $into;
 
-            fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self> {
+            fn parse(p: &mut terl::Parser) -> terl::ParseResult<Self> {
 
                 let inner = p.parse::<$from>()?;
                 let fen1 = p.match_($crate::lex::syntax::Symbol::Semicolon)?;
@@ -28,7 +28,7 @@ macro_rules! statement_wrapper {
         }
 
         impl std::ops::Deref for $into {
-            type Target =  pin1yin1_parser::PU<$from>;
+            type Target =  terl::PU<$from>;
 
             fn deref(&self) -> &Self::Target {
                 &self.inner
@@ -78,12 +78,12 @@ macro_rules! statements {
         }
         )*
 
-        impl pin1yin1_parser::ParseUnit for $enum_name {
+        impl terl::ParseUnit for $enum_name {
             type Target = $enum_name;
 
-            fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self>
+            fn parse(p: &mut terl::Parser) -> terl::ParseResult<Self>
             {
-                pin1yin1_parser::Try::new(p)
+                terl::Try::new(p)
                 $(
                 .or_try::<Self, _>(|p| {
                     p.once_no_try($variant::parse)

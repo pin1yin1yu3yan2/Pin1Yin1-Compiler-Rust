@@ -1,4 +1,4 @@
-use pin1yin1_parser::*;
+use terl::*;
 
 mod expr;
 mod flow;

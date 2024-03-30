@@ -28,12 +28,12 @@ macro_rules! complex_pu {
         )*
 
 
-        impl pin1yin1_parser::ParseUnit for $enum_name {
+        impl terl::ParseUnit for $enum_name {
             type Target = $enum_name;
 
-            fn parse(p: &mut pin1yin1_parser::Parser) -> pin1yin1_parser::ParseResult<Self>
+            fn parse(p: &mut terl::Parser) -> terl::ParseResult<Self>
             {
-                pin1yin1_parser::Try::new(p)
+                terl::Try::new(p)
                 $(
                 .or_try::<Self, _>(|p| {
                     p.once_no_try($variant::parse)

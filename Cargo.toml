@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["pin1yin1-ast", "pin1yin1-compiler", "pyir", "pin1yin1-parser"]
+members = ["terl", "pyir", "py-ast", "pycc-rs"]
 
 [profile.release]
 lto = true
