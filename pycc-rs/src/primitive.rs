@@ -2,7 +2,7 @@ use inkwell::{
     builder::{Builder, BuilderError},
     values::BasicValueEnum,
 };
-use pyir::{ir::PrimitiveType, ops::Operators};
+use py_ir::{ir::PrimitiveType, ops::Operators};
 
 pub fn binary_compute<'ctx>(
     builder: &Builder<'ctx>,

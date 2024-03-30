@@ -1,4 +1,4 @@
-use pyir::ops::Operators;
+use py_ir::ops::Operators;
 
 use super::*;
 use crate::{complex_pu, lex::syntax::Symbol, ops::OperatorAssociativity};

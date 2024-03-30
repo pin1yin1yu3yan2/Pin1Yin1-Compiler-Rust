@@ -8,6 +8,6 @@ edition = "2021"
 [dependencies]
 terl = { path = "../terl" }
 py-ast = { path = "../py-ast" }
-pyir = { path = "../pyir", features = ["parser"] }
+py-ir = { path = "../py-ir", features = ["parser"] }
 serde_json = "1"
 inkwell = { version = "0.4.0", features = ["llvm17-0-prefer-dynamic"] }

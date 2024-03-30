@@ -7,7 +7,7 @@ mod tests;
 use crate::compile::CodeGen;
 use inkwell::{context::Context, execution_engine::JitFunction};
 use py_ast::{parse::do_parse, semantic::Global};
-use pyir::ir::Statements;
+use py_ir::ir::Statements;
 use terl::*;
 
 fn main() {

@@ -51,7 +51,7 @@ impl ParseUnit for Ident {
         }
 
         use crate::lex::*;
-        use pyir::ops;
+        use py_ir::ops;
 
         // keeping keywords cant be used as identifiers
         if ops::KEPPING_KEYWORDS.contains(*ident)

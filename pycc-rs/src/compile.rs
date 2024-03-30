@@ -11,7 +11,7 @@ use inkwell::{
     values::{BasicValue, BasicValueEnum},
 };
 
-use pyir::ir;
+use py_ir::ir;
 
 pub struct CodeGen<'ctx> {
     context: &'ctx Context,

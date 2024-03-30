@@ -3,8 +3,8 @@ mod macros;
 pub mod parse;
 pub mod semantic;
 
-use pyir::ir;
-use pyir::ops;
+use py_ir::ir;
+use py_ir::ops;
 
 #[cfg(test)]
 fn parse_test(chars: &str, tester: impl FnOnce(&mut terl::Parser)) {

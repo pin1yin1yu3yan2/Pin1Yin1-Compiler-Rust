@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["terl", "pyir", "py-ast", "pycc-rs"]
+members = ["terl", "py-ir", "py-ast", "pycc-rs"]
 
 [profile.release]
 lto = true

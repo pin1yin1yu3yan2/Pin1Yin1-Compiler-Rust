@@ -1,7 +1,7 @@
 use inkwell::{context::Context, execution_engine::JitFunction};
 
 use py_ast::{parse::do_parse, semantic::Global};
-use pyir::ir::{Statement, Statements};
+use py_ir::ir::{Statement, Statements};
 use terl::{Parser, Source};
 
 use crate::compile::CodeGen;

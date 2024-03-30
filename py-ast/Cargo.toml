@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 terl = { path = "../terl" }
-pyir = { path = "../pyir", features = ["parser"] }
+py-ir = { path = "../py-ir", features = ["parser"] }
