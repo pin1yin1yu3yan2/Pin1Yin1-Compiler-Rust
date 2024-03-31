@@ -1,7 +1,7 @@
 use crate::ir;
 use crate::parse;
 use crate::semantic;
-use crate::semantic::Global;
+use crate::semantic::GlobalScope;
 use terl::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,7 +28,7 @@ pub trait Ast: ParseUnit {
     fn to_ast<'ast>(
         s: &'ast Self::Target,
         span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward>;
 }
 
@@ -38,7 +38,7 @@ impl Ast for parse::Statement {
     fn to_ast<'ast>(
         stmt: &'ast Self::Target,
         span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         match stmt {
             parse::Statement::FnCallStmt(fn_call) => {
@@ -77,7 +77,7 @@ impl Ast for parse::FnCall {
     fn to_ast<'ast>(
         fn_call: &'ast Self::Target,
         span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         let (tys, vals): (Vec<_>, Vec<_>) = fn_call
             .args
@@ -95,8 +95,8 @@ impl Ast for parse::FnCall {
             return span.throw("use of undefined function");
         };
 
-        // TOOD: overdrive support
-        let fn_def = &fn_def.overdrives[0];
+        // TOOD: overload support
+        let fn_def = &fn_def.overloads[0];
         let params = &fn_def.params;
 
         if params.len() != vals.len() {
@@ -134,7 +134,7 @@ impl Ast for parse::VarStore {
     fn to_ast<'ast>(
         var_store: &'ast Self::Target,
         span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         let name = var_store.name.clone();
         // function parameters are inmutable
@@ -166,19 +166,19 @@ impl Ast for parse::FnDefine {
     fn to_ast<'ast>(
         fn_define: &'ast Self::Target,
         _span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         let fn_name = fn_define.name.to_string();
 
         if let Some(exist) = _global.search_fn(&fn_name) {
             return exist.raw_defines[0]
                 .name
-                .throw("overdrive is not supported now...");
+                .throw("overload is not supported now...");
         }
 
         // do this step firstly to allow recursion
         // mangle should follow the `mangle rule` (not exist now)
-        // the mangle is the unique id of the function because overdrive allow fns with same name but different sign
+        // the mangle is the unique id of the function because overload allow fns with same name but different sign
         let ret_ty: ir::TypeDefine = fn_define.ty.to_ast_ty()?;
 
         let params = fn_define
@@ -202,9 +202,9 @@ impl Ast for parse::FnDefine {
                 .enumerate()
                 .try_fold(Vec::new(), |mut vec, (idx, param)| {
                     let raw = &fn_define.params.params[idx];
-                    let param = semantic::Parameter {
+                    let param = semantic::Param {
                         name: param.name,
-                        var_def: semantic::VarDefinition::new(param.ty, raw),
+                        var_def: semantic::VarDef::new(param.ty, raw),
                         _p: std::marker::PhantomData,
                     };
                     vec.push(param);
@@ -218,7 +218,7 @@ impl Ast for parse::FnDefine {
             params: sign_params,
         };
 
-        let fn_def = semantic::FnDefinition::new(vec![fn_sign], vec![fn_define]);
+        let fn_def = semantic::FnDef::new(vec![fn_sign], vec![fn_define]);
         _global.regist_fn(fn_name.clone(), fn_def);
 
         // generate ast
@@ -251,7 +251,7 @@ impl Ast for parse::VarDefine {
     fn to_ast<'ast>(
         var_define: &'ast Self::Target,
         span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         // TODO: testfor if  ty exist
         let ty = var_define.ty.to_ast_ty()?;
@@ -270,10 +270,7 @@ impl Ast for parse::VarDefine {
             None => None,
         };
 
-        _global.regist_var(
-            name.clone(),
-            semantic::VarDefinition::new(ty.clone(), var_define),
-        );
+        _global.regist_var(name.clone(), semantic::VarDef::new(ty.clone(), var_define));
 
         _global.push_stmt(ir::VarDefine { ty, name, init });
 
@@ -287,7 +284,7 @@ impl Ast for parse::If {
     fn to_ast<'ast>(
         if_: &'ast Self::Target,
         _span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         let mut branches = vec![_global.to_ast(&if_.ruo4)?];
         for chain in &if_.chains {
@@ -319,7 +316,7 @@ impl Ast for parse::While {
     fn to_ast<'ast>(
         while_: &'ast Self::Target,
         _span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         let cond = _global.to_ast(&while_.conds)?;
         let body = _global.to_ast(&while_.block)?;
@@ -334,7 +331,7 @@ impl Ast for parse::AtomicIf {
     fn to_ast<'ast>(
         atomic: &'ast Self::Target,
         _span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         let cond = _global.to_ast(&atomic.conds)?;
         let body = _global.to_ast(&atomic.block)?;
@@ -348,7 +345,7 @@ impl Ast for parse::Return {
     fn to_ast<'ast>(
         return_: &'ast Self::Target,
         _span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         let val = match &return_.val {
             Some(val) => Some(_global.to_ast(val)?),
@@ -367,10 +364,10 @@ impl Ast for parse::CodeBlock {
     fn to_ast<'ast>(
         block: &'ast Self::Target,
         _span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         _global
-            .spoce(|_global: &mut Global<'_>| {
+            .spoce(|_global: &mut GlobalScope<'_>| {
                 for stmt in &block.stmts {
                     _global.to_ast(stmt)?;
                 }
@@ -387,7 +384,7 @@ impl Ast for parse::Arguments {
     fn to_ast<'ast>(
         cond: &'ast Self::Target,
         _span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         let (compute, last_cond) = _global.spoce(|_global| {
             let mut last_cond = _global.to_ast(&cond.args[0])?;
@@ -414,7 +411,7 @@ impl Ast for parse::Expr {
     fn to_ast<'ast>(
         expr: &'ast Self::Target,
         span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         match expr {
             parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, span, _global),
@@ -455,7 +452,7 @@ impl Ast for parse::AtomicExpr {
     fn to_ast<'ast>(
         atomic: &'ast Self::Target,
         span: Span,
-        _global: &mut Global<'ast>,
+        _global: &mut GlobalScope<'ast>,
     ) -> Result<Self::Forward> {
         match atomic {
             parse::AtomicExpr::CharLiteral(char) => Ok(TypedExpr::new(
@@ -488,8 +485,8 @@ impl Ast for parse::AtomicExpr {
                 ))
             }
 
-            // here, this is incorrect because operators may be overdriven
-            // all operator overdriven must be casted into function calling here but primitives
+            // here, this is incorrect because operators may be overloadn
+            // all operator overloadn must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
                 let l = _global.to_ast(&unary.expr)?;
                 if !l.ty.is_primitive() {

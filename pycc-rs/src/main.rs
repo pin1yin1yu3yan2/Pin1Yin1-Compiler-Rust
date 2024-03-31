@@ -6,7 +6,7 @@ mod tests;
 
 use crate::compile::CodeGen;
 use inkwell::{context::Context, execution_engine::JitFunction};
-use py_ast::{parse::do_parse, semantic::Global};
+use py_ast::{parse::do_parse, semantic::GlobalScope};
 use py_ir::ir::Statements;
 use terl::*;
 
@@ -23,7 +23,7 @@ fn main() {
 
     let context = Context::create();
 
-    let mut global = Global::new();
+    let mut global = GlobalScope::new();
     global
         .load(&pus)
         .map_err(|e| parser.handle_error(e))

@@ -1,7 +1,7 @@
 use py_ir::ops::Operators;
 
 use super::*;
-use crate::{complex_pu, lex::syntax::Symbol, ops::OperatorAssociativity};
+use crate::{complex_pu, lex::syntax::Symbol, ops::OperatorAssociativity, semantic::GlobalScope};
 
 #[derive(Debug, Clone)]
 pub struct CharLiteral {
@@ -218,6 +218,12 @@ complex_pu! {
 pub enum Expr {
     Atomic(AtomicExpr),
     Binary(Box<PU<Expr>>, PU<Operators>, Box<PU<Expr>>),
+}
+
+pub trait AsExpr {
+    fn as_expr(&self) -> Expr;
+
+    fn ty(&self, state: &mut GlobalScope) -> usize;
 }
 
 impl ParseUnit for Expr {

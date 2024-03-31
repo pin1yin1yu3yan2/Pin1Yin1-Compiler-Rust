@@ -10,8 +10,8 @@
 ///
 /// TODO: and a mangle rule will be applied
 ///
-/// function overdrive depend on mangle rules, because its a kind of symbol
-/// i mean that, we should not use `foo1` as `foo`'s overdrive's name(
+/// function overload depend on mangle rules, because its a kind of symbol
+/// i mean that, we should not use `foo1` as `foo`'s overload's name(
 pub mod ir;
 mod macros;
 pub mod ops;

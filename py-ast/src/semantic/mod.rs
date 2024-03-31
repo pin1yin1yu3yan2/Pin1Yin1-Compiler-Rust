@@ -1,6 +1,10 @@
 mod ast;
-mod definition;
+mod declare;
+mod defs;
 mod scope;
 pub use ast::*;
-pub use definition::*;
+pub use declare::*;
+pub use defs::*;
 pub use scope::*;
+
+pub mod mir;

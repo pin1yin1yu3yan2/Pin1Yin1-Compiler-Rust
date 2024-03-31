@@ -1,6 +1,6 @@
 use inkwell::{context::Context, execution_engine::JitFunction};
 
-use py_ast::{parse::do_parse, semantic::Global};
+use py_ast::{parse::do_parse, semantic::GlobalScope};
 use py_ir::ir::{Statement, Statements};
 use terl::{Parser, Source};
 
@@ -15,7 +15,7 @@ fn get_ast(src: &str) -> Statements {
         .map_err(|e| eprintln!("{e}"))
         .unwrap();
 
-    let mut global = Global::new();
+    let mut global = GlobalScope::new();
     global
         .load(&pus)
         .map_err(|e| parser.handle_error(e).unwrap())

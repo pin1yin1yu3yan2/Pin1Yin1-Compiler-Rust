@@ -1,22 +1,25 @@
-use super::definition::{FnDefinitions, VarDefinitions};
+use super::defs::*;
 use super::Ast;
+use super::Type;
 use crate::ir;
-use crate::{parse::*, semantic::definition};
+use crate::{parse::*, semantic::defs};
 use std::collections::HashMap;
 use terl::*;
 
-pub struct Global<'ast> {
+pub struct GlobalScope<'ast> {
     // this kind of variables can be accessed cross fn define
-    pub(crate) fns: FnDefinitions<'ast>,
+    pub(crate) fns: FnDefs<'ast>,
+    pub(crate) tys: DeclareMap<Type>,
     pub(crate) pools: Vec<Scope<'ast>>,
 }
 
-impl<'ast> Global<'ast> {
+impl<'ast> GlobalScope<'ast> {
     pub fn new() -> Self {
         let pools = vec![Scope::new()];
 
         Self {
             pools,
+            tys: Default::default(),
             fns: Default::default(),
         }
     }
@@ -55,13 +58,13 @@ impl<'ast> Global<'ast> {
     }
 }
 
-impl<'ast> Default for Global<'ast> {
+impl<'ast> Default for GlobalScope<'ast> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'ast> Global<'ast> {
+impl<'ast> GlobalScope<'ast> {
     pub fn load(&mut self, stmts: &'ast [PU<Statement>]) -> Result<()> {
         for stmt in stmts {
             self.to_ast(stmt)?;
@@ -71,7 +74,7 @@ impl<'ast> Global<'ast> {
 
     pub(crate) fn spoce<T, F>(&mut self, f: F) -> Result<(ir::Statements, T)>
     where
-        F: FnOnce(&mut Global<'ast>) -> Result<T>,
+        F: FnOnce(&mut GlobalScope<'ast>) -> Result<T>,
     {
         let mut scope = Scope::new();
         scope.alloc_id = self.this_pool().alloc_id;
@@ -96,16 +99,16 @@ impl<'ast> Global<'ast> {
         Result::Ok((pool.stmts, t))
     }
 
-    pub(crate) fn regist_var(&mut self, name: String, def: definition::VarDefinition<'ast>) {
+    pub(crate) fn regist_var(&mut self, name: String, def: defs::VarDef<'ast>) {
         self.this_pool().vars.map.insert(name, def);
     }
 
-    pub(crate) fn regist_fn(&mut self, name: String, def: definition::FnDefinition<'ast>) {
+    pub(crate) fn regist_fn(&mut self, name: String, def: defs::FnDef<'ast>) {
         self.fns.map.insert(name, def);
     }
 
-    pub(crate) fn search_fn(&self, name: &str) -> Option<&definition::FnDefinition<'ast>> {
-        // overdrive is not supported now :(
+    pub(crate) fn search_fn(&self, name: &str) -> Option<&defs::FnDef<'ast>> {
+        // overload is not supported now :(
         // so, the function serarching may be wrong(
         // because the function ignore the function parameters
         // the calling should select the right function with the function's parameters
@@ -113,10 +116,7 @@ impl<'ast> Global<'ast> {
     }
 
     // .1: mutable
-    pub(crate) fn search_var(
-        &self,
-        name: &str,
-    ) -> Option<(&definition::VarDefinition<'ast>, bool)> {
+    pub(crate) fn search_var(&self, name: &str) -> Option<(&defs::VarDef<'ast>, bool)> {
         for pool in self.pools.iter().rev() {
             if let Some(def) = pool.vars.map.get(name) {
                 return Some((def, true));
@@ -124,7 +124,7 @@ impl<'ast> Global<'ast> {
 
             if let Some(fn_name) = &pool.fn_name {
                 let fn_def = self.search_fn(fn_name).unwrap();
-                return fn_def.overdrives[0]
+                return fn_def.overloads[0]
                     .params
                     .iter()
                     .find(|param| param.name == name)
@@ -147,10 +147,10 @@ impl<'ast> Global<'ast> {
 // TODO
 pub struct Mangle;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default)]
 pub struct Scope<'ast> {
     // defines
-    pub vars: VarDefinitions<'ast>,
+    pub vars: VarDefs<'ast>,
     // TODO: static/const variable
     // this kind of var definitions are only allowed to be used in a LocalPool
     pub fn_name: Option<String>,
