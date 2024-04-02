@@ -47,7 +47,7 @@ impl WithSpan for Span {
 /// a type which implemented [`ParseUnit<S>`] with source code it selected
 pub struct PU<P: ParseUnit<S>, S = char> {
     pub(crate) span: Span,
-    pub(crate) target: P::Target,
+    pub(crate) item: P::Target,
 }
 
 impl<P: ParseUnit<S>, S> WithSpan for PU<P, S> {
@@ -57,16 +57,13 @@ impl<P: ParseUnit<S>, S> WithSpan for PU<P, S> {
 }
 
 impl<S, P: ParseUnit<S>> PU<P, S> {
-    pub fn new(span: Span, inner: P::Target) -> Self {
-        Self {
-            span,
-            target: inner,
-        }
+    pub fn new(span: Span, item: P::Target) -> Self {
+        Self { span, item }
     }
 
     /// take [ParseUnit::Target] from [`PU`]
     pub fn take(self) -> P::Target {
-        self.target
+        self.item
     }
 
     /// map [ParseUnit::Target]
@@ -74,7 +71,7 @@ impl<S, P: ParseUnit<S>> PU<P, S> {
     where
         M: FnOnce(P::Target) -> P2::Target,
     {
-        PU::new(self.span, mapper(self.target))
+        PU::new(self.span, mapper(self.item))
     }
 }
 
@@ -85,7 +82,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("PU")
             .field("span", &"...")
-            .field("target", &self.target)
+            .field("item", &self.item)
             .finish()
     }
 }
@@ -97,7 +94,7 @@ where
     fn clone(&self) -> Self {
         Self {
             span: self.span,
-            target: self.target.clone(),
+            item: self.item.clone(),
         }
     }
 }
@@ -108,12 +105,12 @@ impl<S, P: ParseUnit<S>> std::ops::Deref for PU<P, S> {
     type Target = P::Target;
 
     fn deref(&self) -> &Self::Target {
-        &self.target
+        &self.item
     }
 }
 
 impl<S, P: ParseUnit<S>> std::ops::DerefMut for PU<P, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.target
+        &mut self.item
     }
 }

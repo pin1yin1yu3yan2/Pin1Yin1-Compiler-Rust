@@ -1,40 +1,98 @@
-use super::defs::*;
-use super::Ast;
-use super::Type;
+use super::*;
 use crate::ir;
-use crate::{parse::*, semantic::defs};
+use crate::parse::*;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use terl::*;
 
-pub struct GlobalScope<'ast> {
-    // this kind of variables can be accessed cross fn define
-    pub(crate) fns: FnDefs<'ast>,
-    pub(crate) tys: DeclareMap<Type>,
-    pub(crate) pools: Vec<Scope<'ast>>,
+/// Marker
+pub trait Scope<'ast>: Sized {
+    fn to_ast_inner<A>(&mut self, s: &'ast A::Target, span: Span) -> Result<A::Forward>
+    where
+        A: Ast<'ast, Self>;
+
+    fn to_ast<A>(&mut self, pu: &'ast PU<A>) -> Result<A::Forward>
+    where
+        A: Ast<'ast, Self>,
+    {
+        self.to_ast_inner::<A>(&**pu, pu.get_span())
+    }
 }
 
-impl<'ast> GlobalScope<'ast> {
-    pub fn new() -> Self {
-        let pools = vec![Scope::new()];
+pub struct ModScope<'ast, M: Mangler = DefaultMangler> {
+    fns: HashMap<String, FnDef<'ast>>,
+    sub_scopes: Vec<ModScope<'ast>>,
+    _p: PhantomData<M>,
+}
 
+impl<'ast, M: Mangler> Scope<'ast> for ModScope<'ast, M> {
+    fn to_ast_inner<A>(&mut self, s: &'ast A::Target, span: Span) -> Result<A::Forward>
+    where
+        A: Ast<'ast, Self>,
+    {
+        todo!()
+    }
+}
+
+/// a scope that represents a fn's local scope
+#[derive(Default)]
+pub struct FnScope<'ast> {
+    pub fn_name: String,
+    // a counter
+    pub alloc_id: usize,
+    pub scope_stack: Vec<BasicScope<'ast>>,
+    pub declare_map: DeclareMap,
+    pub parameters: HashMap<String, VarDef<'ast>>, // TODO: Nested definitions
+}
+
+impl<'ast> Scope<'ast> for FnScope<'ast> {
+    fn to_ast_inner<A>(&mut self, s: &'ast A::Target, span: Span) -> Result<A::Forward>
+    where
+        A: Ast<'ast, Self>,
+    {
+        A::to_ast(s, span, self)
+    }
+}
+
+/// usually be folded into other structs,like FnDef, If, While...
+pub struct BasicScope<'ast> {
+    // defines
+    pub vars: HashMap<String, VarDef<'ast>>,
+    // statements in scope
+    pub stmts: ir::Statements,
+}
+
+impl<'ast> Default for BasicScope<'ast> {
+    fn default() -> Self {
         Self {
-            pools,
-            tys: Default::default(),
-            fns: Default::default(),
+            vars: Default::default(),
+            stmts: Default::default(),
+        }
+    }
+}
+
+impl<'ast> FnScope<'ast> {
+    pub fn new(fn_name: impl ToString) -> Self {
+        Self {
+            fn_name: fn_name.to_string(),
+            scope_stack: Default::default(),
+            alloc_id: Default::default(),
+            declare_map: Default::default(),
+            parameters: Default::default(),
         }
     }
 
-    pub(crate) fn this_pool(&mut self) -> &mut Scope<'ast> {
-        self.pools.last_mut().unwrap()
+    pub(crate) fn this_scope(&mut self) -> &mut BasicScope<'ast> {
+        self.scope_stack.last_mut().unwrap()
     }
 
     pub(crate) fn push_stmt(&mut self, stmt: impl Into<ir::Statement>) {
-        self.this_pool().stmts.push(stmt.into())
+        self.this_scope().stmts.push(stmt.into())
     }
 
     pub fn finish(mut self) -> ir::Statements {
-        assert!(self.pools.len() == 1, "un closed parse!?");
-        self.pools.pop().unwrap().stmts
+        assert!(self.scope_stack.len() == 1, "unclosed parse!?");
+        self.scope_stack.pop().unwrap().stmts
     }
 
     // pub fn mangle(&mut self, name: &str) {}
@@ -44,8 +102,8 @@ impl<'ast> GlobalScope<'ast> {
         T: Into<ir::PrimitiveType>,
         E: Into<ir::OperateExpr>,
     {
-        let name = format!("_{}", self.this_pool().alloc_id);
-        self.this_pool().alloc_id += 1;
+        let name = format!("_{}", self.alloc_id);
+        self.alloc_id += 1;
 
         let eval = init.into();
         let compute = ir::Compute {
@@ -53,18 +111,10 @@ impl<'ast> GlobalScope<'ast> {
             name: name.clone(),
             eval,
         };
-        self.this_pool().stmts.push(compute.into());
+        self.this_scope().stmts.push(compute.into());
         ir::AtomicExpr::Variable(name)
     }
-}
 
-impl<'ast> Default for GlobalScope<'ast> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<'ast> GlobalScope<'ast> {
     pub fn load(&mut self, stmts: &'ast [PU<Statement>]) -> Result<()> {
         for stmt in stmts {
             self.to_ast(stmt)?;
@@ -74,97 +124,40 @@ impl<'ast> GlobalScope<'ast> {
 
     pub(crate) fn spoce<T, F>(&mut self, f: F) -> Result<(ir::Statements, T)>
     where
-        F: FnOnce(&mut GlobalScope<'ast>) -> Result<T>,
+        F: FnOnce(&mut FnScope<'ast>) -> Result<T>,
     {
-        let mut scope = Scope::new();
-        scope.alloc_id = self.this_pool().alloc_id;
+        let scope = Default::default();
 
-        self.pools.push(scope);
+        self.scope_stack.push(scope);
         let t = f(self)?;
-        let pool = self.pools.pop().unwrap();
-
-        Result::Ok((pool.stmts, t))
-    }
-
-    pub(crate) fn fn_scope<T, F>(&mut self, fn_name: String, f: F) -> Result<(ir::Statements, T)>
-    where
-        F: FnOnce(&mut Self) -> Result<T>,
-    {
-        let mut scope = Scope::new();
-        scope.fn_name = Some(fn_name);
-        self.pools.push(scope);
-        let t = f(self)?;
-        let pool = self.pools.pop().unwrap();
+        let pool = self.scope_stack.pop().unwrap();
 
         Result::Ok((pool.stmts, t))
     }
 
     pub(crate) fn regist_var(&mut self, name: String, def: defs::VarDef<'ast>) {
-        self.this_pool().vars.map.insert(name, def);
+        self.this_scope().vars.insert(name, def);
     }
 
-    pub(crate) fn regist_fn(&mut self, name: String, def: defs::FnDef<'ast>) {
-        self.fns.map.insert(name, def);
-    }
+    // pub(crate) fn regist_fn(&mut self, name: String, def: defs::FnDef<'ast>) {
+    //     self.fns.map.insert(name, def);
+    // }
 
-    pub(crate) fn search_fn(&self, name: &str) -> Option<&defs::FnDef<'ast>> {
-        // overload is not supported now :(
-        // so, the function serarching may be wrong(
-        // because the function ignore the function parameters
-        // the calling should select the right function with the function's parameters
-        self.fns.map.get(name)
-    }
+    // pub(crate) fn search_fn(&self, name: &str) -> Option<&defs::FnDef<'ast>> {
+    //     self.fns.map.get(name)
+    // }
 
     // .1: mutable
     pub(crate) fn search_var(&self, name: &str) -> Option<(&defs::VarDef<'ast>, bool)> {
-        for pool in self.pools.iter().rev() {
-            if let Some(def) = pool.vars.map.get(name) {
-                return Some((def, true));
-            }
+        if let Some(param) = self.parameters.get(name) {
+            return Some((param, false));
+        }
 
-            if let Some(fn_name) = &pool.fn_name {
-                let fn_def = self.search_fn(fn_name).unwrap();
-                return fn_def.overloads[0]
-                    .params
-                    .iter()
-                    .find(|param| param.name == name)
-                    .map(|param| (&param.var_def, false));
+        for pool in self.scope_stack.iter().rev() {
+            if let Some(def) = pool.vars.get(name) {
+                return Some((def, true));
             }
         }
         None
-    }
-
-    pub fn to_ast_inner<A: Ast>(&mut self, s: &'ast A::Target, span: Span) -> Result<A::Forward> {
-        A::to_ast(s, span, self)
-    }
-
-    pub fn to_ast<A: Ast>(&mut self, pu: &'ast PU<A>) -> Result<A::Forward> {
-        self.to_ast_inner::<A>(&**pu, pu.get_span())
-    }
-}
-
-#[derive(Debug, Clone)]
-// TODO
-pub struct Mangle;
-
-#[derive(Default)]
-pub struct Scope<'ast> {
-    // defines
-    pub vars: VarDefs<'ast>,
-    // TODO: static/const variable
-    // this kind of var definitions are only allowed to be used in a LocalPool
-    pub fn_name: Option<String>,
-    // statements in scope
-    pub stmts: ir::Statements,
-    // a mangle for functions, variable, etc
-    // TODO: no_mangle
-    pub mangle: HashMap<String, Mangle>,
-    // a counter
-    pub alloc_id: usize,
-}
-
-impl<'ast> Scope<'ast> {
-    pub fn new() -> Self {
-        Self::default()
     }
 }

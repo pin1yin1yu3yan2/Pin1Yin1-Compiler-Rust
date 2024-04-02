@@ -19,7 +19,7 @@ pub trait ParseUnit<S = char>: Sized + Debug {
         Or: FnOnce(PU<Self, S>) -> R,
     {
         move |pu| {
-            if cond(&pu.target) {
+            if cond(&pu.item) {
                 Ok(pu)
             } else {
                 or(pu).into()

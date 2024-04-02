@@ -1,7 +1,7 @@
 use py_ir::ops::Operators;
 
 use super::*;
-use crate::{complex_pu, lex::syntax::Symbol, ops::OperatorAssociativity, semantic::GlobalScope};
+use crate::{complex_pu, lex::syntax::Symbol, ops::OperatorAssociativity};
 
 #[derive(Debug, Clone)]
 pub struct CharLiteral {
@@ -223,7 +223,7 @@ pub enum Expr {
 pub trait AsExpr {
     fn as_expr(&self) -> Expr;
 
-    fn ty(&self, state: &mut GlobalScope) -> usize;
+    // fn ty(&self, state: &mut GLobalScope) -> usize;
 }
 
 impl ParseUnit for Expr {

@@ -13,9 +13,9 @@ impl<S> Source<S> {
         Self { file_name, inner }
     }
 
-    pub fn from_iter(file_name: impl Into<String>, iter: impl Iterator<Item = S>) -> Self {
+    pub fn from_iter(file_name: impl ToString, iter: impl Iterator<Item = S>) -> Self {
         Self {
-            file_name: file_name.into(),
+            file_name: file_name.to_string(),
             inner: iter.collect(),
         }
     }

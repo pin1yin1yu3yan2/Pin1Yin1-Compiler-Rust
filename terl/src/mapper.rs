@@ -51,11 +51,11 @@ impl<P> ParseMapper<P> for MustMatch {
 
 pub struct MapMsg<S>(S)
 where
-    S: Into<String>;
+    S: ToString;
 
 impl<P: ParseUnit<Src>, Src, S> ParseMapper<PU<P, Src>> for MapMsg<S>
 where
-    S: Into<String>,
+    S: ToString,
 {
     fn mapper(self, result: Result<PU<P, Src>>) -> Result<PU<P, Src>> {
         result.map_err(|e| e.map(self.0))

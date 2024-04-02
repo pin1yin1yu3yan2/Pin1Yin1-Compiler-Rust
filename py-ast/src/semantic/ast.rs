@@ -1,7 +1,7 @@
+use super::*;
 use crate::ir;
 use crate::parse;
 use crate::semantic;
-use crate::semantic::GlobalScope;
 use terl::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,159 +19,46 @@ impl TypedExpr {
     }
 }
 
-pub trait Ast: ParseUnit {
+pub trait Ast<'ast, S: Scope<'ast> = FnScope<'ast>>: ParseUnit {
     type Forward;
 
     /// divided [`PU`] into [`ParseUnit::Target`] and [`Span`] becase
     /// variants from [`crate::complex_pu`] isnot [`PU`], and the [`Span`]
     /// was stored in the enum
-    fn to_ast<'ast>(
-        s: &'ast Self::Target,
-        span: Span,
-        _global: &mut GlobalScope<'ast>,
-    ) -> Result<Self::Forward>;
+    fn to_ast(s: &'ast Self::Target, span: Span, scope: &mut S) -> Result<Self::Forward>;
 }
 
-impl Ast for parse::Statement {
+impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::Item {
     type Forward = ();
 
-    fn to_ast<'ast>(
+    fn to_ast(
         stmt: &'ast Self::Target,
         span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut ModScope<'ast, M>,
     ) -> Result<Self::Forward> {
         match stmt {
-            parse::Statement::FnCallStmt(fn_call) => {
-                _global.to_ast(fn_call)?;
+            parse::Item::FnDefine(fn_define) => {
+                scope.to_ast_inner::<parse::FnDefine>(fn_define, span)?;
             }
-            parse::Statement::VarStoreStmt(var_store) => {
-                _global.to_ast(var_store)?;
-            }
-            parse::Statement::FnDefine(fn_define) => {
-                _global.to_ast_inner::<parse::FnDefine>(fn_define, span)?;
-            }
-            parse::Statement::VarDefineStmt(var_define) => {
-                _global.to_ast(var_define)?;
-            }
-            parse::Statement::If(if_) => {
-                _global.to_ast_inner::<parse::If>(if_, span)?;
-            }
-            parse::Statement::While(while_) => {
-                _global.to_ast_inner::<parse::While>(while_, span)?;
-            }
-            parse::Statement::Return(return_) => {
-                _global.to_ast_inner::<parse::Return>(return_, span)?;
-            }
-            parse::Statement::CodeBlock(block) => {
-                _global.to_ast_inner::<parse::CodeBlock>(block, span)?;
-            }
-            parse::Statement::Comment(_) => {}
+            parse::Item::Comment(_) => {}
         }
-        Result::Ok(())
+        Ok(())
     }
 }
 
-impl Ast for parse::FnCall {
-    type Forward = TypedExpr;
-
-    fn to_ast<'ast>(
-        fn_call: &'ast Self::Target,
-        span: Span,
-        _global: &mut GlobalScope<'ast>,
-    ) -> Result<Self::Forward> {
-        let (tys, vals): (Vec<_>, Vec<_>) = fn_call
-            .args
-            .args
-            .iter()
-            .try_fold(vec![], |mut args, expr| {
-                let expr = _global.to_ast(expr)?;
-                args.push((expr.ty, expr.val));
-                Result::Ok(args)
-            })?
-            .into_iter()
-            .unzip();
-
-        let Some(fn_def) = _global.search_fn(&fn_call.fn_name) else {
-            return span.throw("use of undefined function");
-        };
-
-        // TOOD: overload support
-        let fn_def = &fn_def.overloads[0];
-        let params = &fn_def.params;
-
-        if params.len() != vals.len() {
-            return span.throw(format!(
-                "function {} exprct {} arguments, but {} arguments passed in",
-                *fn_call.fn_name,
-                params.len(),
-                vals.len()
-            ));
-        }
-
-        for arg_idx in 0..vals.len() {
-            if tys[arg_idx] != params[arg_idx].ty {
-                return fn_call.args.args[arg_idx].throw(format!(
-                    "expected type {}, but found type {}",
-                    params[arg_idx].ty, tys[arg_idx]
-                ));
-            }
-        }
-
-        let fn_call = ir::FnCall {
-            fn_name: fn_call.fn_name.to_string(),
-            args: vals.into_iter().collect(),
-        };
-
-        let ty = fn_def.ty.clone();
-        let fn_call = ir::AtomicExpr::FnCall(fn_call);
-        Ok(TypedExpr::new(ty, fn_call))
-    }
-}
-
-impl Ast for parse::VarStore {
+impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::FnDefine {
     type Forward = ();
 
-    fn to_ast<'ast>(
-        var_store: &'ast Self::Target,
-        span: Span,
-        _global: &mut GlobalScope<'ast>,
-    ) -> Result<Self::Forward> {
-        let name = var_store.name.clone();
-        // function parameters are inmutable
-
-        let val = _global.to_ast(&var_store.assign.val)?;
-        let Some((var_def, mutable)) = _global.search_var(&name) else {
-            return span.throw(format!("use of undefined variable {}", *name));
-        };
-        if !mutable {
-            return span.throw(format!("cant assign to a immmutable variable {}", *name));
-        }
-        if var_def.ty != val.ty {
-            return span.throw(format!(
-                "tring to assign to variable with type {} from type {}",
-                var_def.ty, val.ty
-            ));
-        }
-        _global.push_stmt(ir::VarStore {
-            name: name.to_string(),
-            val: val.val,
-        });
-        Result::Ok(())
-    }
-}
-
-impl Ast for parse::FnDefine {
-    type Forward = ();
-
-    fn to_ast<'ast>(
+    fn to_ast(
         fn_define: &'ast Self::Target,
-        _span: Span,
-        _global: &mut GlobalScope<'ast>,
+        span: Span,
+        scope: &mut ModScope<'ast, M>,
     ) -> Result<Self::Forward> {
         let fn_name = fn_define.name.to_string();
 
-        if let Some(exist) = _global.search_fn(&fn_name) {
-            return exist.raw_defines[0]
+        if let Some(exist) = scope.search_fn(&fn_name) {
+            return exist.overloads[0]
+                .raw
                 .name
                 .throw("overload is not supported now...");
         }
@@ -212,53 +99,179 @@ impl Ast for parse::FnDefine {
                 })?;
 
         // TODO: `mangle rule`
-        let fn_sign = semantic::FnSign {
+        let overload = semantic::FnSign {
             mangle: fn_name.clone(),
             ty: ret_ty.clone(),
             params: sign_params,
+            raw: fn_define,
         };
 
-        let fn_def = semantic::FnDef::new(vec![fn_sign], vec![fn_define]);
-        _global.regist_fn(fn_name.clone(), fn_def);
+        let fn_def = semantic::FnDef::new(vec![overload]);
+        scope.regist_fn(fn_name.clone(), fn_def);
 
         // generate ast
         let ty = ret_ty;
         let name = fn_name;
 
-        let body = _global
-            .fn_scope(name.clone(), |_global| {
-                // _global.regist_params(params_iter);
+        let body = scope
+            .fn_scope(name.clone(), |scope| {
+                // scope.regist_params(params_iter);
                 for stmt in &fn_define.codes.stmts {
-                    _global.to_ast(stmt)?;
+                    scope.to_ast(stmt)?;
                 }
-                Result::Ok(())
+                Ok(())
             })?
             .0;
-        _global.push_stmt(ir::Statement::FnDefine(ir::FnDefine {
+        scope.push_stmt(ir::Statement::FnDefine(ir::FnDefine {
             ty,
             name,
             params,
             body,
         }));
 
-        Result::Ok(())
+        Ok(())
     }
 }
 
-impl Ast for parse::VarDefine {
+impl<'ast> Ast<'ast> for parse::Statement {
     type Forward = ();
 
-    fn to_ast<'ast>(
+    fn to_ast(
+        stmt: &'ast Self::Target,
+        span: Span,
+        scope: &mut FnScope<'ast>,
+    ) -> Result<Self::Forward> {
+        match stmt {
+            parse::Statement::FnCallStmt(fn_call) => {
+                scope.to_ast(fn_call)?;
+            }
+            parse::Statement::VarStoreStmt(var_store) => {
+                scope.to_ast(var_store)?;
+            }
+            parse::Statement::VarDefineStmt(var_define) => {
+                scope.to_ast(var_define)?;
+            }
+            parse::Statement::If(if_) => {
+                scope.to_ast_inner::<parse::If>(if_, span)?;
+            }
+            parse::Statement::While(while_) => {
+                scope.to_ast_inner::<parse::While>(while_, span)?;
+            }
+            parse::Statement::Return(return_) => {
+                scope.to_ast_inner::<parse::Return>(return_, span)?;
+            }
+            parse::Statement::CodeBlock(block) => {
+                scope.to_ast_inner::<parse::CodeBlock>(block, span)?;
+            }
+            parse::Statement::Comment(_) => {}
+        }
+        Ok(())
+    }
+}
+
+impl<'ast> Ast<'ast> for parse::FnCall {
+    type Forward = TypedExpr;
+
+    fn to_ast(
+        fn_call: &'ast Self::Target,
+        span: Span,
+        scope: &mut FnScope<'ast>,
+    ) -> Result<Self::Forward> {
+        let (tys, vals): (Vec<_>, Vec<_>) = fn_call
+            .args
+            .args
+            .iter()
+            .try_fold(vec![], |mut args, expr| {
+                let expr = scope.to_ast(expr)?;
+                args.push((expr.ty, expr.val));
+                Result::Ok(args)
+            })?
+            .into_iter()
+            .unzip();
+
+        let Some(fn_def) = scope.search_fn(&fn_call.fn_name) else {
+            return span.throw("use of undefined function");
+        };
+
+        // TOOD: overload support
+        let fn_def = &fn_def.overloads[0];
+        let params = &fn_def.params;
+
+        if params.len() != vals.len() {
+            return span.throw(format!(
+                "function {} exprct {} arguments, but {} arguments passed in",
+                *fn_call.fn_name,
+                params.len(),
+                vals.len()
+            ));
+        }
+
+        for arg_idx in 0..vals.len() {
+            if tys[arg_idx] != params[arg_idx].ty {
+                return fn_call.args.args[arg_idx].throw(format!(
+                    "expected type {}, but found type {}",
+                    params[arg_idx].ty, tys[arg_idx]
+                ));
+            }
+        }
+
+        let fn_call = ir::FnCall {
+            fn_name: fn_call.fn_name.to_string(),
+            args: vals.into_iter().collect(),
+        };
+
+        let ty = fn_def.ty.clone();
+        let fn_call = ir::AtomicExpr::FnCall(fn_call);
+        Ok(TypedExpr::new(ty, fn_call))
+    }
+}
+
+impl<'ast> Ast<'ast> for parse::VarStore {
+    type Forward = ();
+
+    fn to_ast(
+        var_store: &'ast Self::Target,
+        span: Span,
+        scope: &mut FnScope<'ast>,
+    ) -> Result<Self::Forward> {
+        let name = var_store.name.clone();
+        // function parameters are inmutable
+
+        let val = scope.to_ast(&var_store.assign.val)?;
+        let Some((var_def, mutable)) = scope.search_var(&name) else {
+            return span.throw(format!("use of undefined variable {}", *name));
+        };
+        if !mutable {
+            return span.throw(format!("cant assign to a immmutable variable {}", *name));
+        }
+        if var_def.ty != val.ty {
+            return span.throw(format!(
+                "tring to assign to variable with type {} from type {}",
+                var_def.ty, val.ty
+            ));
+        }
+        scope.push_stmt(ir::VarStore {
+            name: name.to_string(),
+            val: val.val,
+        });
+        Ok(())
+    }
+}
+
+impl<'ast> Ast<'ast> for parse::VarDefine {
+    type Forward = ();
+
+    fn to_ast(
         var_define: &'ast Self::Target,
         span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
         // TODO: testfor if  ty exist
         let ty = var_define.ty.to_ast_ty()?;
         let name = var_define.name.to_string();
         let init = match &var_define.init {
             Some(init) => {
-                let init = _global.to_ast(&init.val)?;
+                let init = scope.to_ast(&init.val)?;
                 if init.ty != ty {
                     return span.throw(format!(
                         "tring to define a variable with type {} from type {}",
@@ -270,126 +283,126 @@ impl Ast for parse::VarDefine {
             None => None,
         };
 
-        _global.regist_var(name.clone(), semantic::VarDef::new(ty.clone(), var_define));
+        scope.regist_var(name.clone(), semantic::VarDef::new(ty.clone(), var_define));
 
-        _global.push_stmt(ir::VarDefine { ty, name, init });
+        scope.push_stmt(ir::VarDefine { ty, name, init });
 
-        Result::Ok(())
+        Ok(())
     }
 }
 
-impl Ast for parse::If {
+impl<'ast> Ast<'ast> for parse::If {
     type Forward = ();
 
-    fn to_ast<'ast>(
+    fn to_ast(
         if_: &'ast Self::Target,
         _span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
-        let mut branches = vec![_global.to_ast(&if_.ruo4)?];
+        let mut branches = vec![scope.to_ast(&if_.ruo4)?];
         for chain in &if_.chains {
             match &**chain {
                 parse::ChainIf::AtomicElseIf(atomic) => {
-                    branches.push(_global.to_ast(&atomic.ruo4)?);
+                    branches.push(scope.to_ast(&atomic.ruo4)?);
                 }
                 parse::ChainIf::AtomicElse(else_) => {
-                    let else_ = _global.to_ast(&else_.block)?;
-                    _global.push_stmt(ir::Statement::If(ir::If {
+                    let else_ = scope.to_ast(&else_.block)?;
+                    scope.push_stmt(ir::Statement::If(ir::If {
                         branches,
                         else_: Some(else_),
                     }));
-                    return Result::Ok(());
+                    return Ok(());
                 }
             }
         }
-        _global.push_stmt(ir::Statement::If(ir::If {
+        scope.push_stmt(ir::Statement::If(ir::If {
             branches,
             else_: None,
         }));
-        Result::Ok(())
+        Ok(())
     }
 }
 
-impl Ast for parse::While {
+impl<'ast> Ast<'ast> for parse::While {
     type Forward = ();
 
-    fn to_ast<'ast>(
+    fn to_ast(
         while_: &'ast Self::Target,
         _span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
-        let cond = _global.to_ast(&while_.conds)?;
-        let body = _global.to_ast(&while_.block)?;
-        _global.push_stmt(ir::Statement::While(ir::While { cond, body }));
-        Result::Ok(())
+        let cond = scope.to_ast(&while_.conds)?;
+        let body = scope.to_ast(&while_.block)?;
+        scope.push_stmt(ir::Statement::While(ir::While { cond, body }));
+        Ok(())
     }
 }
 
-impl Ast for parse::AtomicIf {
+impl<'ast> Ast<'ast> for parse::AtomicIf {
     type Forward = ir::IfBranch;
 
-    fn to_ast<'ast>(
+    fn to_ast(
         atomic: &'ast Self::Target,
         _span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
-        let cond = _global.to_ast(&atomic.conds)?;
-        let body = _global.to_ast(&atomic.block)?;
+        let cond = scope.to_ast(&atomic.conds)?;
+        let body = scope.to_ast(&atomic.block)?;
         Result::Ok(ir::IfBranch { cond, body })
     }
 }
 
-impl Ast for parse::Return {
+impl<'ast> Ast<'ast> for parse::Return {
     type Forward = ();
 
-    fn to_ast<'ast>(
+    fn to_ast(
         return_: &'ast Self::Target,
         _span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
         let val = match &return_.val {
-            Some(val) => Some(_global.to_ast(val)?),
+            Some(val) => Some(scope.to_ast(val)?),
             None => None,
         };
-        _global.push_stmt(ir::Statement::Return(ir::Return {
+        scope.push_stmt(ir::Statement::Return(ir::Return {
             val: val.map(|v| v.val),
         }));
-        Result::Ok(())
+        Ok(())
     }
 }
 
-impl Ast for parse::CodeBlock {
+impl<'ast> Ast<'ast> for parse::CodeBlock {
     type Forward = ir::Statements;
 
-    fn to_ast<'ast>(
+    fn to_ast(
         block: &'ast Self::Target,
         _span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
-        _global
-            .spoce(|_global: &mut GlobalScope<'_>| {
+        scope
+            .spoce(|scope| {
                 for stmt in &block.stmts {
-                    _global.to_ast(stmt)?;
+                    scope.to_ast(stmt)?;
                 }
-                Result::Ok(())
+                Ok(())
             })
             .map(|(v, _)| v)
     }
 }
 
 // TODO: condition`s`
-impl Ast for parse::Arguments {
+impl<'ast> Ast<'ast> for parse::Arguments {
     type Forward = ir::Condition;
 
-    fn to_ast<'ast>(
+    fn to_ast(
         cond: &'ast Self::Target,
         _span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
-        let (compute, last_cond) = _global.spoce(|_global| {
-            let mut last_cond = _global.to_ast(&cond.args[0])?;
+        let (compute, last_cond) = scope.spoce(|scope| {
+            let mut last_cond = scope.to_ast(&cond.args[0])?;
             for arg in cond.args.iter().skip(1) {
-                last_cond = _global.to_ast(arg)?;
+                last_cond = scope.to_ast(arg)?;
             }
             Result::Ok(last_cond)
         })?;
@@ -405,19 +418,19 @@ impl Ast for parse::Arguments {
     }
 }
 
-impl Ast for parse::Expr {
+impl<'ast> Ast<'ast> for parse::Expr {
     type Forward = TypedExpr;
 
-    fn to_ast<'ast>(
+    fn to_ast(
         expr: &'ast Self::Target,
         span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
         match expr {
-            parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, span, _global),
+            parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, span, scope),
             parse::Expr::Binary(l, o, r) => {
-                let l = _global.to_ast(l)?;
-                let r = _global.to_ast(r)?;
+                let l = scope.to_ast(l)?;
+                let r = scope.to_ast(r)?;
 
                 // TODO: type declaration
                 if l.ty != r.ty {
@@ -438,21 +451,20 @@ impl Ast for parse::Expr {
                     l.ty.clone().try_into().unwrap()
                 };
 
-                let expr =
-                    _global.push_compute(ty, ir::OperateExpr::binary(o.take(), l.val, r.val));
+                let expr = scope.push_compute(ty, ir::OperateExpr::binary(o.take(), l.val, r.val));
                 Result::Ok(TypedExpr::new(ty, expr))
             }
         }
     }
 }
 
-impl Ast for parse::AtomicExpr {
+impl<'ast> Ast<'ast> for parse::AtomicExpr {
     type Forward = TypedExpr;
 
-    fn to_ast<'ast>(
+    fn to_ast(
         atomic: &'ast Self::Target,
         span: Span,
-        _global: &mut GlobalScope<'ast>,
+        scope: &mut FnScope<'ast>,
     ) -> Result<Self::Forward> {
         match atomic {
             parse::AtomicExpr::CharLiteral(char) => Ok(TypedExpr::new(
@@ -473,9 +485,9 @@ impl Ast for parse::AtomicExpr {
                     ir::AtomicExpr::Integer(*number),
                 )),
             },
-            parse::AtomicExpr::FnCall(fn_call) => parse::FnCall::to_ast(fn_call, span, _global),
+            parse::AtomicExpr::FnCall(fn_call) => parse::FnCall::to_ast(fn_call, span, scope),
             parse::AtomicExpr::Variable(var) => {
-                let Some(def) = _global.search_var(var) else {
+                let Some(def) = scope.search_var(var) else {
                     return span.throw("use of undefined variable");
                 };
 
@@ -488,15 +500,15 @@ impl Ast for parse::AtomicExpr {
             // here, this is incorrect because operators may be overloadn
             // all operator overloadn must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
-                let l = _global.to_ast(&unary.expr)?;
+                let l = scope.to_ast(&unary.expr)?;
                 if !l.ty.is_primitive() {
                     return span.throw("only operator around primitive types are supported");
                 }
                 let ty = ir::PrimitiveType::try_from(l.ty).unwrap();
-                let expr = _global.push_compute(ty, ir::OperateExpr::unary(*unary.operator, l.val));
+                let expr = scope.push_compute(ty, ir::OperateExpr::unary(*unary.operator, l.val));
                 Result::Ok(TypedExpr::new(ty, expr))
             }
-            parse::AtomicExpr::BracketExpr(expr) => _global.to_ast(&expr.expr),
+            parse::AtomicExpr::BracketExpr(expr) => scope.to_ast(&expr.expr),
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),
         }
     }

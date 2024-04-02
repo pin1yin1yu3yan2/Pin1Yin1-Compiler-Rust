@@ -1,3 +1,5 @@
+use crate::complex_pu;
+
 use super::*;
 
 /// however, this is the "best" way
@@ -55,7 +57,7 @@ statement_wrapper! {
 macro_rules! statements {
     (
         $(#[$metas:meta])*
-        cpu $enum_name:ident {
+        stmt $enum_name:ident {
         $(
             $(#[$v_metas:meta])*
             $variant:ident
@@ -97,13 +99,13 @@ macro_rules! statements {
 }
 
 statements! {
-    cpu Statement {
+    stmt Statement {
+
         // $name (...)
         FnCallStmt,
         // $name = $expr
         VarStoreStmt,
-        // $ty $name (...)
-        FnDefine,
+
         // $ty $name
         VarDefineStmt,
         If,
@@ -111,5 +113,13 @@ statements! {
         Return,
         Comment,
         CodeBlock
+    }
+}
+
+complex_pu! {
+    cpu Item {
+        // $ty $name (...)
+        FnDefine,
+        Comment
     }
 }

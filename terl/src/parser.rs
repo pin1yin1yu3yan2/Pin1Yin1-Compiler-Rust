@@ -421,17 +421,14 @@ impl<'p, S, P: ParseUnit<S>> Try<'p, P, S> {
         });
 
         if self.state.is_none() || is_unmatch {
-            let state = self
-                .parser
-                .once(parser)
-                .map(|pu| PU::new(pu.span, pu.target));
+            let state = self.parser.once(parser).map(|pu| PU::new(pu.span, pu.item));
             self.state = Some(state);
         }
         self
     }
 
     /// set the default error
-    pub fn or_error(mut self, reason: impl Into<String>) -> Self {
+    pub fn or_error(mut self, reason: impl ToString) -> Self {
         self.state = self.state.or_else(|| Some(self.parser.unmatch(reason)));
         self
     }

@@ -20,16 +20,16 @@ pub enum ErrorKind {
 }
 
 impl Error {
-    pub fn new(span: Span, reason: impl Into<String>, kind: ErrorKind) -> Self {
+    pub fn new(span: Span, reason: impl ToString, kind: ErrorKind) -> Self {
         Self {
             span,
-            reason: reason.into(),
+            reason: reason.to_string(),
             kind,
         }
     }
 
-    pub fn map(mut self, new_reason: impl Into<String>) -> Self {
-        self.reason = new_reason.into();
+    pub fn map(mut self, new_reason: impl ToString) -> Self {
+        self.reason = new_reason.to_string();
         self
     }
 
@@ -70,15 +70,15 @@ impl<T> TryFrom<Result<T>> for Error {
 pub trait WithSpan {
     fn get_span(&self) -> Span;
 
-    fn make_error(&self, reason: impl Into<String>, kind: ErrorKind) -> Error {
+    fn make_error(&self, reason: impl ToString, kind: ErrorKind) -> Error {
         Error::new(self.get_span(), reason, kind)
     }
 
-    fn unmatch<T>(&self, reason: impl Into<String>) -> Result<T> {
+    fn unmatch<T>(&self, reason: impl ToString) -> Result<T> {
         Err(self.make_error(reason, ErrorKind::Unmatch))
     }
 
-    fn throw<T>(&self, reason: impl Into<String>) -> Result<T> {
+    fn throw<T>(&self, reason: impl ToString) -> Result<T> {
         Err(self.make_error(reason, ErrorKind::OtherError))
     }
 
