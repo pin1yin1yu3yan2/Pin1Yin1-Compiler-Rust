@@ -1,3 +1,4 @@
+use super::mangle::Mangler;
 use super::*;
 use crate::ir;
 use crate::parse;
@@ -63,9 +64,6 @@ impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::FnDefine {
                 .throw("overload is not supported now...");
         }
 
-        // do this step firstly to allow recursion
-        // mangle should follow the `mangle rule` (not exist now)
-        // the mangle is the unique id of the function because overload allow fns with same name but different sign
         let ret_ty: ir::TypeDefine = fn_define.ty.to_ast_ty()?;
 
         let params = fn_define

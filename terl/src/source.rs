@@ -1,6 +1,6 @@
 use std::ops::Index;
 
-use crate::{Error, Span};
+use crate::{Error, Message, Span};
 
 #[derive(Debug, Clone)]
 pub struct Source<S = char> {
@@ -52,14 +52,11 @@ where
     }
 }
 
+use std::fmt::Write;
 impl Source<char> {
-    pub fn handle_error(&self, error: Error) -> std::result::Result<String, std::fmt::Error> {
-        use std::fmt::Write;
-        let mut buffer = String::new();
-
-        let Error { span, reason, kind } = error;
-
+    fn error_message(&self, buffer: &mut impl Write, msg: Message) -> Result<(), std::fmt::Error> {
         let src = self;
+        let Message { span, reason } = msg;
 
         let start_line_start = (0..span.start)
             .rev()
@@ -71,8 +68,8 @@ impl Source<char> {
 
         let row_num = span.start - start_line_start;
         let location = format!("[{}:{}:{}]", src.file_name(), line_num, row_num,);
-        writeln!(buffer)?;
-        writeln!(buffer, "{location} {kind:?} Error: {}", reason)?;
+
+        writeln!(buffer, "{location}: {}", reason)?;
 
         while idx < span.end && idx < src.len() {
             let line_start = idx;
@@ -98,6 +95,18 @@ impl Source<char> {
 
             idx = (idx + 1).min(src.len());
             line_num += 1;
+        }
+        Ok(())
+    }
+
+    pub fn handle_error(&self, error: Error) -> Result<String, std::fmt::Error> {
+        let mut buffer = String::new();
+
+        let Error { messages, kind } = error;
+
+        writeln!(&mut buffer, "{:?} Error!", kind)?;
+        for msg in messages {
+            self.error_message(&mut buffer, msg)?;
         }
 
         Ok(buffer)

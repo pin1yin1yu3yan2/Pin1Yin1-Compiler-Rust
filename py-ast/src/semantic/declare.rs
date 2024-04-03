@@ -3,23 +3,30 @@ use std::{
     mem::transmute,
 };
 
+use terl::{Span, WithSpan};
+
+use super::ModScope;
+
 /// declaration map:
 ///
-///    * determine which overload is used:
+///     * determine which overload is used:
 ///
-///        * basic operators around primitive types(determine literals' types)
+///         * basic operators around primitive types(determine literals' types)
 ///
-///    implementation:
+/// implementation:
 ///
-///    * use Rc<RefCell> to store declarations
+///     * use reflection to do decalre together
 ///
+///     * use directed map to solve dependencies of declare items
 ///
-///    * store in mir and because unique type in py-ir
-///
-///    * use rules to do declare
+///     * use rules to do declare
 pub struct DeclareMap {
-    items: Vec<ReflectDeclareStatus>,
+    items: Vec<ReflectDeclarer>,
     deps: Vec<Vec<DeclareIdx>>,
+}
+
+pub trait DeclareKind: Sized + Any {
+    type Type: Clone;
 }
 
 impl DeclareMap {
@@ -30,30 +37,37 @@ impl DeclareMap {
         }
     }
 
-    pub fn new_declare<K: DeclareKind>(&mut self) -> DeclareIdx {
+    pub fn new_declare<K, E>(&mut self, span: Span, err_msg: E) -> DeclareIdx
+    where
+        K: DeclareKind,
+        E: Fn(&Declarer<K>) -> String + 'static,
+    {
+        let idx = DeclareIdx {
+            idx: self.items.len(),
+        };
         self.items
-            .push(DeclareStatus::Unsolved(Declare::<K>::new()).into());
+            .push(Declarer::<K>::new(idx, span, err_msg).into());
         self.deps.push(vec![]);
 
-        // bias: deps[0] are always none, and deps[n] is the dependencies of deps[n-1]
-        // so, so to do to let that deps[DeclareIdx.0] is the dependencies of deps[n-1]
-        DeclareIdx(self.items.len())
+        idx
     }
 
     fn build_dep_map(&mut self) {
         // load
         for i in 0..self.items.len() {
-            self.deps[i] = self.items[i].deps();
+            // bias: deps[0] deps none(skiped)
+            self.deps[i + 1] = self.items[i].deps(&self);
         }
     }
 
+    /// topo sort is used
     fn is_cycle(&self) -> Result<(), Vec<DeclareIdx>> {
         // nodes are required by idx
-        let mut in_degree = vec![vec![]; self.deps.len()];
+        let mut in_degree = vec![vec![]; self.deps.len() + 1];
 
         for (idx, deps) in self.deps.iter().enumerate() {
             for dep in deps {
-                in_degree[dep.0].push(idx);
+                in_degree[dep.idx].push(idx);
             }
         }
 
@@ -82,7 +96,7 @@ impl DeclareMap {
             }
 
             if empties.is_empty() {
-                return Err(deps.keys().map(|k| DeclareIdx(*k)).collect());
+                return Err(deps.keys().map(|k| DeclareIdx::new(*k)).collect());
             }
 
             for decrease in empties.iter().flat_map(|k| &in_degree[*k]) {
@@ -96,13 +110,13 @@ impl DeclareMap {
     ///  [`Self::build_dep_map`] and [`Self::is_cycle`] must be called before calling this function
     ///
     /// this method may be ub if there is a cycle dependency in [`Self::deps`]
-    pub(super) unsafe fn solve_one<K: DeclareKind>(&mut self, idx: DeclareIdx) -> Option<&K::Type> {
+    pub unsafe fn solve_one<K: DeclareKind>(&mut self, idx: DeclareIdx) -> Option<&K::Type> {
         let s: &Self = self;
         #[allow(mutable_transmutes)]
         let s1: &mut Self = transmute(s);
         #[allow(mutable_transmutes)]
         let s2: &mut Self = transmute(s);
-        s1.items[idx.0].cast_mut::<K>().solve(s2)
+        s1[idx].cast_mut::<K>().solve(s2)
     }
 
     pub fn solve_all(&mut self) -> Result<(), Vec<DeclareIdx>> {
@@ -115,147 +129,216 @@ impl DeclareMap {
     }
 }
 
+impl std::ops::Index<DeclareIdx> for DeclareMap {
+    type Output = ReflectDeclarer;
+
+    fn index(&self, index: DeclareIdx) -> &Self::Output {
+        &self.items[index.idx]
+    }
+}
+
+impl std::ops::IndexMut<DeclareIdx> for DeclareMap {
+    fn index_mut(&mut self, index: DeclareIdx) -> &mut Self::Output {
+        &mut self.items[index.idx]
+    }
+}
+
 impl Default for DeclareMap {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct Declare<K: DeclareKind> {
-    pub items: Vec<DeclareItem<K>>,
-    pub rules: Vec<Box<dyn DeclareRule<K>>>,
+pub struct ReflectDeclarer {
+    kind_ty: TypeId,
+    declarer: Box<Declarer<NotDeclareKind>>,
 }
 
-pub trait DeclareDeps {
-    fn deps(&self) -> Vec<DeclareIdx>;
-}
-
-pub trait DeclareAble<K: DeclareKind>: DeclareDeps {
-    fn solve<'a>(&'a mut self, map: &'a mut DeclareMap) -> Option<&'a K::Type>;
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DeclareIdx(pub(super) usize);
-
-pub struct ReflectDeclareStatus {
-    ty: TypeId,
-    /// use box because we cant know [`DeclareStatus`]'s size
-    status: Box<DeclareStatus<NotDeclareKind>>,
-}
-
-impl ReflectDeclareStatus {
-    pub fn cast<K: DeclareKind>(&self) -> &DeclareStatus<K> {
-        assert!(self.ty != TypeId::of::<K>());
+impl ReflectDeclarer {
+    pub fn cast<K: DeclareKind>(&self) -> &Declarer<K> {
+        assert!(self.kind_ty == TypeId::of::<K>());
 
         // see https://github.com/rust-lang/rust-clippy/issues/12602, this is a wrong suggestion
         #[allow(clippy::borrowed_box)]
-        let item: &Box<DeclareStatus<K>> = unsafe { transmute(&self.status) };
-
+        let item: &Box<Declarer<K>> = unsafe { transmute(&self.declarer) };
         item
     }
 
-    pub fn cast_mut<K: DeclareKind>(&mut self) -> &mut DeclareStatus<K> {
-        assert!(self.ty != TypeId::of::<K>());
-        let item: &mut Box<DeclareStatus<K>> = unsafe { transmute(&mut self.status) };
+    pub fn cast_mut<K: DeclareKind>(&mut self) -> &mut Declarer<K> {
+        assert!(self.kind_ty == TypeId::of::<K>());
+
+        let item: &mut Box<Declarer<K>> = unsafe { transmute(&mut self.declarer) };
         item
     }
-}
 
-impl DeclareDeps for ReflectDeclareStatus {
-    fn deps(&self) -> Vec<DeclareIdx> {
-        // UB?
-        self.status.deps()
+    fn deps(&self, _map: &DeclareMap) -> Vec<DeclareIdx> {
+        self.declarer.deps()
     }
 }
 
-impl<K: DeclareKind> From<DeclareStatus<K>> for ReflectDeclareStatus {
-    fn from(value: DeclareStatus<K>) -> Self {
+impl<K: DeclareKind> From<Declarer<K>> for ReflectDeclarer {
+    fn from(value: Declarer<K>) -> Self {
         Self {
-            ty: TypeId::of::<K>(),
-            status: unsafe { transmute(Box::new(value)) },
+            kind_ty: TypeId::of::<K>(),
+            declarer: unsafe { transmute(Box::new(value)) },
         }
     }
 }
 
-pub enum DeclareStatus<K: DeclareKind> {
-    Solved(K::Type),
-    Unsolved(Declare<K>),
+pub struct Declarer<K: DeclareKind> {
+    pub idx: DeclareIdx,
+    pub span: Span,
+    pub items: Vec<DeclareItem<K>>,
+    pub rules: Vec<Box<dyn DeclareRule<K>>>,
+    pub error_msg: Box<dyn Fn(&Declarer<K>) -> String>,
 }
 
-impl<K: DeclareKind> DeclareDeps for DeclareStatus<K> {
-    fn deps(&self) -> Vec<DeclareIdx> {
-        match self {
-            DeclareStatus::Unsolved(unsolved) => unsolved
-                .rules
-                .iter()
-                .flat_map(|rule| rule.deps())
-                .chain(unsolved.items.iter().flat_map(|item| item.deps()))
-                .collect::<Vec<_>>(),
-            DeclareStatus::Solved(_) => unreachable!(),
-        }
-    }
-}
-
-impl<K: DeclareKind> DeclareAble<K> for DeclareStatus<K> {
-    fn solve<'a>(&'a mut self, map: &'a mut DeclareMap) -> Option<&'a K::Type> {
-        let declare = match self {
-            DeclareStatus::Solved(result) => return Some(result),
-            DeclareStatus::Unsolved(declare) => declare,
-        };
-
-        for ty in &mut declare.items {
-            ty.solve(map);
-        }
-
-        let all_satisfy = |item: &&DeclareItem<K>| -> bool {
-            declare
-                .rules
-                .iter()
-                .all(|rule| rule.satisfy(item.solve_result(map)))
-        };
-
-        let result = declare.items.iter().find(all_satisfy)?;
-
-        *self = Self::Solved(result.solve_result(map).clone());
-
-        // this is for sorter code compielr should optimze this!!!
-        self.solve(map)
-    }
-}
-
-impl<K: DeclareKind> Declare<K> {
-    pub fn new() -> Self {
+impl<Kind: DeclareKind> Declarer<Kind> {
+    pub fn new<E>(idx: DeclareIdx, span: Span, err_msg: E) -> Self
+    where
+        E: Fn(&Declarer<Kind>) -> String + 'static,
+    {
         Self {
+            idx,
+            span,
             items: vec![],
             rules: vec![],
+            error_msg: Box::new(err_msg),
         }
     }
 
-    pub fn add_rule(&mut self, rule: impl DeclareRule<K> + 'static) {
+    pub fn add_rule(&mut self, rule: impl DeclareRule<Kind> + 'static) {
         self.rules.push(Box::new(rule));
     }
 
-    pub fn add_types(&mut self, types: &impl Types<K>) {
+    pub fn add_types(&mut self, types: &impl Types<Kind>) {
         self.items.extend(types.types());
     }
-}
 
-impl<K, T> From<&T> for Declare<K>
-where
-    K: DeclareKind,
-    T: Types<K>,
-{
-    fn from(value: &T) -> Self {
-        Declare {
-            items: value.types(),
-            rules: vec![],
+    pub fn deps(&self) -> Vec<DeclareIdx> {
+        self.items
+            .iter()
+            .map(|item| item.get_declare_idx())
+            .chain(self.rules.iter().map(|rule| rule.get_declare_idx()))
+            .collect()
+    }
+
+    pub fn contain<R>(&self, map: &DeclareMap, rhs: &R) -> bool
+    where
+        Kind::Type: PartialEq<R>,
+    {
+        self.items
+            .iter()
+            .any(|item| item.declare_result(map).is_some_and(|item| item == rhs))
+    }
+
+    pub unsafe fn solve<'a>(
+        &'a mut self,
+        map: &'a mut DeclareMap,
+    ) -> Option<&'a <Kind as DeclareKind>::Type> {
+        for item in &mut self.items {
+            item.solve(map)?;
+        }
+
+        let all_satisfy = |item: &DeclareItem<Kind>| -> bool {
+            self.rules
+                .iter()
+                .all(|rule| rule.satisfy(item.declare_result(map).unwrap()))
+        };
+
+        let mut all_satisfied = vec![];
+        while let Some(item) = self.items.pop() {
+            if all_satisfy(&item) {
+                all_satisfied.push(item);
+            }
+        }
+        self.items = all_satisfied;
+        self.declare_result(map)
+    }
+
+    pub fn declare<'a>(&'a mut self, map: &'a mut DeclareMap) -> terl::Result<&'a Kind::Type> {
+        match unsafe { self.solve(map) } {
+            // wtf??
+            Some(..) => return Ok(self.declare_result(map).unwrap()),
+            None => Err(self
+                .get_span()
+                .make_error((self.error_msg)(&self), terl::ErrorKind::Semantic)),
+        }
+    }
+
+    pub fn declare_result<'a>(
+        &'a self,
+        map: &'a DeclareMap,
+    ) -> Option<&'a <Kind as DeclareKind>::Type> {
+        if self.items.len() == 1 {
+            // unwrap: always(must) be Some
+            Some(self.items[0].declare_result(map).unwrap())
+        } else {
+            None
         }
     }
 }
 
-impl<K: DeclareKind> Default for Declare<K> {
+impl<K: DeclareKind> terl::WithSpan for Declarer<K> {
+    fn get_span(&self) -> Span {
+        self.span
+    }
+}
+
+pub trait Declare<Kind: DeclareKind> {
+    fn get_declare_idx(&self) -> DeclareIdx;
+
+    fn get_declarer<'a>(&self, map: &'a DeclareMap) -> &'a Declarer<Kind> {
+        map[self.get_declare_idx()].cast()
+    }
+
+    fn get_declarer_mut<'a>(&self, map: &'a mut DeclareMap) -> &'a mut Declarer<Kind> {
+        map[self.get_declare_idx()].cast_mut()
+    }
+
+    fn deps(&self, map: &DeclareMap) -> Vec<DeclareIdx> {
+        map[self.get_declare_idx()].cast::<Kind>().deps()
+    }
+
+    /// # Safety
+    ///
+    /// see [`DeclareMap::solve_one`]
+    unsafe fn solve<'a>(&'a mut self, map: &'a mut DeclareMap) -> Option<&'a Kind::Type> {
+        map.solve_one::<Kind>(self.get_declare_idx())
+    }
+
+    fn declare<'a>(&'a mut self, map: &'a mut DeclareMap) -> terl::Result<&'a Kind::Type> {
+        match unsafe { self.solve(map) } {
+            // wtf??
+            Some(..) => return Ok(self.declare_result(map).unwrap()),
+            None => Err(self.get_declarer(map)).map_err(|dec| {
+                dec.get_span()
+                    .make_error((dec.error_msg)(dec), terl::ErrorKind::Semantic)
+            }),
+        }
+    }
+
+    fn declare_result<'a>(&'a self, map: &'a DeclareMap) -> Option<&'a Kind::Type> {
+        self.get_declarer(map).declare_result(map)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DeclareIdx {
+    pub(super) idx: usize,
+}
+
+impl DeclareIdx {
+    pub fn new(idx: usize) -> Self {
+        Self { idx }
+    }
+}
+
+impl Default for DeclareIdx {
     fn default() -> Self {
-        Self::new()
+        // '0' is always ok to be resolved
+        // safe to appear in deps map
+        Self { idx: 0 }
     }
 }
 
@@ -265,75 +348,62 @@ pub enum DeclareItem<K: DeclareKind> {
     Unsolved(DeclareIdx),
 }
 
-impl<K: DeclareKind> DeclareDeps for DeclareItem<K> {
-    fn deps(&self) -> Vec<DeclareIdx> {
+impl<K: DeclareKind> Declare<K> for DeclareItem<K> {
+    fn get_declare_idx(&self) -> DeclareIdx {
+        match self {
+            DeclareItem::Exist(_) => DeclareIdx::default(),
+            DeclareItem::Solved(idx) | DeclareItem::Unsolved(idx) => *idx,
+        }
+    }
+
+    fn deps(&self, _map: &DeclareMap) -> Vec<DeclareIdx> {
         match self {
             DeclareItem::Exist(_) => vec![],
-            DeclareItem::Unsolved(idx) => vec![*idx],
-            DeclareItem::Solved(_) => unreachable!(),
+            DeclareItem::Solved(idx) => vec![*idx],
+            DeclareItem::Unsolved(_) => vec![],
         }
     }
-}
 
-impl<K: DeclareKind> DeclareAble<K> for DeclareItem<K> {
-    fn solve<'a>(&'a mut self, map: &'a mut DeclareMap) -> Option<&'a <K as DeclareKind>::Type> {
-        let (idx, result) = match self {
-            DeclareItem::Exist(ty) => return Some(ty),
-            DeclareItem::Unsolved(idx) | DeclareItem::Solved(idx) => {
-                (*idx, unsafe { map.solve_one::<K>(*idx)? })
-            }
-        };
-        *self = DeclareItem::Solved(idx);
-        Some(result)
-    }
-}
-
-impl<K: DeclareKind> DeclareItem<K> {
-    pub fn solved(&self) -> bool {
-        matches!(self, DeclareItem::Exist(..) | DeclareItem::Solved(..))
-    }
-
-    pub fn solve_result<'a>(&'a self, map: &'a mut DeclareMap) -> &'a K::Type {
+    unsafe fn solve<'a>(
+        &'a mut self,
+        map: &'a mut DeclareMap,
+    ) -> Option<&'a <K as DeclareKind>::Type> {
         match self {
-            DeclareItem::Exist(ty) => ty,
-            DeclareItem::Solved(idx) => unsafe { map.solve_one::<K>(*idx).unwrap() },
-            DeclareItem::Unsolved(..) => unreachable!(),
+            DeclareItem::Exist(item) => Some(item),
+            DeclareItem::Solved(idx) => map[*idx].cast::<K>().declare_result(map),
+            DeclareItem::Unsolved(idx) => unsafe {
+                map.solve_one::<K>(*idx)
+                    .map(|ok| (*self = Self::Solved(self.get_declare_idx()), ok).1)
+            },
         }
     }
-}
 
-pub trait DeclareKind: Sized + Any {
-    type Type: Clone;
-}
-
-#[derive(Debug, Clone)]
-pub struct Type;
-
-impl DeclareKind for Type {
-    type Type = Self;
-}
-
-#[derive(Debug, Clone)]
-pub struct FnOverload;
-
-impl DeclareKind for FnOverload {
-    type Type = Type;
+    fn declare_result<'a>(&'a self, map: &'a DeclareMap) -> Option<&'a <K as DeclareKind>::Type> {
+        match self {
+            DeclareItem::Exist(exist) => Some(exist),
+            DeclareItem::Solved(idx) => Some(map[*idx].cast::<K>().declare_result(map).unwrap()),
+            DeclareItem::Unsolved(_) => None,
+        }
+    }
 }
 
 pub trait Types<K: DeclareKind> {
     fn types(&self) -> Vec<DeclareItem<K>>;
 }
 
-pub trait DeclareRule<K: DeclareKind>: DeclareAble<K> {
+pub trait DeclareRule<K: DeclareKind>: Declare<K> {
+    fn update(&mut self, scope: &mut ModScope);
+
     fn satisfy(&self, types: &K::Type) -> bool;
 }
 
 #[derive(Debug, Clone)]
-pub struct NotDeclareKind;
+pub enum NotDeclareKind {}
 
 impl DeclareKind for NotDeclareKind {
     type Type = NotDeclareKind;
 }
+
 /*
 
 

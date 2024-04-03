@@ -1,22 +1,22 @@
 use std::fmt::Debug;
 
-#[derive(Debug, Clone, Copy)]
-pub enum ManglePrefix<'i> {
-    Mod(&'i str),
-    Type(&'i str),
+#[derive(Debug, Clone)]
+pub enum ManglePrefix {
+    Mod(String),
+    Type(String),
 }
 
 #[derive(Debug, Clone)]
-pub enum MangleItem<'i> {
-    Fn(&'i str, &'i [MangleItem<'i>]),
+pub enum MangleItem<'p> {
+    Fn(&'p str, &'p [MangleUnit<'p>]),
     Type(),
     Val(),
 }
 
 #[derive(Debug, Clone)]
-pub struct MangleUnit<'m> {
-    prefix: Vec<ManglePrefix<'m>>,
-    item: MangleItem<'m>,
+pub struct MangleUnit<'p> {
+    prefix: &'p [ManglePrefix],
+    item: MangleItem<'p>,
 }
 
 pub trait MangleAble<M: Mangler> {

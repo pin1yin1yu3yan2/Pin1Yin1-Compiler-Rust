@@ -171,17 +171,19 @@ impl std::str::FromStr for PrimitiveType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "i1" => Ok(Self::Bool),
+            "i1" | "bool" => Ok(Self::Bool),
             "i8" => Ok(Self::I8),
             "u8" => Ok(Self::U8),
             "i16" => Ok(Self::I16),
             "u16" => Ok(Self::U16),
             "i32" => Ok(Self::I32),
-            "u32" => Ok(Self::U32),
+            "u32" | "char" => Ok(Self::U32),
             "i64" => Ok(Self::I64),
             "u64" => Ok(Self::U64),
             "i128" => Ok(Self::I128),
             "u128" => Ok(Self::U128),
+            "usize" => Ok(Self::Usize),
+            "isize" => Ok(Self::Isize),
             "f32" => Ok(Self::F32),
             "f64" => Ok(Self::F64),
             _ => Err(()),

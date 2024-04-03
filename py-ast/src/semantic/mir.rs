@@ -1,8 +1,14 @@
+use std::borrow::Cow;
+
+use py_ir::ir::PrimitiveType;
+
 use crate::ops::Operators;
+
+use super::declare::*;
 
 pub type Statements = Vec<Statement>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     FnDefine(FnDefine),
     Compute(Compute),
@@ -72,155 +78,118 @@ mod from_impls {
     }
 }
 
-/// this kind of expr is the most general expression
-///
-/// [`AtomicExpr::Char`], [`AtomicExpr::String`], [`AtomicExpr::Integer`] and [`AtomicExpr::Float`]
-/// mean literals
-///
-/// type of literals are needed to be declared in operators, because `1` can mean `i8`, `i32`, etc.
-///
-/// [`AtomicExpr::Variable`] and [`AtomicExpr::FnCall`] are folded expression,for example,
-/// [`OperateExpr::Binary`] and [`OperateExpr::Unary`] will be transformed into a [`VarDefine`],
-/// and its result(a variable) will be used as [`AtomicExpr::Variable`]
-///
-/// using this way to avoid expressions' tree, and make llvm-ir generation much easier
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum AtomicExpr {
     Char(char),
     String(String),
     Integer(usize),
     Float(f64),
     Variable(String),
-    FnCall(FnCall),
-    // #[deprecated = "unsupported now"]
-    // Initialization(Vec<Expr>),
 }
 
-/// comes from [`Compute`] or just a
-pub type Variable = AtomicExpr;
-pub type Variables = Vec<Variable>;
-
-/// [`OperateExpr::Unary`] and [`OperateExpr::Binary`] are normal operations aroud primitives
-///
-/// computes around non-primitive types are turned into [FnCall]
 #[derive(Debug, Clone, PartialEq)]
-pub enum OperateExpr {
-    Unary(Operators, AtomicExpr),
-    Binary(Operators, AtomicExpr, AtomicExpr),
+pub struct Type {
+    mangle: Cow<'static, str>,
 }
 
-impl OperateExpr {
-    pub fn binary(op: Operators, l: impl Into<AtomicExpr>, r: impl Into<AtomicExpr>) -> Self {
-        Self::Binary(op, l.into(), r.into())
-    }
-
-    pub fn unary(op: Operators, v: impl Into<AtomicExpr>) -> Self {
-        Self::Unary(op, v.into())
-    }
+impl Type {
+    const DEFAULT_INT: Self = Self {
+        mangle: Cow::Borrowed("i64"),
+    };
+    const DEFAULT_FLOAT: Self = Self {
+        mangle: Cow::Borrowed("f32"),
+    };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PrimitiveType {
-    Bool, // boolean
-    I8,
-    U8,
-    I16,
-    U16,
-    I32,
-    U32, // char
-    I64,
-    U64,
-    I128,
-    U128,
-    Usize,
-    Isize,
-    F32,
-    F64,
+impl DeclareKind for Type {
+    type Type = Type;
 }
 
-impl PrimitiveType {
-    pub fn char() -> Self {
-        Self::U32
-    }
+#[derive(Debug, Clone)]
+pub struct NormalVariable {
+    pub expr: AtomicExpr,
+    pub ty: DeclareIdx,
+}
 
-    pub fn is_float(&self) -> bool {
-        matches!(self, Self::F32 | Self::F64)
-    }
-
-    pub fn is_integer(&self) -> bool {
-        !self.is_float() && self != &Self::Bool
-    }
-
-    pub fn is_signed(&self) -> bool {
-        matches!(
-            self,
-            Self::I8 | Self::I16 | Self::I32 | Self::I64 | Self::I128 | Self::Isize
-        )
-    }
-
-    pub fn is_unsigned(&self) -> bool {
-        matches!(
-            self,
-            Self::U8 | Self::U16 | Self::U32 | Self::U64 | Self::U128 | Self::Usize
-        )
+impl NormalVariable {
+    pub fn default_declare() -> &'static Type {
+        todo!()
     }
 }
 
-impl std::str::FromStr for PrimitiveType {
-    type Err = ();
+impl Declare<Type> for NormalVariable {
+    fn get_declare_idx(&self) -> DeclareIdx {
+        self.ty
+    }
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "i1" => Ok(Self::Bool),
-            "i8" => Ok(Self::I8),
-            "u8" => Ok(Self::U8),
-            "i16" => Ok(Self::I16),
-            "u16" => Ok(Self::U16),
-            "i32" => Ok(Self::I32),
-            "u32" => Ok(Self::U32),
-            "i64" => Ok(Self::I64),
-            "u64" => Ok(Self::U64),
-            "i128" => Ok(Self::I128),
-            "u128" => Ok(Self::U128),
-            "f32" => Ok(Self::F32),
-            "f64" => Ok(Self::F64),
-            _ => Err(()),
+    unsafe fn solve<'a>(
+        &'a mut self,
+        map: &'a mut DeclareMap,
+    ) -> Option<&'a <Type as DeclareKind>::Type> {
+        match map.solve_one::<Type>(self.get_declare_idx()) {
+            Some(..) => self.declare_result(map),
+            None => {
+                let declare = self.get_declarer(map);
+                match self.expr {
+                    AtomicExpr::Integer(_) if declare.contain(map, &Type::DEFAULT_INT) => {
+                        Some(&Type::DEFAULT_INT)
+                    }
+                    AtomicExpr::Float(_) if declare.contain(map, &Type::DEFAULT_FLOAT) => {
+                        Some(&Type::DEFAULT_FLOAT)
+                    }
+                    _ => None,
+                }
+            }
         }
     }
 }
 
-impl std::fmt::Display for PrimitiveType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // hmmm...
-        write!(f, "{}", format!("{self:?}").to_ascii_lowercase())
+#[derive(Debug, Clone)]
+pub enum Variable {
+    Normal(NormalVariable),
+    FnCall(FnCall),
+}
+
+pub type Variables = Vec<Variable>;
+
+/// be fferent of [py_ir::ir::OperateExpr], this is **not** around primitive types
+///
+/// even the function overload may be delay
+#[derive(Debug, Clone)]
+pub enum OperateExpr {
+    // type must be known, and then pick a operator-overload
+    Unary(Operators, Variable),
+    Binary(Operators, Variable, Variable),
+}
+
+impl OperateExpr {
+    pub fn binary(op: Operators, l: impl Into<Variable>, r: impl Into<Variable>) -> Self {
+        Self::Binary(op, l.into(), r.into())
+    }
+
+    pub fn unary(op: Operators, v: impl Into<Variable>) -> Self {
+        Self::Unary(op, v.into())
     }
 }
 
-/// computing aroud primitive types
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Compute {
-    /// computing is around same types
-    ///
-    /// this is [`OperateExpr::Binary`] or [`OperateExpr::Unary`]'s type
     pub ty: PrimitiveType,
     pub name: String,
     pub eval: OperateExpr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TypeDecorators {
-    // #[deprecated = "unclear semantics"]
     Const,
-    // TODO: remove this varient
     Array,
     Reference,
     Pointer,
     SizedArray(usize),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ComplexType {
-    /// use option to avoid memory allocation sometimes
     pub decorators: Option<Vec<TypeDecorators>>,
     pub ty: String,
 }
@@ -259,7 +228,7 @@ impl std::fmt::Display for ComplexType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TypeDefine {
     Primitive(PrimitiveType),
     Complex(ComplexType),
@@ -335,7 +304,7 @@ impl PartialEq<PrimitiveType> for TypeDefine {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Parameter {
     pub ty: TypeDefine,
     /// using string because its the name of parameter, not a value
@@ -344,7 +313,7 @@ pub struct Parameter {
 
 pub type Parameters = Vec<Parameter>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FnDefine {
     pub ty: TypeDefine,
     pub name: String,
@@ -352,52 +321,60 @@ pub struct FnDefine {
     pub body: Statements,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct VarDefine {
     pub ty: TypeDefine,
     pub name: String,
     pub init: Option<Variable>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct VarStore {
     pub name: String,
     pub val: Variable,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+pub struct FnOverloadSelect {
+    mangled: String,
+}
+
+impl DeclareKind for FnOverloadSelect {
+    type Type = String;
+}
+
+#[derive(Debug, Clone)]
 pub struct FnCall {
-    pub fn_name: String,
+    /// FnOverloadSelect
+    pub fn_name: DeclareIdx,
     pub args: Variables,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Condition {
     // the final value of the condition
     pub val: Variable,
     pub compute: Statements,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct IfBranch {
     pub cond: Condition,
     pub body: Statements,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct If {
     pub branches: Vec<IfBranch>,
-
     pub else_: Option<Statements>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct While {
     pub cond: Condition,
     pub body: Statements,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Return {
     pub val: Option<Variable>,
 }

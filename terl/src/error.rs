@@ -1,13 +1,50 @@
 use crate::*;
 
-// TODO: multiple selections, multiple reasons for more friendlier error messages
 // TODO: lazy eval error messages for better performance
 
 #[derive(Debug, Clone)]
 pub struct Error {
+    pub(crate) messages: Vec<Message>,
+    pub(crate) kind: ErrorKind,
+}
+
+impl WithSpan for Error {
+    fn get_span(&self) -> Span {
+        self.messages.last().unwrap().get_span()
+    }
+}
+
+impl FromIterator<Error> for Error {
+    fn from_iter<T: IntoIterator<Item = Error>>(iter: T) -> Self {
+        let mut kind = ErrorKind::OtherError;
+        let mut messages = vec![];
+        for err in iter.into_iter() {
+            kind = err.kind();
+            messages.extend(err.messages);
+        }
+        Self { messages, kind }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Message {
     pub(crate) span: Span,
     pub(crate) reason: String,
-    pub(crate) kind: ErrorKind,
+}
+
+impl WithSpan for Message {
+    fn get_span(&self) -> Span {
+        self.span
+    }
+}
+
+impl Message {
+    pub fn new(span: Span, reason: impl ToString) -> Self {
+        Self {
+            span,
+            reason: reason.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,14 +59,18 @@ pub enum ErrorKind {
 impl Error {
     pub fn new(span: Span, reason: impl ToString, kind: ErrorKind) -> Self {
         Self {
-            span,
-            reason: reason.to_string(),
+            messages: vec![Message::new(span, reason)],
             kind,
         }
     }
 
     pub fn map(mut self, new_reason: impl ToString) -> Self {
-        self.reason = new_reason.to_string();
+        self.messages.last_mut().unwrap().reason = new_reason.to_string();
+        self
+    }
+
+    pub fn append(mut self, new_span: Span, new_reason: impl ToString) -> Self {
+        self.messages.push(Message::new(new_span, new_reason));
         self
     }
 
@@ -70,6 +111,10 @@ impl<T> TryFrom<Result<T>> for Error {
 pub trait WithSpan {
     fn get_span(&self) -> Span;
 
+    fn make_message(&self, reason: impl ToString) -> Message {
+        Message::new(self.get_span(), reason)
+    }
+
     fn make_error(&self, reason: impl ToString, kind: ErrorKind) -> Error {
         Error::new(self.get_span(), reason, kind)
     }
@@ -84,11 +129,5 @@ pub trait WithSpan {
 
     fn make_pu<P: ParseUnit<S>, S>(&self, target: P::Target) -> PU<P, S> {
         PU::new(self.get_span(), target)
-    }
-}
-
-impl WithSpan for Error {
-    fn get_span(&self) -> Span {
-        self.span
     }
 }

@@ -1,3 +1,5 @@
+use super::declare::*;
+use super::mangle::*;
 use super::*;
 use crate::ir;
 use crate::parse::*;
@@ -20,8 +22,8 @@ pub trait Scope<'ast>: Sized {
 }
 
 pub struct ModScope<'ast, M: Mangler = DefaultMangler> {
+    current: ManglePrefix,
     fns: HashMap<String, FnDef<'ast>>,
-    sub_scopes: Vec<ModScope<'ast>>,
     _p: PhantomData<M>,
 }
 
