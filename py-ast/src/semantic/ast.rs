@@ -5,21 +5,6 @@ use crate::parse;
 use crate::semantic;
 use terl::*;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypedExpr {
-    pub ty: ir::TypeDefine,
-    pub val: ir::AtomicExpr,
-}
-
-impl TypedExpr {
-    pub fn new(ty: impl Into<ir::TypeDefine>, expr: impl Into<ir::AtomicExpr>) -> Self {
-        Self {
-            ty: ty.into(),
-            val: expr.into(),
-        }
-    }
-}
-
 pub trait Ast<S: Scope = ModScope>: ParseUnit {
     type Forward;
 
@@ -51,16 +36,9 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::FnDefine {
         span: Span,
         scope: &mut ModScope<M>,
     ) -> Result<Self::Forward> {
-        let fn_name = fn_define.name.to_string();
+        let name = fn_define.name.to_string();
 
-        if let Some(exist) = scope.search_fn(&fn_name) {
-            return exist.overloads[0]
-                .raw
-                .name
-                .throw("overload is not supported now...");
-        }
-
-        let ret_ty: ir::TypeDefine = fn_define.ty.to_ast_ty()?;
+        let ty: ir::TypeDefine = fn_define.ty.to_ast_ty()?;
 
         let params = fn_define
             .params
@@ -85,51 +63,42 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::FnDefine {
                     let raw = &fn_define.params.params[idx];
                     let param = semantic::Param {
                         name: param.name,
-                        var_def: semantic::VarDef::new(param.ty, raw.get_span()),
+                        ty: param.ty,
+                        loc: raw.get_span(),
                     };
                     vec.push(param);
                     Result::Ok(vec)
                 })?;
 
-        // TODO: `mangle rule`
-        let overload = semantic::FnSign {
-            mangle: fn_name.clone(),
-            ty: ret_ty.clone(),
+        let fn_sign = semantic::FnSign {
+            ty: ty.clone(),
             params: sign_params,
             loc: span,
         };
 
-        let fn_def = semantic::FnDef::new(vec![overload]);
-        scope.regist_fn(fn_name.clone(), fn_def);
-
         // generate ast
-        let ty = ret_ty;
-        let name = fn_name;
-
-        let body = scope
-            .fn_scope(name.clone(), |scope| {
-                // scope.regist_params(params_iter);
-                for stmt in &fn_define.codes.stmts {
-                    scope.to_ast(stmt)?;
-                }
-                Ok(())
-            })?
-            .0;
-        scope.push_stmt(ir::Statement::FnDefine(ir::FnDefine {
-            ty,
-            name,
-            params,
-            body,
-        }));
+        scope.create_fn(name, fn_sign, |scope| {
+            // scope.regist_params(params_iter);
+            for stmt in &fn_define.codes.stmts {
+                scope.to_ast(stmt)?;
+            }
+            Ok(())
+        })?;
+        // scope.push_stmt(ir::Statement::FnDefine(ir::FnDefine {
+        //     ty,
+        //     name,
+        //     params,
+        //     body,
+        // }));
 
         Ok(())
     }
 }
 
-impl Ast for parse::Statement {
+impl<M: Mangler> Ast<ModScope<M>> for parse::Statement {
     type Forward = ();
 
-    fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
         match stmt {
             parse::Statement::FnCallStmt(fn_call) => {
                 scope.to_ast(fn_call)?;
@@ -158,10 +127,14 @@ impl Ast for parse::Statement {
     }
 }
 
-impl Ast for parse::FnCall {
-    type Forward = TypedExpr;
+impl<M: Mangler> Ast<ModScope<M>> for parse::FnCall {
+    type Forward = mir::Variable;
 
-    fn to_ast(fn_call: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(
+        fn_call: &Self::Target,
+        span: Span,
+        scope: &mut ModScope<M>,
+    ) -> Result<Self::Forward> {
         let (tys, vals): (Vec<_>, Vec<_>) = fn_call
             .args
             .args
@@ -173,6 +146,8 @@ impl Ast for parse::FnCall {
             })?
             .into_iter()
             .unzip();
+
+        let overloads = scope.function_overload_declare(&fn_call.fn_name);
 
         let Some(fn_def) = scope.search_fn(&fn_call.fn_name) else {
             return span.throw("use of undefined function");
@@ -211,10 +186,14 @@ impl Ast for parse::FnCall {
     }
 }
 
-impl Ast for parse::VarStore {
+impl<M: Mangler> Ast<ModScope<M>> for parse::VarStore {
     type Forward = ();
 
-    fn to_ast(var_store: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(
+        var_store: &Self::Target,
+        span: Span,
+        scope: &mut ModScope<M>,
+    ) -> Result<Self::Forward> {
         let name = var_store.name.clone();
         // function parameters are inmutable
 
@@ -239,13 +218,13 @@ impl Ast for parse::VarStore {
     }
 }
 
-impl Ast for parse::VarDefine {
+impl<M: Mangler> Ast<ModScope<M>> for parse::VarDefine {
     type Forward = ();
 
     fn to_ast(
         var_define: &Self::Target,
         span: Span,
-        scope: &mut ModScope,
+        scope: &mut ModScope<M>,
     ) -> Result<Self::Forward> {
         // TODO: testfor if  ty exist
         let ty = var_define.ty.to_ast_ty()?;
@@ -272,10 +251,10 @@ impl Ast for parse::VarDefine {
     }
 }
 
-impl Ast for parse::If {
+impl<M: Mangler> Ast<ModScope<M>> for parse::If {
     type Forward = ();
 
-    fn to_ast(if_: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(if_: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
         let mut branches = vec![scope.to_ast(&if_.ruo4)?];
         for chain in &if_.chains {
             match &**chain {
@@ -300,10 +279,14 @@ impl Ast for parse::If {
     }
 }
 
-impl Ast for parse::While {
+impl<M: Mangler> Ast<ModScope<M>> for parse::While {
     type Forward = ();
 
-    fn to_ast(while_: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(
+        while_: &Self::Target,
+        _span: Span,
+        scope: &mut ModScope<M>,
+    ) -> Result<Self::Forward> {
         let cond = scope.to_ast(&while_.conds)?;
         let body = scope.to_ast(&while_.block)?;
         scope.push_stmt(ir::Statement::While(ir::While { cond, body }));
@@ -311,20 +294,28 @@ impl Ast for parse::While {
     }
 }
 
-impl Ast for parse::AtomicIf {
+impl<M: Mangler> Ast<ModScope<M>> for parse::AtomicIf {
     type Forward = ir::IfBranch;
 
-    fn to_ast(atomic: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(
+        atomic: &Self::Target,
+        _span: Span,
+        scope: &mut ModScope<M>,
+    ) -> Result<Self::Forward> {
         let cond = scope.to_ast(&atomic.conds)?;
         let body = scope.to_ast(&atomic.block)?;
         Result::Ok(ir::IfBranch { cond, body })
     }
 }
 
-impl Ast for parse::Return {
+impl<M: Mangler> Ast<ModScope<M>> for parse::Return {
     type Forward = ();
 
-    fn to_ast(return_: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(
+        return_: &Self::Target,
+        _span: Span,
+        scope: &mut ModScope<M>,
+    ) -> Result<Self::Forward> {
         let val = match &return_.val {
             Some(val) => Some(scope.to_ast(val)?),
             None => None,
@@ -336,10 +327,10 @@ impl Ast for parse::Return {
     }
 }
 
-impl Ast for parse::CodeBlock {
+impl<M: Mangler> Ast<ModScope<M>> for parse::CodeBlock {
     type Forward = ir::Statements;
 
-    fn to_ast(block: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(block: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
         scope
             .spoce(|scope| {
                 for stmt in &block.stmts {
@@ -352,10 +343,10 @@ impl Ast for parse::CodeBlock {
 }
 
 // TODO: condition`s`
-impl Ast for parse::Arguments {
+impl<M: Mangler> Ast<ModScope<M>> for parse::Arguments {
     type Forward = ir::Condition;
 
-    fn to_ast(cond: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(cond: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
         let (compute, last_cond) = scope.spoce(|scope| {
             let mut last_cond = scope.to_ast(&cond.args[0])?;
             for arg in cond.args.iter().skip(1) {
@@ -375,10 +366,10 @@ impl Ast for parse::Arguments {
     }
 }
 
-impl Ast for parse::Expr {
-    type Forward = TypedExpr;
+impl<M: Mangler> Ast<ModScope<M>> for parse::Expr {
+    type Forward = mir::Variable;
 
-    fn to_ast(expr: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
+    fn to_ast(expr: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
         match expr {
             parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, span, scope),
             parse::Expr::Binary(l, o, r) => {
@@ -411,54 +402,48 @@ impl Ast for parse::Expr {
     }
 }
 
-impl Ast for parse::AtomicExpr {
-    type Forward = TypedExpr;
+impl<M: Mangler> Ast<ModScope<M>> for parse::AtomicExpr {
+    type Forward = mir::Variable;
 
-    fn to_ast(atomic: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
-        match atomic {
-            parse::AtomicExpr::CharLiteral(char) => Ok(TypedExpr::new(
-                ir::PrimitiveType::char(),
-                ir::AtomicExpr::Char(char.parsed),
-            )),
-            parse::AtomicExpr::StringLiteral(str) => Ok(TypedExpr::new(
-                ir::ComplexType::string(),
-                ir::AtomicExpr::String(str.parsed.clone()),
-            )),
+    fn to_ast(atomic: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
+        let atomic = match atomic {
+            // atomics
+            parse::AtomicExpr::CharLiteral(char) => mir::AtomicExpr::Char(char.parsed),
+            parse::AtomicExpr::StringLiteral(str) => mir::AtomicExpr::String(str.parsed.clone()),
             parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float { number, .. } => Ok(TypedExpr::new(
-                    ir::PrimitiveType::F32,
-                    ir::AtomicExpr::Float(*number),
-                )),
-                parse::NumberLiteral::Digit { number, .. } => Ok(TypedExpr::new(
-                    ir::PrimitiveType::Usize,
-                    ir::AtomicExpr::Integer(*number),
-                )),
+                parse::NumberLiteral::Float { number, .. } => mir::AtomicExpr::Float(*number),
+                parse::NumberLiteral::Digit { number, .. } => mir::AtomicExpr::Integer(*number),
             },
-            parse::AtomicExpr::FnCall(fn_call) => parse::FnCall::to_ast(fn_call, span, scope),
+
+            parse::AtomicExpr::FnCall(fn_call) => {
+                return parse::FnCall::to_ast(fn_call, span, scope)
+            }
             parse::AtomicExpr::Variable(var) => {
                 let Some(def) = scope.search_var(var) else {
                     return span.throw("use of undefined variable");
                 };
 
-                Ok(TypedExpr::new(
-                    def.0.ty.clone(),
-                    ir::AtomicExpr::Variable(var.to_string()),
-                ))
+                todo!()
             }
 
             // here, this is incorrect because operators may be overloadn
             // all operator overloadn must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
-                let l = scope.to_ast(&unary.expr)?;
-                if !l.ty.is_primitive() {
-                    return span.throw("only operator around primitive types are supported");
-                }
-                let ty = ir::PrimitiveType::try_from(l.ty).unwrap();
-                let expr = scope.push_compute(ty, ir::OperateExpr::unary(*unary.operator, l.val));
-                Result::Ok(TypedExpr::new(ty, expr))
+                // let l = scope.to_ast(&unary.expr)?;
+                // if !l.ty.is_primitive() {
+                //     return span.throw("only operator around primitive types are supported");
+                // }
+                // let ty = ir::PrimitiveType::try_from(l.ty).unwrap();
+                // let expr = scope.push_compute(ty, ir::OperateExpr::unary(*unary.operator, l.val));
+                // Result::Ok(TypedExpr::new(ty, expr))
+                todo!()
             }
-            parse::AtomicExpr::BracketExpr(expr) => scope.to_ast(&expr.expr),
+            parse::AtomicExpr::BracketExpr(expr) => return scope.to_ast(&expr.expr),
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),
-        }
+        };
+
+        let benches = mir::Variable::atomic_benches::<M>(&atomic);
+        let ty = scope.delcare(benches)?;
+        Ok(mir::Variable::new_normal(atomic, ty))
     }
 }

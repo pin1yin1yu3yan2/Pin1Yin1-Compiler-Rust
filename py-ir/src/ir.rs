@@ -166,26 +166,27 @@ impl PrimitiveType {
     }
 }
 
+/// [`std::str::FromStr`] provide builtin type support
 impl std::str::FromStr for PrimitiveType {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "i1" | "bool" => Ok(Self::Bool),
-            "i8" => Ok(Self::I8),
-            "u8" => Ok(Self::U8),
-            "i16" => Ok(Self::I16),
-            "u16" => Ok(Self::U16),
-            "i32" => Ok(Self::I32),
-            "u32" | "char" => Ok(Self::U32),
-            "i64" => Ok(Self::I64),
-            "u64" => Ok(Self::U64),
-            "i128" => Ok(Self::I128),
-            "u128" => Ok(Self::U128),
-            "usize" => Ok(Self::Usize),
-            "isize" => Ok(Self::Isize),
-            "f32" => Ok(Self::F32),
-            "f64" => Ok(Self::F64),
+            "bu4" => Ok(Self::Bool),
+            "kuan1 8 zheng3" => Ok(Self::I8),
+            "wu2fu2 kuan1 8 zheng3" => Ok(Self::U8),
+            "kuan1 16 zheng3" => Ok(Self::I16),
+            "wu2fu2 kuan1 16 zheng3" => Ok(Self::U16),
+            "kuan1 32 zheng3" => Ok(Self::I32),
+            "wu2fu2 kuan1 32 zheng3" => Ok(Self::U32),
+            "kuan1 64 zheng3" => Ok(Self::I64),
+            "wu2fu2 kuan1 64 zheng3" => Ok(Self::U64),
+            "kuan1 128 zheng3" => Ok(Self::I128),
+            "wu2fu2 kuan1 128 zheng3" => Ok(Self::U128),
+            "wu2fu2 zheng3" => Ok(Self::Usize),
+            "zheng3" => Ok(Self::Isize),
+            "kuan1 32 fu2" | "fu2" => Ok(Self::F32),
+            "kuan1 64 fu2" => Ok(Self::F64),
             _ => Err(()),
         }
     }
@@ -247,6 +248,19 @@ impl ComplexType {
     }
 }
 
+/// [`std::str::FromStr`] provide builtin type support
+impl std::str::FromStr for ComplexType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "chuan4" {
+            Ok(Self::string())
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl std::fmt::Display for ComplexType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(decorators) = &self.decorators {
@@ -295,6 +309,16 @@ impl std::fmt::Display for TypeDefine {
             TypeDefine::Primitive(ty) => write!(f, "{}", ty),
             TypeDefine::Complex(ty) => write!(f, "{}", ty),
         }
+    }
+}
+
+impl std::str::FromStr for TypeDefine {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        PrimitiveType::from_str(s)
+            .map(Into::into)
+            .or_else(|_| ComplexType::from_str(s).map(Into::into))
     }
 }
 

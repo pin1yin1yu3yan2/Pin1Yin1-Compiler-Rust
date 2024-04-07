@@ -1,8 +1,7 @@
-use std::borrow::Cow;
-
+use super::{declare::*, mangle::Mangler};
+use crate::{benches, ops::Operators};
 use py_ir::ir::PrimitiveType;
-
-use crate::ops::Operators;
+use std::borrow::Cow;
 
 pub type Statements = Vec<Statement>;
 
@@ -102,13 +101,39 @@ impl Type {
 #[derive(Debug, Clone)]
 pub struct NormalVariable {
     pub expr: AtomicExpr,
-    // pub ty: Box<dyn IndirectDeclare<Type>>,
+    pub ty: GroupIdx,
 }
 
 #[derive(Debug, Clone)]
 pub enum Variable {
     Normal(NormalVariable),
     FnCall(FnCall),
+}
+
+impl Variable {
+    pub fn new_normal(atomic: AtomicExpr, ty: GroupIdx) -> Self {
+        Self::Normal(NormalVariable { expr: atomic, ty })
+    }
+
+    pub fn atomic_benches<M: Mangler>(atomic: &AtomicExpr) -> Vec<BenchBuilder<M>> {
+        match atomic {
+            AtomicExpr::Char(_) => benches! {() => "zi4"},
+            // String: greatly in processing...
+            AtomicExpr::String(_) => benches! {() => "chuan4"},
+            AtomicExpr::Integer(_) => benches! {
+                () => "zheng3",
+                () => "kuan1 8 zheng3",() => "kuan1 16 zheng3",() => "kuan1 32 zheng3",() => "kuan1 64 zheng3",
+                () => "kuan1 128 zheng3", () => "wu2fu2 kuan1 8 zheng3",() => "wu2fu2  kuan1 16 zheng3",
+                () => "wu2fu2  kuan1 32 zheng3",() => "wu2fu2  kuan1 64 zheng3",() => "wu2fu2  kuan1 128 zheng3"
+            },
+            AtomicExpr::Float(_) => benches! {
+                () => "fu2",
+                () => "kuan1 64 fu2"
+            },
+            // should be filtered out before, and extend stored GroupIdx
+            AtomicExpr::Variable(_) => unreachable!(),
+        }
+    }
 }
 
 pub type Variables = Vec<Variable>;
@@ -297,18 +322,9 @@ pub struct VarStore {
 }
 
 #[derive(Debug, Clone)]
-pub struct FnOverloadSelect {
-    mangled: String,
-}
-
-// impl DeclareKind for FnOverloadSelect {
-//     type Type = String;
-// }
-
-#[derive(Debug, Clone)]
 pub struct FnCall {
     /// FnOverloadSelect
-    pub fn_name: String,
+    pub fn_name: GroupIdx,
     pub args: Variables,
 }
 

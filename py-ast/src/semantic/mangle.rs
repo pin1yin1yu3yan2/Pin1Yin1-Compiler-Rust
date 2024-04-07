@@ -9,11 +9,13 @@ pub enum ManglePrefix {
 #[derive(Debug, Clone)]
 pub enum MangleItem<'m> {
     Fn {
-        name: Cow<'m, String>,
+        name: Cow<'m, str>,
         /// must be [`MangleItem::Type`]
         params: Vec<MangleUnit<'m>>,
     },
-    Type(),
+    Type {
+        ty: Cow<'m, str>,
+    },
     Val(),
 }
 

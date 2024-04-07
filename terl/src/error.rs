@@ -70,6 +70,17 @@ impl Error {
         }
     }
 
+    pub fn new_empty(kind: ErrorKind) -> Self {
+        Self {
+            messages: vec![],
+            kind,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.messages.is_empty()
+    }
+
     pub fn from_message(message: Message, kind: ErrorKind) -> Self {
         Self {
             messages: vec![message],
