@@ -12,7 +12,7 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn new(start: usize, end: usize) -> Self {
+    pub const fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
 
@@ -23,11 +23,11 @@ impl Span {
         Span::new(start, end)
     }
 
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.end - self.start
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
@@ -57,7 +57,7 @@ impl<P: ParseUnit<S>, S> WithSpan for PU<P, S> {
 }
 
 impl<S, P: ParseUnit<S>> PU<P, S> {
-    pub fn new(span: Span, item: P::Target) -> Self {
+    pub const fn new(span: Span, item: P::Target) -> Self {
         Self { span, item }
     }
 

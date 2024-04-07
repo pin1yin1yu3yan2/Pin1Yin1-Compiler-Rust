@@ -26,6 +26,12 @@ impl FromIterator<Error> for Error {
     }
 }
 
+impl Extend<Message> for Error {
+    fn extend<T: IntoIterator<Item = Message>>(&mut self, iter: T) {
+        self.messages.extend(iter)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Message {
     pub(crate) span: Span,
@@ -64,6 +70,13 @@ impl Error {
         }
     }
 
+    pub fn from_message(message: Message, kind: ErrorKind) -> Self {
+        Self {
+            messages: vec![message],
+            kind,
+        }
+    }
+
     pub fn map(mut self, new_reason: impl ToString) -> Self {
         self.messages.last_mut().unwrap().reason = new_reason.to_string();
         self
@@ -71,6 +84,11 @@ impl Error {
 
     pub fn append(mut self, new_span: Span, new_reason: impl ToString) -> Self {
         self.messages.push(Message::new(new_span, new_reason));
+        self
+    }
+
+    pub fn append_message(mut self, message: Message) -> Self {
+        self.messages.push(message);
         self
     }
 

@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
 #[derive(Debug, Clone)]
 pub enum ManglePrefix {
@@ -7,24 +7,26 @@ pub enum ManglePrefix {
 }
 
 #[derive(Debug, Clone)]
-pub enum MangleItem<'p> {
-    Fn(&'p str, &'p [MangleUnit<'p>]),
+pub enum MangleItem<'m> {
+    Fn {
+        name: Cow<'m, String>,
+        /// must be [`MangleItem::Type`]
+        params: Vec<MangleUnit<'m>>,
+    },
     Type(),
     Val(),
 }
 
 #[derive(Debug, Clone)]
-pub struct MangleUnit<'p> {
-    prefix: &'p [ManglePrefix],
-    item: MangleItem<'p>,
-}
-
-pub trait MangleAble<M: Mangler> {
-    fn mangle_unit(&self) -> MangleUnit;
+pub struct MangleUnit<'m> {
+    pub prefix: Cow<'m, [ManglePrefix]>,
+    pub item: MangleItem<'m>,
 }
 
 pub trait Mangler: Sized {
     fn mangle(unit: MangleUnit) -> String;
+
+    fn demangle(str: &str) -> MangleUnit<'static>;
 }
 
 pub type DefaultMangler = ChineseMangler;
@@ -32,7 +34,11 @@ pub type DefaultMangler = ChineseMangler;
 pub struct ChineseMangler;
 
 impl Mangler for ChineseMangler {
-    fn mangle(unit: MangleUnit) -> String {
+    fn mangle(_unit: MangleUnit) -> String {
+        todo!()
+    }
+
+    fn demangle(_str: &str) -> MangleUnit<'static> {
         todo!()
     }
 }

@@ -1,53 +1,47 @@
+use terl::Span;
+
 use crate::ir;
-use std::marker::PhantomData;
 
-use crate::parse;
-
-pub struct FnDef<'ast> {
-    pub overloads: Vec<FnSign<'ast>>,
+pub struct FnDef {
+    // Vec is enough
+    pub overloads: Vec<FnSign>,
 }
 
-impl<'ast> FnDef<'ast> {
-    pub fn new(overloads: Vec<FnSign<'ast>>) -> Self {
+impl FnDef {
+    pub fn new(overloads: Vec<FnSign>) -> Self {
         Self { overloads }
     }
 }
 
-pub struct FnSign<'ast> {
+pub struct FnSign {
+    /// mangled name (the real name which be used in symbol table)
     pub mangle: String,
+    /// return type of the function must be cleared (will change in future versions)
     pub ty: ir::TypeDefine,
-    pub params: Vec<Param<'ast>>,
-    pub raw: &'ast parse::FnDefine,
+    pub params: Vec<Param>,
+    pub loc: Span,
 }
 
-pub struct Param<'ast> {
+pub struct Param {
     pub name: String,
-    pub var_def: VarDef<'ast>,
-    pub _p: PhantomData<&'ast ()>,
+    pub var_def: VarDef,
 }
 
-impl<'ast> std::ops::Deref for Param<'ast> {
-    type Target = VarDef<'ast>;
+impl std::ops::Deref for Param {
+    type Target = VarDef;
 
     fn deref(&self) -> &Self::Target {
         &self.var_def
     }
 }
 
-pub struct VarDef<'ast> {
+pub struct VarDef {
     pub ty: ir::TypeDefine,
-
-    pub raw_define: &'ast parse::VarDefine,
-    _p: PhantomData<&'ast ()>,
+    pub loc: Span,
 }
 
-impl<'ast> VarDef<'ast> {
-    pub fn new(ty: ir::TypeDefine, raw_define: &'ast parse::VarDefine) -> Self {
-        Self {
-            ty,
-
-            raw_define,
-            _p: PhantomData,
-        }
+impl VarDef {
+    pub fn new(ty: ir::TypeDefine, loc: Span) -> Self {
+        Self { ty, loc }
     }
 }

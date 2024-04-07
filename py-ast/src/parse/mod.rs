@@ -15,7 +15,7 @@ pub use syntax::*;
 pub use types::*;
 
 #[derive(Debug, Clone)]
-pub struct Ident(String);
+pub struct Ident(pub String);
 
 impl std::ops::Deref for Ident {
     type Target = str;

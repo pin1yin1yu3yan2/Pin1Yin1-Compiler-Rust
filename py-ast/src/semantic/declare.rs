@@ -1,425 +1,327 @@
 use std::{
-    any::{Any, TypeId},
-    mem::transmute,
+    any::Any,
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    hash::Hash,
+    marker::PhantomData,
 };
-
-use terl::{Span, WithSpan};
 
 use super::ModScope;
 
-/// declaration map:
-///
-///     * determine which overload is used:
-///
-///         * basic operators around primitive types(determine literals' types)
-///
-/// implementation:
-///
-///     * use reflection to do decalre together
-///
-///     * use directed map to solve dependencies of declare items
-///
-///     * use rules to do declare
-pub struct DeclareMap {
-    items: Vec<ReflectDeclarer>,
-    deps: Vec<Vec<DeclareIdx>>,
+#[derive(Debug, Clone)]
+pub struct ResourcesIdx {
+    pub idx: usize,
 }
 
-pub trait DeclareKind: Sized + Any {
-    type Type: Clone;
+#[derive(Default, Debug)]
+pub struct DeclareMap {
+    groups: Vec<DeclareGroup>,
+    /// deps means that [`Bench`] depend **ALL** of them
+    ///
+    /// if any of them is impossible, the [`Bench`] will be removed, too
+    deps: HashMap<Bench, HashSet<Bench>>,
+    // reversed dependencies
+    rdeps: HashMap<Bench, HashSet<Bench>>,
 }
 
 impl DeclareMap {
     pub fn new() -> Self {
-        Self {
-            items: vec![],
-            deps: vec![vec![]],
-        }
+        Self::default()
     }
 
-    pub fn new_declare<K, E>(&mut self, span: Span, err_msg: E) -> DeclareIdx
+    pub fn new_declare<I>(&mut self, iter: I) -> GroupIdx
     where
-        K: DeclareKind,
-        E: Fn(&Declarer<K>) -> String + 'static,
+        I: IntoIterator<Item = (ResourcesIdx, Vec<Bench>)>,
     {
-        let idx = DeclareIdx {
-            idx: self.items.len(),
+        let declare_idx = GroupIdx {
+            idx: self.groups.len(),
         };
-        self.items
-            .push(Declarer::<K>::new(idx, span, err_msg).into());
-        self.deps.push(vec![]);
 
-        idx
-    }
+        let mut possiables = HashMap::default();
 
-    fn build_dep_map(&mut self) {
-        // load
-        for i in 0..self.items.len() {
-            // bias: deps[0] deps none(skiped)
-            self.deps[i + 1] = self.items[i].deps(&self);
-        }
-    }
+        for (idx, (kind, deps)) in iter.into_iter().enumerate() {
+            possiables.insert(idx, kind);
+            let this_node = Bench::new(declare_idx, idx);
 
-    /// topo sort is used
-    fn is_cycle(&self) -> Result<(), Vec<DeclareIdx>> {
-        // nodes are required by idx
-        let mut in_degree = vec![vec![]; self.deps.len() + 1];
+            self.deps.insert(this_node, deps.iter().copied().collect());
+            self.rdeps.insert(this_node, Default::default());
 
-        for (idx, deps) in self.deps.iter().enumerate() {
             for dep in deps {
-                in_degree[dep.idx].push(idx);
+                self.rdeps.get_mut(&dep).unwrap().insert(this_node);
             }
         }
 
-        // hashmap is cheap to remove
-        use std::collections::HashMap;
-        let mut deps = self
-            .deps
-            .iter()
-            .map(|deps| deps.len())
-            .enumerate()
-            .collect::<HashMap<_, _>>();
+        self.groups.push(DeclareGroup::new(possiables));
 
-        loop {
-            let empties = deps
-                .iter()
-                .filter(|(_, v)| **v == 0)
-                .map(|(k, _)| *k)
-                .collect::<Vec<_>>();
-
-            for empty in &empties {
-                deps.remove(empty);
-            }
-
-            if deps.is_empty() {
-                return Ok(());
-            }
-
-            if empties.is_empty() {
-                return Err(deps.keys().map(|k| DeclareIdx::new(*k)).collect());
-            }
-
-            for decrease in empties.iter().flat_map(|k| &in_degree[*k]) {
-                *deps.get_mut(decrease).unwrap() -= 1;
-            }
-        }
+        declare_idx
     }
 
-    /// # Safety
-    ///
-    ///  [`Self::build_dep_map`] and [`Self::is_cycle`] must be called before calling this function
-    ///
-    /// this method may be ub if there is a cycle dependency in [`Self::deps`]
-    pub unsafe fn solve_one<K: DeclareKind>(&mut self, idx: DeclareIdx) -> Option<&K::Type> {
-        let s: &Self = self;
-        #[allow(mutable_transmutes)]
-        let s1: &mut Self = transmute(s);
-        #[allow(mutable_transmutes)]
-        let s2: &mut Self = transmute(s);
-        s1[idx].cast_mut::<K>().solve(s2)
-    }
-
-    pub fn solve_all(&mut self) -> Result<(), Vec<DeclareIdx>> {
-        self.build_dep_map();
-        self.is_cycle()?;
-
-        // for idx in 1..self.deps {}
-
-        todo!()
-    }
-}
-
-impl std::ops::Index<DeclareIdx> for DeclareMap {
-    type Output = ReflectDeclarer;
-
-    fn index(&self, index: DeclareIdx) -> &Self::Output {
-        &self.items[index.idx]
-    }
-}
-
-impl std::ops::IndexMut<DeclareIdx> for DeclareMap {
-    fn index_mut(&mut self, index: DeclareIdx) -> &mut Self::Output {
-        &mut self.items[index.idx]
-    }
-}
-
-impl Default for DeclareMap {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub struct ReflectDeclarer {
-    kind_ty: TypeId,
-    declarer: Box<Declarer<NotDeclareKind>>,
-}
-
-impl ReflectDeclarer {
-    pub fn cast<K: DeclareKind>(&self) -> &Declarer<K> {
-        assert!(self.kind_ty == TypeId::of::<K>());
-
-        // see https://github.com/rust-lang/rust-clippy/issues/12602, this is a wrong suggestion
-        #[allow(clippy::borrowed_box)]
-        let item: &Box<Declarer<K>> = unsafe { transmute(&self.declarer) };
-        item
-    }
-
-    pub fn cast_mut<K: DeclareKind>(&mut self) -> &mut Declarer<K> {
-        assert!(self.kind_ty == TypeId::of::<K>());
-
-        let item: &mut Box<Declarer<K>> = unsafe { transmute(&mut self.declarer) };
-        item
-    }
-
-    fn deps(&self, _map: &DeclareMap) -> Vec<DeclareIdx> {
-        self.declarer.deps()
-    }
-}
-
-impl<K: DeclareKind> From<Declarer<K>> for ReflectDeclarer {
-    fn from(value: Declarer<K>) -> Self {
-        Self {
-            kind_ty: TypeId::of::<K>(),
-            declarer: unsafe { transmute(Box::new(value)) },
-        }
-    }
-}
-
-pub struct Declarer<K: DeclareKind> {
-    pub idx: DeclareIdx,
-    pub span: Span,
-    pub items: Vec<DeclareItem<K>>,
-    pub rules: Vec<Box<dyn DeclareRule<K>>>,
-    pub error_msg: Box<dyn Fn(&Declarer<K>) -> String>,
-}
-
-impl<Kind: DeclareKind> Declarer<Kind> {
-    pub fn new<E>(idx: DeclareIdx, span: Span, err_msg: E) -> Self
+    pub fn delcare<I>(&mut self, scope: &ModScope, benches: I) -> terl::Result<()>
     where
-        E: Fn(&Declarer<Kind>) -> String + 'static,
+        I: IntoIterator<Item = BenchBuilder>,
     {
-        Self {
-            idx,
-            span,
-            items: vec![],
-            rules: vec![],
-            error_msg: Box::new(err_msg),
-        }
-    }
-
-    pub fn add_rule(&mut self, rule: impl DeclareRule<Kind> + 'static) {
-        self.rules.push(Box::new(rule));
-    }
-
-    pub fn add_types(&mut self, types: &impl Types<Kind>) {
-        self.items.extend(types.types());
-    }
-
-    pub fn deps(&self) -> Vec<DeclareIdx> {
-        self.items
-            .iter()
-            .map(|item| item.get_declare_idx())
-            .chain(self.rules.iter().map(|rule| rule.get_declare_idx()))
-            .collect()
-    }
-
-    pub fn contain<R>(&self, map: &DeclareMap, rhs: &R) -> bool
-    where
-        Kind::Type: PartialEq<R>,
-    {
-        self.items
-            .iter()
-            .any(|item| item.declare_result(map).is_some_and(|item| item == rhs))
-    }
-
-    pub unsafe fn solve<'a>(
-        &'a mut self,
-        map: &'a mut DeclareMap,
-    ) -> Option<&'a <Kind as DeclareKind>::Type> {
-        for item in &mut self.items {
-            item.solve(map)?;
-        }
-
-        let all_satisfy = |item: &DeclareItem<Kind>| -> bool {
-            self.rules
-                .iter()
-                .all(|rule| rule.satisfy(item.declare_result(map).unwrap()))
+        let gidx = GroupIdx {
+            idx: self.groups.len(),
         };
 
-        let mut all_satisfied = vec![];
-        while let Some(item) = self.items.pop() {
-            if all_satisfy(&item) {
-                all_satisfied.push(item);
+        let mut res = HashMap::new();
+
+        'bench: for (bench_idx, bench) in benches.into_iter().enumerate() {
+            let mut deps = HashSet::new();
+            let mut used_group = HashSet::new();
+
+            let node = Bench::new(gidx, bench_idx);
+            for action in bench.actinons {
+                match (action)(self, scope) {
+                    // use different bench in a group together
+                    Ok(diff) if used_group.contains(&diff.belong_to) && !deps.contains(&diff) => {
+                        todo!()
+                    }
+                    // mul bench matched together
+                    Err(_mul_nodes) if !_mul_nodes.is_empty() => todo!(),
+                    // non of bench matched, mean that bench failed
+                    Err(_no_node) => continue 'bench,
+                    // normal case
+                    Ok(dep_node) => {
+                        used_group.insert(dep_node.belong_to);
+                        deps.insert(dep_node)
+                    }
+                };
+            }
+
+            for &dep in &deps {
+                self.rdeps.get_mut(&dep).unwrap().insert(node);
+            }
+            self.deps.insert(node, deps);
+            res.insert(bench_idx, bench.res);
+        }
+
+        self.check_group(gidx);
+
+        Ok(())
+    }
+
+    fn check_group(&mut self, gidx: GroupIdx) {
+        if self.groups[gidx.idx].res.len() == 1 {
+            let bench_idx = *self.groups[gidx.idx].res.keys().next().unwrap();
+            self.make_sure(Bench::new(gidx, bench_idx));
+        }
+    }
+
+    /// make sure that the bench is selected
+    fn make_sure(&mut self, bidx: Bench) {
+        // take out other benches
+        let declare_group = &mut self.groups[bidx.belong_to.idx].res;
+        let mut removed_group = std::mem::take(declare_group);
+        declare_group.insert(
+            bidx.bench_idx,
+            removed_group.remove(&bidx.bench_idx).unwrap(),
+        );
+
+        for removed in removed_group.keys() {
+            self.delete_bench(Bench::new(bidx.belong_to, *removed))
+        }
+
+        // forward delcare result to lower level group
+        for sub_bench in self.deps.get(&bidx).unwrap().clone() {
+            self.make_sure(sub_bench);
+        }
+    }
+
+    /// Zhu double eight: is your Nine Clan(Bench) wholesale?
+    fn delete_bench(&mut self, bench: Bench) {
+        if let Some(deps) = self.deps.remove(&bench) {
+            for dep in deps {
+                self.delete_bench(dep)
             }
         }
-        self.items = all_satisfied;
-        self.declare_result(map)
-    }
-
-    pub fn declare<'a>(&'a mut self, map: &'a mut DeclareMap) -> terl::Result<&'a Kind::Type> {
-        match unsafe { self.solve(map) } {
-            // wtf??
-            Some(..) => return Ok(self.declare_result(map).unwrap()),
-            None => Err(self
-                .get_span()
-                .make_error((self.error_msg)(&self), terl::ErrorKind::Semantic)),
-        }
-    }
-
-    pub fn declare_result<'a>(
-        &'a self,
-        map: &'a DeclareMap,
-    ) -> Option<&'a <Kind as DeclareKind>::Type> {
-        if self.items.len() == 1 {
-            // unwrap: always(must) be Some
-            Some(self.items[0].declare_result(map).unwrap())
-        } else {
-            None
+        if let Some(rdeps) = self.rdeps.remove(&bench) {
+            for rdep in rdeps {
+                self.delete_bench(rdep)
+            }
         }
     }
 }
 
-impl<K: DeclareKind> terl::WithSpan for Declarer<K> {
-    fn get_span(&self) -> Span {
-        self.span
+impl std::ops::Index<GroupIdx> for DeclareMap {
+    type Output = DeclareGroup;
+
+    fn index(&self, index: GroupIdx) -> &Self::Output {
+        &self.groups[index.idx]
     }
 }
 
-pub trait Declare<Kind: DeclareKind> {
-    fn get_declare_idx(&self) -> DeclareIdx;
-
-    fn get_declarer<'a>(&self, map: &'a DeclareMap) -> &'a Declarer<Kind> {
-        map[self.get_declare_idx()].cast()
+impl std::ops::IndexMut<GroupIdx> for DeclareMap {
+    fn index_mut(&mut self, index: GroupIdx) -> &mut Self::Output {
+        &mut self.groups[index.idx]
     }
+}
 
-    fn get_declarer_mut<'a>(&self, map: &'a mut DeclareMap) -> &'a mut Declarer<Kind> {
-        map[self.get_declare_idx()].cast_mut()
-    }
+/// [`Vec<DeclareNode>`] as [`Err`] because only one of possible should be depended
+///
+/// if [`Vec::is_empty`], this measn that no possiable could find, this is not a kind of error,
+/// but means the bench is impossiable
+type BenchBuildAction = Box<dyn Fn(&DeclareMap, &ModScope) -> terl::Result<Bench, Vec<Bench>>>;
 
-    fn deps(&self, map: &DeclareMap) -> Vec<DeclareIdx> {
-        map[self.get_declare_idx()].cast::<Kind>().deps()
-    }
+pub struct BenchBuilder {
+    res: ResourcesIdx,
 
-    /// # Safety
-    ///
-    /// see [`DeclareMap::solve_one`]
-    unsafe fn solve<'a>(&'a mut self, map: &'a mut DeclareMap) -> Option<&'a Kind::Type> {
-        map.solve_one::<Kind>(self.get_declare_idx())
-    }
+    actinons: Vec<BenchBuildAction>,
+}
 
-    fn declare<'a>(&'a mut self, map: &'a mut DeclareMap) -> terl::Result<&'a Kind::Type> {
-        match unsafe { self.solve(map) } {
-            // wtf??
-            Some(..) => return Ok(self.declare_result(map).unwrap()),
-            None => Err(self.get_declarer(map)).map_err(|dec| {
-                dec.get_span()
-                    .make_error((dec.error_msg)(dec), terl::ErrorKind::Semantic)
-            }),
+impl BenchBuilder {
+    pub fn new(res: ResourcesIdx) -> Self {
+        Self {
+            res,
+
+            actinons: vec![],
         }
     }
 
-    fn declare_result<'a>(&'a self, map: &'a DeclareMap) -> Option<&'a Kind::Type> {
-        self.get_declarer(map).declare_result(map)
+    pub fn new_filter<K1, F>(mut self, gid: GroupIdx, filter: impl Into<F>) -> Self
+    where
+        K1: DeclareKind,
+        F: DeclareFilter<K1> + 'static,
+    {
+        let filter: F = filter.into();
+
+        let action = move |map: &DeclareMap, scope: &ModScope| {
+            let mut iter = map[gid]
+                .res
+                .iter()
+                .filter(|(.., res)| filter.filter(res, scope));
+            let Some((&idx, ..)) = iter.next() else {
+                return Err(vec![]);
+            };
+
+            if let Some((idx, _res)) = iter.next() {
+                let vec = std::iter::once(Bench::new(gid, *idx))
+                    .chain(iter.map(|(idx, ..)| Bench::new(gid, *idx)))
+                    .collect();
+                return Err(vec);
+            }
+
+            Ok(Bench::new(gid, idx))
+        };
+
+        self.actinons.push(Box::new(action) as _);
+
+        self
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct DeclareIdx {
-    pub(super) idx: usize,
-}
-
-impl DeclareIdx {
-    pub fn new(idx: usize) -> Self {
-        Self { idx }
-    }
-}
-
-impl Default for DeclareIdx {
-    fn default() -> Self {
-        // '0' is always ok to be resolved
-        // safe to appear in deps map
-        Self { idx: 0 }
-    }
-}
-
-pub enum DeclareItem<K: DeclareKind> {
-    Exist(K::Type),
-    Solved(DeclareIdx),
-    Unsolved(DeclareIdx),
-}
-
-impl<K: DeclareKind> Declare<K> for DeclareItem<K> {
-    fn get_declare_idx(&self) -> DeclareIdx {
-        match self {
-            DeclareItem::Exist(_) => DeclareIdx::default(),
-            DeclareItem::Solved(idx) | DeclareItem::Unsolved(idx) => *idx,
-        }
-    }
-
-    fn deps(&self, _map: &DeclareMap) -> Vec<DeclareIdx> {
-        match self {
-            DeclareItem::Exist(_) => vec![],
-            DeclareItem::Solved(idx) => vec![*idx],
-            DeclareItem::Unsolved(_) => vec![],
-        }
-    }
-
-    unsafe fn solve<'a>(
-        &'a mut self,
-        map: &'a mut DeclareMap,
-    ) -> Option<&'a <K as DeclareKind>::Type> {
-        match self {
-            DeclareItem::Exist(item) => Some(item),
-            DeclareItem::Solved(idx) => map[*idx].cast::<K>().declare_result(map),
-            DeclareItem::Unsolved(idx) => unsafe {
-                map.solve_one::<K>(*idx)
-                    .map(|ok| (*self = Self::Solved(self.get_declare_idx()), ok).1)
-            },
-        }
-    }
-
-    fn declare_result<'a>(&'a self, map: &'a DeclareMap) -> Option<&'a <K as DeclareKind>::Type> {
-        match self {
-            DeclareItem::Exist(exist) => Some(exist),
-            DeclareItem::Solved(idx) => Some(map[*idx].cast::<K>().declare_result(map).unwrap()),
-            DeclareItem::Unsolved(_) => None,
-        }
-    }
-}
-
-pub trait Types<K: DeclareKind> {
-    fn types(&self) -> Vec<DeclareItem<K>>;
-}
-
-pub trait DeclareRule<K: DeclareKind>: Declare<K> {
-    fn update(&mut self, scope: &mut ModScope);
-
-    fn satisfy(&self, types: &K::Type) -> bool;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GroupIdx {
+    idx: usize,
 }
 
 #[derive(Debug, Clone)]
-pub enum NotDeclareKind {}
-
-impl DeclareKind for NotDeclareKind {
-    type Type = NotDeclareKind;
+pub struct DeclareGroup {
+    res: HashMap<usize, ResourcesIdx>,
 }
 
-/*
+impl DeclareGroup {
+    pub fn new(res: HashMap<usize, ResourcesIdx>) -> Self {
+        Self { res }
+    }
+}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Bench {
+    /// index of [ReflectDeclare] in [DeclareMap]
+    belong_to: GroupIdx,
+    /// index of possiable of [Declare]
+    bench_idx: usize,
+}
 
-    fn x(x: i32); // #1
-    fn x(x: f32); // #2
+impl Bench {
+    pub fn new(belong_to: GroupIdx, bench_idx: usize) -> Self {
+        Self {
+            belong_to,
+            bench_idx,
+        }
+    }
+}
 
-    let a = (0..1).sum();
+pub trait DeclareKind: Any {
+    type Item: Debug + Clone;
+    type Forward: Any + Debug + Clone;
 
-    x(a);
-*/
+    fn get_item(idx: ResourcesIdx, scope: &ModScope) -> &Self::Item;
 
-/* rules:
-    Len == 1:
-        #1: ok
-        #2: ok
-    P1: allow X
-        #1: ok
-        #2: not_ok
-*/
+    fn forawrd(idx: ResourcesIdx, scope: &ModScope) -> &Self::Forward;
+}
+
+pub trait DeclareFilter<K: DeclareKind> {
+    fn filter(&self, idx: &ResourcesIdx, scope: &ModScope) -> bool;
+}
+
+pub struct DeclareFilterFn<K, F>(F, PhantomData<K>)
+where
+    K: DeclareKind,
+    F: Fn(&ResourcesIdx, &ModScope) -> bool;
+
+impl<K, F> DeclareFilter<K> for DeclareFilterFn<K, F>
+where
+    K: DeclareKind,
+    F: Fn(&ResourcesIdx, &ModScope) -> bool,
+{
+    fn filter(&self, res: &ResourcesIdx, scope: &ModScope) -> bool {
+        (self.0)(res, scope)
+    }
+}
+
+impl<K, F> DeclareFilterFn<K, F>
+where
+    K: DeclareKind,
+    F: Fn(&ResourcesIdx, &ModScope) -> bool,
+{
+    pub fn new(f: F) -> Self {
+        Self(f, PhantomData)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn feature() {
+        let mut map = DeclareMap::new();
+
+        macro_rules! t {
+            ($idx:literal) => {
+                ResourcesIdx { idx: $idx }
+            };
+        }
+
+        let m1 = map.new_declare([(t!(1), vec![]), (t!(2), vec![]), (t!(3), vec![])]);
+        let n1 = map.new_declare([(t!(2), vec![]), (t!(3), vec![]), (t!(4), vec![])]);
+
+        let i = map.new_declare([
+            (t!(3), vec![Bench::new(m1, 0), Bench::new(n1, 0)]),
+            (t!(4), vec![Bench::new(m1, 1), Bench::new(n1, 1)]),
+            (t!(5), vec![Bench::new(m1, 2), Bench::new(n1, 2)]),
+        ]);
+
+        let m2 = map.new_declare([(t!(1), vec![]), (t!(2), vec![]), (t!(3), vec![])]);
+        let n2 = map.new_declare([(t!(2), vec![]), (t!(3), vec![]), (t!(4), vec![])]);
+
+        let j = map.new_declare([
+            (t!(3), vec![Bench::new(m2, 0), Bench::new(n2, 0)]),
+            (t!(4), vec![Bench::new(m2, 1), Bench::new(n2, 1)]),
+            (t!(5), vec![Bench::new(m2, 2), Bench::new(n2, 2)]),
+        ]);
+
+        let k = map.new_declare([(t!(5), vec![Bench::new(i, 0), Bench::new(j, 1)])]);
+        map.make_sure(Bench::new(k, 0));
+
+        for group in [m1, n1, i, m2, n2, j, k] {
+            let bench_idx = *map.groups[group.idx].res.keys().next().unwrap();
+            let bench = Bench::new(group, bench_idx);
+
+            dbg!(&map.deps[&bench]);
+            dbg!(&map.rdeps[&bench]);
+        }
+    }
+}

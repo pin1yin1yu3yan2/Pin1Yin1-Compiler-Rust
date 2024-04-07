@@ -4,8 +4,6 @@ use py_ir::ir::PrimitiveType;
 
 use crate::ops::Operators;
 
-use super::declare::*;
-
 pub type Statements = Vec<Statement>;
 
 #[derive(Debug, Clone)]
@@ -101,47 +99,10 @@ impl Type {
     };
 }
 
-impl DeclareKind for Type {
-    type Type = Type;
-}
-
 #[derive(Debug, Clone)]
 pub struct NormalVariable {
     pub expr: AtomicExpr,
-    pub ty: DeclareIdx,
-}
-
-impl NormalVariable {
-    pub fn default_declare() -> &'static Type {
-        todo!()
-    }
-}
-
-impl Declare<Type> for NormalVariable {
-    fn get_declare_idx(&self) -> DeclareIdx {
-        self.ty
-    }
-
-    unsafe fn solve<'a>(
-        &'a mut self,
-        map: &'a mut DeclareMap,
-    ) -> Option<&'a <Type as DeclareKind>::Type> {
-        match map.solve_one::<Type>(self.get_declare_idx()) {
-            Some(..) => self.declare_result(map),
-            None => {
-                let declare = self.get_declarer(map);
-                match self.expr {
-                    AtomicExpr::Integer(_) if declare.contain(map, &Type::DEFAULT_INT) => {
-                        Some(&Type::DEFAULT_INT)
-                    }
-                    AtomicExpr::Float(_) if declare.contain(map, &Type::DEFAULT_FLOAT) => {
-                        Some(&Type::DEFAULT_FLOAT)
-                    }
-                    _ => None,
-                }
-            }
-        }
-    }
+    // pub ty: Box<dyn IndirectDeclare<Type>>,
 }
 
 #[derive(Debug, Clone)]
@@ -152,9 +113,10 @@ pub enum Variable {
 
 pub type Variables = Vec<Variable>;
 
-/// be fferent of [py_ir::ir::OperateExpr], this is **not** around primitive types
+/// be different of [py_ir::ir::OperateExpr], this is **not** around primitive types
 ///
 /// even the function overload may be delay
+
 #[derive(Debug, Clone)]
 pub enum OperateExpr {
     // type must be known, and then pick a operator-overload
@@ -334,18 +296,19 @@ pub struct VarStore {
     pub val: Variable,
 }
 
+#[derive(Debug, Clone)]
 pub struct FnOverloadSelect {
     mangled: String,
 }
 
-impl DeclareKind for FnOverloadSelect {
-    type Type = String;
-}
+// impl DeclareKind for FnOverloadSelect {
+//     type Type = String;
+// }
 
 #[derive(Debug, Clone)]
 pub struct FnCall {
     /// FnOverloadSelect
-    pub fn_name: DeclareIdx,
+    pub fn_name: String,
     pub args: Variables,
 }
 

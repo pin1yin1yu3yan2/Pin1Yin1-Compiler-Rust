@@ -20,23 +20,19 @@ impl TypedExpr {
     }
 }
 
-pub trait Ast<'ast, S: Scope<'ast> = FnScope<'ast>>: ParseUnit {
+pub trait Ast<S: Scope = ModScope>: ParseUnit {
     type Forward;
 
     /// divided [`PU`] into [`ParseUnit::Target`] and [`Span`] becase
     /// variants from [`crate::complex_pu`] isnot [`PU`], and the [`Span`]
     /// was stored in the enum
-    fn to_ast(s: &'ast Self::Target, span: Span, scope: &mut S) -> Result<Self::Forward>;
+    fn to_ast(s: &Self::Target, span: Span, scope: &mut S) -> Result<Self::Forward>;
 }
 
-impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::Item {
+impl<M: Mangler> Ast<ModScope<M>> for parse::Item {
     type Forward = ();
 
-    fn to_ast(
-        stmt: &'ast Self::Target,
-        span: Span,
-        scope: &mut ModScope<'ast, M>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
         match stmt {
             parse::Item::FnDefine(fn_define) => {
                 scope.to_ast_inner::<parse::FnDefine>(fn_define, span)?;
@@ -47,13 +43,13 @@ impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::Item {
     }
 }
 
-impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::FnDefine {
+impl<M: Mangler> Ast<ModScope<M>> for parse::FnDefine {
     type Forward = ();
 
     fn to_ast(
-        fn_define: &'ast Self::Target,
+        fn_define: &Self::Target,
         span: Span,
-        scope: &mut ModScope<'ast, M>,
+        scope: &mut ModScope<M>,
     ) -> Result<Self::Forward> {
         let fn_name = fn_define.name.to_string();
 
@@ -89,8 +85,7 @@ impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::FnDefine {
                     let raw = &fn_define.params.params[idx];
                     let param = semantic::Param {
                         name: param.name,
-                        var_def: semantic::VarDef::new(param.ty, raw),
-                        _p: std::marker::PhantomData,
+                        var_def: semantic::VarDef::new(param.ty, raw.get_span()),
                     };
                     vec.push(param);
                     Result::Ok(vec)
@@ -101,7 +96,7 @@ impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::FnDefine {
             mangle: fn_name.clone(),
             ty: ret_ty.clone(),
             params: sign_params,
-            raw: fn_define,
+            loc: span,
         };
 
         let fn_def = semantic::FnDef::new(vec![overload]);
@@ -131,14 +126,10 @@ impl<'ast, M: Mangler> Ast<'ast, ModScope<'ast, M>> for parse::FnDefine {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::Statement {
+impl Ast for parse::Statement {
     type Forward = ();
 
-    fn to_ast(
-        stmt: &'ast Self::Target,
-        span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         match stmt {
             parse::Statement::FnCallStmt(fn_call) => {
                 scope.to_ast(fn_call)?;
@@ -167,14 +158,10 @@ impl<'ast> Ast<'ast> for parse::Statement {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::FnCall {
+impl Ast for parse::FnCall {
     type Forward = TypedExpr;
 
-    fn to_ast(
-        fn_call: &'ast Self::Target,
-        span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(fn_call: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         let (tys, vals): (Vec<_>, Vec<_>) = fn_call
             .args
             .args
@@ -224,14 +211,10 @@ impl<'ast> Ast<'ast> for parse::FnCall {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::VarStore {
+impl Ast for parse::VarStore {
     type Forward = ();
 
-    fn to_ast(
-        var_store: &'ast Self::Target,
-        span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(var_store: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         let name = var_store.name.clone();
         // function parameters are inmutable
 
@@ -256,13 +239,13 @@ impl<'ast> Ast<'ast> for parse::VarStore {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::VarDefine {
+impl Ast for parse::VarDefine {
     type Forward = ();
 
     fn to_ast(
-        var_define: &'ast Self::Target,
+        var_define: &Self::Target,
         span: Span,
-        scope: &mut FnScope<'ast>,
+        scope: &mut ModScope,
     ) -> Result<Self::Forward> {
         // TODO: testfor if  ty exist
         let ty = var_define.ty.to_ast_ty()?;
@@ -281,7 +264,7 @@ impl<'ast> Ast<'ast> for parse::VarDefine {
             None => None,
         };
 
-        scope.regist_var(name.clone(), semantic::VarDef::new(ty.clone(), var_define));
+        scope.regist_var(name.clone(), semantic::VarDef::new(ty.clone(), span));
 
         scope.push_stmt(ir::VarDefine { ty, name, init });
 
@@ -289,14 +272,10 @@ impl<'ast> Ast<'ast> for parse::VarDefine {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::If {
+impl Ast for parse::If {
     type Forward = ();
 
-    fn to_ast(
-        if_: &'ast Self::Target,
-        _span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(if_: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         let mut branches = vec![scope.to_ast(&if_.ruo4)?];
         for chain in &if_.chains {
             match &**chain {
@@ -321,14 +300,10 @@ impl<'ast> Ast<'ast> for parse::If {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::While {
+impl Ast for parse::While {
     type Forward = ();
 
-    fn to_ast(
-        while_: &'ast Self::Target,
-        _span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(while_: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         let cond = scope.to_ast(&while_.conds)?;
         let body = scope.to_ast(&while_.block)?;
         scope.push_stmt(ir::Statement::While(ir::While { cond, body }));
@@ -336,28 +311,20 @@ impl<'ast> Ast<'ast> for parse::While {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::AtomicIf {
+impl Ast for parse::AtomicIf {
     type Forward = ir::IfBranch;
 
-    fn to_ast(
-        atomic: &'ast Self::Target,
-        _span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(atomic: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         let cond = scope.to_ast(&atomic.conds)?;
         let body = scope.to_ast(&atomic.block)?;
         Result::Ok(ir::IfBranch { cond, body })
     }
 }
 
-impl<'ast> Ast<'ast> for parse::Return {
+impl Ast for parse::Return {
     type Forward = ();
 
-    fn to_ast(
-        return_: &'ast Self::Target,
-        _span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(return_: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         let val = match &return_.val {
             Some(val) => Some(scope.to_ast(val)?),
             None => None,
@@ -369,14 +336,10 @@ impl<'ast> Ast<'ast> for parse::Return {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::CodeBlock {
+impl Ast for parse::CodeBlock {
     type Forward = ir::Statements;
 
-    fn to_ast(
-        block: &'ast Self::Target,
-        _span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(block: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         scope
             .spoce(|scope| {
                 for stmt in &block.stmts {
@@ -389,14 +352,10 @@ impl<'ast> Ast<'ast> for parse::CodeBlock {
 }
 
 // TODO: condition`s`
-impl<'ast> Ast<'ast> for parse::Arguments {
+impl Ast for parse::Arguments {
     type Forward = ir::Condition;
 
-    fn to_ast(
-        cond: &'ast Self::Target,
-        _span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(cond: &Self::Target, _span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         let (compute, last_cond) = scope.spoce(|scope| {
             let mut last_cond = scope.to_ast(&cond.args[0])?;
             for arg in cond.args.iter().skip(1) {
@@ -416,14 +375,10 @@ impl<'ast> Ast<'ast> for parse::Arguments {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::Expr {
+impl Ast for parse::Expr {
     type Forward = TypedExpr;
 
-    fn to_ast(
-        expr: &'ast Self::Target,
-        span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(expr: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         match expr {
             parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, span, scope),
             parse::Expr::Binary(l, o, r) => {
@@ -456,14 +411,10 @@ impl<'ast> Ast<'ast> for parse::Expr {
     }
 }
 
-impl<'ast> Ast<'ast> for parse::AtomicExpr {
+impl Ast for parse::AtomicExpr {
     type Forward = TypedExpr;
 
-    fn to_ast(
-        atomic: &'ast Self::Target,
-        span: Span,
-        scope: &mut FnScope<'ast>,
-    ) -> Result<Self::Forward> {
+    fn to_ast(atomic: &Self::Target, span: Span, scope: &mut ModScope) -> Result<Self::Forward> {
         match atomic {
             parse::AtomicExpr::CharLiteral(char) => Ok(TypedExpr::new(
                 ir::PrimitiveType::char(),
