@@ -282,6 +282,7 @@ impl std::fmt::Display for ComplexType {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum TypeDefine {
     Primitive(PrimitiveType),
+    // TODO: change this
     Complex(ComplexType),
 }
 

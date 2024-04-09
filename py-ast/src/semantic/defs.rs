@@ -5,15 +5,15 @@ use terl::Span;
 use crate::ir;
 
 use super::{
-    declare::TypeRes,
+    declare::TypeIdx,
     mangle::{MangleItem, MangleUnit, Mangler},
 };
 
 #[derive(Default)]
 pub struct FnSigns {
-    pub fn_signs: Vec<FnSignWithName>,
-    pub unmangled: HashMap<String, Vec<usize>>,
-    pub mangled: HashMap<String, usize>,
+    fn_signs: Vec<FnSignWithName>,
+    unmangled: HashMap<String, Vec<usize>>,
+    mangled: HashMap<String, usize>,
 }
 
 impl FnSigns {
@@ -43,7 +43,7 @@ impl FnSigns {
         s
     }
 
-    pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: FnSign) -> TypeRes {
+    pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: FnSign) -> TypeIdx {
         let idx = self.fn_signs.len();
 
         self.fn_signs.push(FnSignWithName {
@@ -52,28 +52,30 @@ impl FnSigns {
         });
         self.unmangled.entry(unmangled).or_default().push(idx);
         self.mangled.insert(mangled, idx);
-        TypeRes::from(idx)
+        TypeIdx::from(idx)
     }
 
-    pub fn get_unmangled(&self, name: &str) -> Vec<TypeRes> {
+    pub fn get_unmangled(&self, name: &str) -> Vec<TypeIdx> {
         self.unmangled
             .get(name)
-            .map(|idx| idx.iter().map(|&idx| TypeRes::from(idx)).collect())
+            .map(|idx| idx.iter().map(|&idx| TypeIdx::from(idx)).collect())
             .unwrap_or_default()
     }
 
-    pub fn get_mangled(&self, name: &str) -> TypeRes {
+    pub fn get_mangled(&self, name: &str) -> TypeIdx {
         self.mangled
             .get(name)
-            .map(|&idx| TypeRes::from(idx))
+            .map(|&idx| TypeIdx::from(idx))
             .unwrap()
     }
 
-    pub fn get_fn(&self, res: TypeRes) -> &FnSignWithName {
-        match res {
-            TypeRes::ByIndex(idx) => &self.fn_signs[idx],
-            TypeRes::Buitin(_) => todo!("built in functions"),
-        }
+    pub fn get_fn(&self, res: &TypeIdx) -> &FnSignWithName {
+        let TypeIdx::ByIndex(idx) = res else {
+            unreachable!(
+                "only TypeIdx::ByIndex can be used to represent a function's overload's type"
+            )
+        };
+        &self.fn_signs[*idx]
     }
 
     // pub fn search_fns

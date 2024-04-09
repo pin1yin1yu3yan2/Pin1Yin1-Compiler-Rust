@@ -1,7 +1,8 @@
 use super::{declare::*, mangle::Mangler};
 use crate::{benches, ops::Operators};
-use py_ir::ir::PrimitiveType;
 use std::borrow::Cow;
+
+pub use py_ir::ir::{ComplexType, PrimitiveType, TypeDefine};
 
 pub type Statements = Vec<Statement>;
 
@@ -75,15 +76,6 @@ mod from_impls {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum AtomicExpr {
-    Char(char),
-    String(String),
-    Integer(usize),
-    Float(f64),
-    Variable(String),
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
     mangle: Cow<'static, str>,
@@ -99,39 +91,52 @@ impl Type {
 }
 
 #[derive(Debug, Clone)]
-pub struct NormalVariable {
-    pub expr: AtomicExpr,
-    pub ty: GroupIdx,
+pub enum AtomicExpr {
+    Char(char),
+    String(String),
+    Integer(usize),
+    Float(f64),
+    Variable(String),
+    FnCall(FnCall),
+    // #[deprecated = "unsupported now"]
+    // Initialization(Vec<Expr>),
 }
 
 #[derive(Debug, Clone)]
-pub enum Variable {
-    Normal(NormalVariable),
-    FnCall(FnCall),
+pub struct Variable {
+    pub val: AtomicExpr,
+    pub ty: GroupIdx,
 }
 
 impl Variable {
-    pub fn new_normal(atomic: AtomicExpr, ty: GroupIdx) -> Self {
-        Self::Normal(NormalVariable { expr: atomic, ty })
+    pub fn new(val: AtomicExpr, ty: GroupIdx) -> Self {
+        Variable { val, ty }
     }
 
-    pub fn atomic_benches<M: Mangler>(atomic: &AtomicExpr) -> Vec<BenchBuilder<M>> {
+    pub fn is_literal(&self) -> bool {
+        !matches!(self.val, AtomicExpr::FnCall(..) | AtomicExpr::Variable(..))
+    }
+
+    pub fn literal_benches<M: Mangler>(atomic: &AtomicExpr) -> Vec<BenchBuilder<M>> {
         match atomic {
-            AtomicExpr::Char(_) => benches! {() => "zi4"},
+            AtomicExpr::Char(_) => benches! {() => PrimitiveType::char()},
             // String: greatly in processing...
-            AtomicExpr::String(_) => benches! {() => "chuan4"},
+            AtomicExpr::String(_) => benches! {() => ComplexType::string()},
             AtomicExpr::Integer(_) => benches! {
-                () => "zheng3",
-                () => "kuan1 8 zheng3",() => "kuan1 16 zheng3",() => "kuan1 32 zheng3",() => "kuan1 64 zheng3",
-                () => "kuan1 128 zheng3", () => "wu2fu2 kuan1 8 zheng3",() => "wu2fu2  kuan1 16 zheng3",
-                () => "wu2fu2  kuan1 32 zheng3",() => "wu2fu2  kuan1 64 zheng3",() => "wu2fu2  kuan1 128 zheng3"
+                () => PrimitiveType::U8, () => PrimitiveType::U16,
+                () => PrimitiveType::U32,() => PrimitiveType::U64,
+                () => PrimitiveType::U128,() => PrimitiveType::Usize,
+                () => PrimitiveType::I8, () => PrimitiveType::I16,
+                () => PrimitiveType::I32,() => PrimitiveType::I64,
+                () => PrimitiveType::I128,() => PrimitiveType::Isize
+
             },
             AtomicExpr::Float(_) => benches! {
-                () => "fu2",
-                () => "kuan1 64 fu2"
+                () => PrimitiveType::F32,
+                () => PrimitiveType::F64
             },
-            // should be filtered out before, and extend stored GroupIdx
-            AtomicExpr::Variable(_) => unreachable!(),
+
+            _ => unreachable!("should be filtered out before, and extend stored GroupIdx"),
         }
     }
 }
@@ -176,122 +181,6 @@ pub enum TypeDecorators {
 }
 
 #[derive(Debug, Clone)]
-pub struct ComplexType {
-    pub decorators: Option<Vec<TypeDecorators>>,
-    pub ty: String,
-}
-
-impl ComplexType {
-    pub fn no_decorators(ty: String) -> Self {
-        Self {
-            decorators: None,
-            ty,
-        }
-    }
-
-    pub fn string() -> Self {
-        Self {
-            decorators: Some(vec![TypeDecorators::Array]),
-            ty: "u8".to_string(),
-        }
-    }
-}
-
-impl std::fmt::Display for ComplexType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(decorators) = &self.decorators {
-            for dec in decorators {
-                match dec {
-                    TypeDecorators::Const => write!(f, "const "),
-                    TypeDecorators::Array => write!(f, "[] "),
-                    TypeDecorators::Reference => write!(f, "& "),
-                    TypeDecorators::Pointer => write!(f, "* "),
-                    TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
-                }?;
-            }
-        }
-
-        write!(f, "{}", self.ty)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum TypeDefine {
-    Primitive(PrimitiveType),
-    Complex(ComplexType),
-}
-
-impl TypeDefine {
-    /// Returns `true` if the type define is [`Primitive`].
-    ///
-    /// [`Primitive`]: TypeDefine::Primitive
-    #[must_use]
-    pub fn is_primitive(&self) -> bool {
-        matches!(self, Self::Primitive(..))
-    }
-
-    /// Returns `true` if the type define is [`Complex`].
-    ///
-    /// [`Complex`]: TypeDefine::Complex
-    #[must_use]
-    pub fn is_complex(&self) -> bool {
-        matches!(self, Self::Complex(..))
-    }
-}
-
-impl std::fmt::Display for TypeDefine {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TypeDefine::Primitive(ty) => write!(f, "{}", ty),
-            TypeDefine::Complex(ty) => write!(f, "{}", ty),
-        }
-    }
-}
-
-impl From<ComplexType> for TypeDefine {
-    fn from(v: ComplexType) -> Self {
-        Self::Complex(v)
-    }
-}
-
-impl From<PrimitiveType> for TypeDefine {
-    fn from(v: PrimitiveType) -> Self {
-        Self::Primitive(v)
-    }
-}
-
-impl TryFrom<TypeDefine> for PrimitiveType {
-    type Error = TypeDefine;
-
-    fn try_from(value: TypeDefine) -> Result<Self, Self::Error> {
-        match value {
-            TypeDefine::Primitive(p) => Ok(p),
-            TypeDefine::Complex(_) => Err(value),
-        }
-    }
-}
-
-impl TryFrom<TypeDefine> for ComplexType {
-    type Error = TypeDefine;
-
-    fn try_from(value: TypeDefine) -> Result<Self, Self::Error> {
-        match value {
-            TypeDefine::Primitive(_) => Err(value),
-            TypeDefine::Complex(c) => Ok(c),
-        }
-    }
-}
-
-impl PartialEq<PrimitiveType> for TypeDefine {
-    fn eq(&self, other: &PrimitiveType) -> bool {
-        match self {
-            TypeDefine::Primitive(s) => s == other,
-            TypeDefine::Complex(_) => false,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct Parameter {
     pub ty: TypeDefine,
     /// using string because its the name of parameter, not a value
@@ -323,8 +212,6 @@ pub struct VarStore {
 
 #[derive(Debug, Clone)]
 pub struct FnCall {
-    /// FnOverloadSelect
-    pub fn_name: GroupIdx,
     pub args: Variables,
 }
 

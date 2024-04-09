@@ -1,3 +1,5 @@
+use self::declare::kind::DeclareKind;
+
 use super::declare::*;
 use super::mangle::*;
 use super::*;
@@ -26,7 +28,7 @@ pub trait Scope: Sized {
 }
 
 pub struct DefineScope<M: Mangler> {
-    fn_signs: FnSigns,
+    pub(crate) fn_signs: FnSigns,
     prefex: Vec<ManglePrefix>,
     _m: PhantomData<M>,
 }
@@ -81,7 +83,7 @@ impl<M: Mangler> DefineScope<M> {
         })
     }
 
-    pub fn get_fn(&self, res: TypeRes) -> &FnSignWithName {
+    pub fn get_fn(&self, res: &TypeIdx) -> &FnSignWithName {
         self.fn_signs.get_fn(res)
     }
 }
@@ -89,7 +91,7 @@ impl<M: Mangler> DefineScope<M> {
 pub struct ModScope<M: Mangler = DefaultMangler> {
     current: usize,
     fns: Vec<FnScope>,
-    defs: DefineScope<M>,
+    pub(crate) defs: DefineScope<M>,
 }
 
 impl<M: Mangler> ModScope<M> {
@@ -101,7 +103,7 @@ impl<M: Mangler> ModScope<M> {
         }
     }
 
-    pub fn regist_fn(&mut self, name: String, sign: FnSign) -> TypeRes {
+    pub fn regist_fn(&mut self, name: String, sign: FnSign) -> TypeIdx {
         let mangled = self.defs.mangle_fn(&name, &sign);
         self.defs.fn_signs.new_fn(name, mangled, sign)
     }
@@ -141,18 +143,18 @@ impl<M: Mangler> ModScope<M> {
         todo!()
     }
 
-    pub fn function_overload_declare(&self, fn_name: &str) -> Vec<TypeRes> {
+    pub fn function_overload_declare(&self, fn_name: &str) -> Vec<TypeIdx> {
         self.defs.fn_signs.get_unmangled(fn_name)
     }
 
-    pub fn delcare<K>(&mut self, benches: Vec<BenchBuilder<M>>) -> terl::Result<GroupIdx>
+    pub fn new_declare_group<K>(&mut self, builder: GroupBuilder<M>) -> terl::Result<GroupIdx>
     where
         K: DeclareKind,
     {
         // no-deref, or compiler error
         self.fns[self.current]
             .declare_map
-            .new_group::<K, _, _>(&self.defs, benches)
+            .new_group::<K, _>(&self.defs, builder)
     }
 
     pub fn load_stmts(&mut self, stmts: &[PU<Statement>]) -> Result<()> {
