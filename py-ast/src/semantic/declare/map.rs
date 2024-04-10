@@ -1,13 +1,10 @@
-use std::collections::{HashMap, HashSet};
-
-use terl::WithSpan;
-
-use crate::semantic::{mangle::Mangler, DefineScope};
-
+use super::super::mir::TypeDefine;
 use super::{
-    kind::DeclareKind, Bench, BenchFilter, BenchStatus, DeclareGroup, GroupBuilder, GroupIdx,
-    TypeIdx,
+    kind::DeclareKind, Bench, BenchFilter, BenchStatus, DeclareGroup, GroupBuilder, GroupIdx, Type,
 };
+use crate::semantic::{mangle::Mangler, DefineScope};
+use std::collections::{HashMap, HashSet};
+use terl::WithSpan;
 
 /// used to decalre which overload of function is called, or which possiable type is
 ///
@@ -55,9 +52,36 @@ impl DeclareMap {
         }
 
         self.groups.push(DeclareGroup::new(gb.span, bench_res));
-        self.check_group(gidx);
 
         Ok(gidx)
+    }
+
+    pub fn decalre_as<K, M>(
+        &mut self,
+        gidx: GroupIdx,
+        defs: &DefineScope<M>,
+        as_: &py_ir::ir::TypeDefine,
+    ) where
+        K: DeclareKind,
+        M: Mangler,
+    {
+        let filter = super::filters::TypeEqual::new(as_);
+        let benches: Vec<_> = self[gidx]
+            .res
+            .iter()
+            
+            .filter(|(.., status)| matches!(status, BenchStatus::Available(res) if !BenchFilter::<K,M>::satisfy(&filter,&res,defs)))
+            .map(|(bench_idx, ..)| Bench::new(gidx, *bench_idx))
+            .collect();
+
+        for bench in benches {
+            let msg = self[gidx].make_message(format!(
+                "expect this to be {}",
+                BenchFilter::<K, M>::expect(&filter, &defs)
+            ));
+            self.delete_bench(bench, msg);
+        }
+        todo!()
     }
 
     pub fn apply_filter<K, M>(
@@ -69,30 +93,20 @@ impl DeclareMap {
         K: DeclareKind,
         M: Mangler,
     {
-        let group = &mut self[gidx];
-        let benches: Vec<_> = group
+        let benches: Vec<_> = self[gidx]
             .res
             .iter()
-            .filter(|(.., status)| matches!(status, BenchStatus::Available(..)))
+            .filter(|(.., status)| matches!(status, BenchStatus::Available(res) if !filter.satisfy(&res, defs) ))
             .map(|(bench_idx, ..)| Bench::new(gidx, *bench_idx))
             .collect();
-        for bench in benches {
-            let BenchStatus::Available(ref res) = group.res[&bench.bench_idx] else {
-                unreachable!("this knid of case are filtered out in filter up")
-            };
-            if !filter.satisfy(&res, defs) {
-                let msg = format!(
-                    "expect this to be {}, but the bench is unsatisfy",
-                    filter.expect(defs)
-                );
 
-                *group.res.get_mut(&bench.bench_idx).unwrap() =
-                    BenchStatus::Faild(group.make_error(msg, terl::ErrorKind::Semantic));
-            }
+        for bench in benches {
+            let msg = self[gidx].make_message(format!("expect this to be {}", filter.expect(defs)));
+            self.delete_bench(bench, msg);
         }
     }
 
-    fn get_resources(&self, bench: Bench) -> Result<&TypeIdx, &terl::Error> {
+    fn get_resources(&self, bench: Bench) -> Result<&Type, &terl::Error> {
         match &self[bench.belong_to].res[&bench.bench_idx] {
             BenchStatus::Available(res) => Ok(res),
             BenchStatus::Faild(e) => Err(e),
@@ -107,37 +121,88 @@ impl DeclareMap {
         K::display(&self.get_resources(bench).unwrap(), defs)
     }
 
-    pub(super) fn check_group(&mut self, gidx: GroupIdx) {
-        if self[gidx].res.len() == 1 {
-            let bench_idx = *self[gidx].res.keys().next().unwrap();
-            self.make_sure(Bench::new(gidx, bench_idx));
+    /// declare a [`DecalreGroup`]'s result is a type
+    ///
+    /// return [`Err`] if the type has be decalred and isnot given type,
+    /// or non of [`Bench`] match the given tyep
+    pub fn declare_type<M: Mangler>(
+        &mut self,
+        defs: &DefineScope<M>,
+        ty: GroupIdx,
+        is: &TypeDefine,
+        at: terl::Span,
+    ) -> terl::Result<()> {
+        // TODO: unknown type support
+        let assertable = self[ty]
+            .res
+            .iter()
+            .find(|(.., status)| match status {
+                BenchStatus::Available(res) => res.as_type(defs) == is,
+                _ => false,
+            })
+            .map(|(idx, ..)| *idx);
+
+        match assertable {
+            Some(idx) => {
+                let reason = at.make_message(format!("here, type has been declared as {is}"));
+                self.make_sure(Bench::new(ty, idx), reason);
+                Ok(())
+            }
+            None => {
+                let mut error = at.make_error(format!("type unmatch, expect {is}"));
+                for (.., res) in &self[ty].res {
+                    match res {
+                        BenchStatus::Available(res) => {
+                            error = error.append(self[ty].span.make_message(format!(
+                                "a bench declared as {}",
+                                res.as_type(defs)
+                            )));
+                        }
+                        BenchStatus::Faild(_err) => {
+                            error = error.append(
+                                self[ty].span.make_message("a bench has been filterd out: "),
+                            );
+                        }
+                    }
+                }
+
+                Err(error)
+            }
         }
     }
 
-    /// make sure that the bench is selected
-    pub(super) fn make_sure(&mut self, bidx: Bench) {
+    /// make sure that the [`Bench`] is selected, and give a reasn why other [`Bench`] is not selected
+    ///
+    /// ... in fact, the reason is where, and which [`Bench`] is selected
+    pub(super) fn make_sure(&mut self, bidx: Bench, reason: terl::Message) {
         // take out other benches
-        let declare_group = &mut self[bidx.belong_to].res;
-        let mut removed_group = std::mem::take(declare_group);
-        declare_group.insert(
-            bidx.bench_idx,
-            removed_group.remove(&bidx.bench_idx).unwrap(),
-        );
 
-        for removed in removed_group.keys() {
-            self.delete_bench(Bench::new(bidx.belong_to, *removed))
+        let removed_group = self[bidx.belong_to]
+            .res
+            .iter()
+            .filter(|(.., status)| matches!(status, BenchStatus::Available(..)))
+            .filter(|(idx, ..)| **idx != bidx.bench_idx)
+            .map(|(idx, ..)| idx)
+            .copied()
+            .collect::<Vec<_>>();
+
+        for removed in removed_group {
+            self.delete_bench(Bench::new(bidx.belong_to, removed), reason.clone())
         }
 
         // forward delcare result to lower level group
         for sub_bench in self.deps.get(&bidx).unwrap().clone() {
-            self.make_sure(sub_bench);
+            self.make_sure(sub_bench, reason.clone());
         }
     }
 
-    /// Zhu double eight: is your Nine Clan(Bench) wholesale?
+    /// Zhu double eight: is your Nine Clan([`Bench`]) wholesale?
     ///
-    /// delete a node, and all node which must depend on it
-    pub(super) fn delete_bench(&mut self, bench: Bench) {
+    /// `delete` a node, and all node which must depend on it
+    ///
+    /// notice that the `delete` will not remove the [`Bench`], this method
+    /// just tag the bench to [`BenchStatus::Faild`] because some reasons
+    pub(super) fn delete_bench(&mut self, bench: Bench, reason: terl::Message) {
         // KILL all bench that depend on removed one
         if let Some(rdeps) = self.rdeps.remove(&bench) {
             for dep in self.deps.remove(&bench).unwrap() {
@@ -150,7 +215,7 @@ impl DeclareMap {
                 self.rdeps.get_mut(&dep).unwrap().remove(&bench);
             }
             for rdep in rdeps {
-                self.delete_bench(rdep);
+                self.delete_bench(rdep, reason.clone());
             }
         }
     }

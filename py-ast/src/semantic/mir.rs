@@ -136,7 +136,7 @@ impl Variable {
                 () => PrimitiveType::F64
             },
 
-            _ => unreachable!("should be filtered out before, and extend stored GroupIdx"),
+            _ => unreachable!("should be filtered out before, and extend stored by GroupIdx"),
         }
     }
 }

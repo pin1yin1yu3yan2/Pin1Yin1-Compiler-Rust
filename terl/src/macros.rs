@@ -49,7 +49,7 @@ macro_rules! keywords {
                 let s = &**s;
                 let opt = MAP.get(s).copied().map(|t| p.make_pu(t));
 
-                let error = || p.make_error(format!("non of {} matched", stringify!($enum_name)),terl::ErrorKind::Unmatch);
+                let error = || p.make_parse_error(format!("non of {} matched", stringify!($enum_name)),terl::ParseErrorKind::Unmatch);
                 opt.ok_or_else(error)
             }
         }

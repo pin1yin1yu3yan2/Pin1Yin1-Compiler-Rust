@@ -54,10 +54,13 @@ where
 
 use std::fmt::Write;
 impl Source<char> {
-    fn error_message(&self, buffer: &mut impl Write, msg: Message) -> Result<(), std::fmt::Error> {
+    fn message(
+        &self,
+        buffer: &mut impl Write,
+        span: Span,
+        reason: String,
+    ) -> Result<(), std::fmt::Error> {
         let src = self;
-        let Message { span, reason } = msg;
-
         let start_line_start = (0..span.start)
             .rev()
             .find(|idx| src[*idx] == '\n')
@@ -99,14 +102,21 @@ impl Source<char> {
         Ok(())
     }
 
+    fn handle_message(&self, buffer: &mut impl Write, msg: Message) -> Result<(), std::fmt::Error> {
+        match msg {
+            Message::Location(span) => self.message(buffer, span, String::new()),
+            Message::Text(reason) => writeln!(buffer, "{reason}"),
+            Message::Rich(reason, span) => self.message(buffer, span, reason),
+        }?;
+
+        Ok(())
+    }
+
     pub fn handle_error(&self, error: Error) -> Result<String, std::fmt::Error> {
         let mut buffer = String::new();
-
-        let Error { messages, kind } = error;
-
-        writeln!(&mut buffer, "{:?} Error!", kind)?;
-        for msg in messages {
-            self.error_message(&mut buffer, msg)?;
+        self.message(&mut buffer, error.main_span, error.main_message)?;
+        for msg in error.messages {
+            self.handle_message(&mut buffer, msg)?;
         }
 
         Ok(buffer)

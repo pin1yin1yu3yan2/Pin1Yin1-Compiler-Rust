@@ -6,38 +6,66 @@ pub use bench::*;
 pub use filter::*;
 pub use group::*;
 pub use map::*;
+use py_ir::ir::TypeDefine;
+
+use super::{mangle::Mangler, DefineScope};
 
 pub mod kind;
 
 #[derive(Debug, Clone)]
-pub enum TypeIdx {
+pub enum Type {
     /// this's index can represent to a function's overload's return type. and
     /// the index is overloads index
-    ByIndex(usize),
-    Direct(py_ir::ir::TypeDefine),
+    FnRetty(usize),
+    Owned(TypeDefine),
 }
 
-impl From<py_ir::ir::TypeDefine> for TypeIdx {
-    fn from(v: py_ir::ir::TypeDefine) -> Self {
-        Self::Direct(v)
+impl Type {
+    pub fn as_fn_retty(&self) -> usize {
+        if let Self::FnRetty(v) = self {
+            *v
+        } else {
+            panic!("how about using if let or match stmt first?")
+        }
+    }
+
+    pub fn as_owned(&self) -> &TypeDefine {
+        if let Self::Owned(v) = self {
+            v
+        } else {
+            panic!("how about using if let or match stmt first?")
+        }
+    }
+
+    pub fn as_type<'a, M: Mangler>(&'a self, defs: &'a DefineScope<M>) -> &'a TypeDefine {
+        match self {
+            Type::FnRetty(idx) => &defs.get_fn(*idx).ty,
+            Type::Owned(ty) => ty,
+        }
     }
 }
 
-impl From<py_ir::ir::ComplexType> for TypeIdx {
+impl From<TypeDefine> for Type {
+    fn from(v: TypeDefine) -> Self {
+        Self::Owned(v)
+    }
+}
+
+impl From<py_ir::ir::ComplexType> for Type {
     fn from(v: py_ir::ir::ComplexType) -> Self {
-        Self::Direct(v.into())
+        Self::Owned(v.into())
     }
 }
 
-impl From<py_ir::ir::PrimitiveType> for TypeIdx {
+impl From<py_ir::ir::PrimitiveType> for Type {
     fn from(v: py_ir::ir::PrimitiveType) -> Self {
-        Self::Direct(v.into())
+        Self::Owned(v.into())
     }
 }
 
-impl From<usize> for TypeIdx {
+impl From<usize> for Type {
     fn from(v: usize) -> Self {
-        Self::ByIndex(v)
+        Self::FnRetty(v)
     }
 }
 
@@ -46,7 +74,7 @@ mod tests {
     impl DeclareMap {
         fn test_declare<I>(&mut self, iter: I) -> GroupIdx
         where
-            I: IntoIterator<Item = (TypeIdx, Vec<Bench>)>,
+            I: IntoIterator<Item = (Type, Vec<Bench>)>,
         {
             let declare_idx = GroupIdx::new(self.groups.len());
 
@@ -79,7 +107,7 @@ mod tests {
 
         macro_rules! ty {
             ($idx:literal) => {
-                TypeIdx::ByIndex { 0: $idx }
+                Type::FnRetty { 0: $idx }
             };
         }
 
@@ -110,7 +138,7 @@ mod tests {
         ]);
 
         let k = map.test_declare([(ty!(5), vec![Bench::new(i, 0), Bench::new(j, 1)])]);
-        map.make_sure(Bench::new(k, 0));
+        map.make_sure(Bench::new(k, 0), terl::Message::Text("".to_owned()));
 
         for group in [m1, n1, i, m2, n2, j, k] {
             let bench_idx = *map.groups[group.idx].res.keys().next().unwrap();

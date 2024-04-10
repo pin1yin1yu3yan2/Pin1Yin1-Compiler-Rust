@@ -1,6 +1,6 @@
 use crate::*;
 
-pub type ParseResult<P, S = char> = Result<PU<P, S>>;
+pub type ParseResult<P, S = char> = Result<PU<P, S>, ParseError>;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// we use this trait to make the [`Result`] type more convenient
@@ -17,13 +17,13 @@ pub trait ResultExt<P> {
     fn apply(self, mapper: impl ParseMapper<P>) -> Self;
 }
 
-impl<P: ParseUnit<S>, S> ResultExt<PU<P, S>> for Result<PU<P, S>> {
-    type TryResult = Result<Option<PU<P, S>>>;
+impl<P: ParseUnit<S>, S> ResultExt<PU<P, S>> for ParseResult<P, S> {
+    type TryResult = Result<Option<PU<P, S>>, ParseError>;
 
     fn r#try(self) -> Self::TryResult {
         match self {
             Ok(pu) => Ok(Some(pu)),
-            Err(e) if e.kind() == ErrorKind::Unmatch => Ok(None),
+            Err(e) if e.kind() == ParseErrorKind::Unmatch => Ok(None),
             Err(e) => Err(e),
         }
     }

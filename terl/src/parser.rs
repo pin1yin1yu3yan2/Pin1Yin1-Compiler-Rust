@@ -54,13 +54,13 @@ impl ParserState {
 
 #[cfg(feature = "parser_calling_tree")]
 mod calling_tree {
-    use crate::{ErrorKind, ParseUnit, Span, WithSpan};
+    use crate::{ParseErrorKind, ParseUnit, Span, WithSpan};
 
     #[derive(Clone, Copy)]
     pub enum Calling {
         Start,
         Success(Span),
-        Err(ErrorKind, Span),
+        Err(ParseErrorKind, Span),
     }
 
     impl Calling {
@@ -376,9 +376,9 @@ impl<S> Parser<S> {
             if *lhs == rhs {
                 Ok(lhs)
             } else {
-                Err(lhs.make_error(
+                Err(lhs.make_parse_error(
                     format!("exprct `{}`, but `{}` found", rhs, *lhs),
-                    ErrorKind::Unmatch,
+                    ParseErrorKind::Unmatch,
                 ))
             }
         })
@@ -417,7 +417,7 @@ impl<'p, S, P: ParseUnit<S>> Try<'p, P, S> {
         let is_unmatch = self.state.as_ref().is_some_and(|result| {
             result
                 .as_ref()
-                .is_err_and(|e| e.kind() == ErrorKind::Unmatch)
+                .is_err_and(|e| e.kind() == ParseErrorKind::Unmatch)
         });
 
         if self.state.is_none() || is_unmatch {

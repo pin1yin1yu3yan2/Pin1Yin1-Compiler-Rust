@@ -4,7 +4,7 @@ use terl::{Span, WithSpan};
 
 use crate::semantic::{mangle::Mangler, DefineScope};
 
-use super::{kind::DeclareKind, BenchFilter, DeclareMap, GroupIdx, TypeIdx};
+use super::{kind::DeclareKind, BenchFilter, DeclareMap, GroupIdx, Type};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bench {
@@ -25,7 +25,7 @@ impl Bench {
 
 #[derive(Debug, Clone)]
 pub enum BenchStatus {
-    Available(TypeIdx),
+    Available(Type),
     Faild(terl::Error),
 }
 
@@ -44,11 +44,8 @@ impl BenchBuildError {
     {
         match self {
             BenchBuildError::NonBenchSelected(gidx, expect) => map[gidx]
-                .make_error(
-                    "for this bench, non of depend bench matched",
-                    terl::ErrorKind::Semantic,
-                )
-                .append(at, format!("expect this to be {expect}")),
+                .make_error("for this bench, non of depend bench matched")
+                .append(at.make_message(format!("expect this to be {expect}"))),
             BenchBuildError::MultipleSelected(gidx, benches) => {
                 let mut msg = String::new();
 
@@ -62,11 +59,8 @@ impl BenchBuildError {
                 }
 
                 let err = at
-                    .make_error(
-                        "multiple possible branches are selected to satisfy this bench\n",
-                        terl::ErrorKind::Semantic,
-                    )
-                    .append(map[gidx].span, msg);
+                    .make_error("multiple possible branches are selected to satisfy this bench\n")
+                    .append(map[gidx].span.make_message(msg));
 
                 err
             }
@@ -80,35 +74,31 @@ impl BenchBuildError {
                     map.display_bench::<K, M>(conflict, defs)
                 );
 
-                at.make_error(format!("conflict requirements"), terl::ErrorKind::Semantic)
-                    .append(map[selected.belong_to].span, msg1)
-                    .append(map[conflict.belong_to].span, msg2)
+                at.make_error(format!("conflict requirements"))
+                    .append(map[selected.belong_to].span.make_message(msg1))
+                    .append(map[conflict.belong_to].span.make_message(msg2))
             }
         }
     }
 }
 
-type BenchBuildAction<M: Mangler> =
-    dyn Fn(&DeclareMap, &DefineScope<M>) -> terl::Result<Bench, BenchBuildError>;
+type BenchBuildAction<'b, M: Mangler> =
+    dyn Fn(&DeclareMap, &DefineScope<M>) -> terl::Result<Bench, BenchBuildError> + 'b;
 
-pub struct BenchBuilder<M: Mangler> {
-    pub(super) res: TypeIdx,
-    pub(super) actinons: Vec<Box<BenchBuildAction<M>>>,
+pub struct BenchBuilder<'b, M: Mangler> {
+    pub(super) res: Type,
+    pub(super) actinons: Vec<Box<BenchBuildAction<'b, M>>>,
 }
 
-impl<M: Mangler> BenchBuilder<M> {
-    pub fn new(res: TypeIdx) -> Self {
+impl<'b, M: Mangler> BenchBuilder<'b, M> {
+    pub fn new(res: Type) -> Self {
         Self {
             res,
             actinons: vec![],
         }
     }
 
-    pub fn new_filter<K, F>(
-        mut self,
-        gidx: GroupIdx,
-        filter: impl BenchFilter<K, M> + 'static,
-    ) -> Self
+    pub fn new_depend<K>(&mut self, gidx: GroupIdx, filter: impl BenchFilter<K, M> + 'b)
     where
         K: DeclareKind,
     {
@@ -130,7 +120,6 @@ impl<M: Mangler> BenchBuilder<M> {
         };
 
         self.actinons.push(Box::new(action) as _);
-        self
     }
 
     /// return [BenchStatus] and
@@ -139,7 +128,7 @@ impl<M: Mangler> BenchBuilder<M> {
         at: Span,
         map: &mut DeclareMap,
         defs: &DefineScope<M>,
-    ) -> terl::Result<(TypeIdx, HashSet<Bench>)> {
+    ) -> terl::Result<(Type, HashSet<Bench>)> {
         let mut deps: HashSet<Bench> = HashSet::new();
         let mut used_group = HashSet::new();
         for action in self.actinons {

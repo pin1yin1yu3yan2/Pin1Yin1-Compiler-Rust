@@ -126,7 +126,7 @@ pub struct TypeDefine {
 }
 
 impl TypeDefine {
-    pub(crate) fn to_ast_ty(&self) -> Result<crate::ir::TypeDefine> {
+    pub(crate) fn to_ast_ty(&self) -> terl::Result<crate::ir::TypeDefine> {
         self.clone().try_into()
     }
 }
@@ -147,10 +147,10 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
             let sign_char = if sign { 'i' } else { 'u' };
             let width = if let Some(width) = value.width {
                 if !width.width.is_power_of_two() || *width.width > 64 {
-                    return Err(width.make_error(
-                        format!("`zheng3` with width {} is not suppert now", *width.width),
-                        ErrorKind::Semantic,
-                    ));
+                    return Err(width.make_error(format!(
+                        "`zheng3` with width {} is not suppert now",
+                        *width.width
+                    )));
                 }
                 *width.width
             } else {
@@ -164,19 +164,18 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
         } else if &**value.ty == "fu2" {
             // default to be f32
             if let Some(sign) = value.sign {
-                return Err(sign.make_error(
-                    "`fu2` type cant be decorated with `you3fu2` or `wu2fu2`",
-                    ErrorKind::Semantic,
-                ));
+                return Err(
+                    sign.make_error("`fu2` type cant be decorated with `you3fu2` or `wu2fu2`")
+                );
             }
             let width = if let Some(width) = value.width {
                 if *width.width == 32 || *width.width == 64 {
                     *width.width
                 } else {
-                    return Err(width.make_error(
-                        format!("`fu2` with width {} is not supperted now", *width.width),
-                        ErrorKind::Semantic,
-                    ));
+                    return Err(width.make_error(format!(
+                        "`fu2` with width {} is not supperted now",
+                        *width.width
+                    )));
                 }
             } else {
                 32
@@ -186,22 +185,16 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
         }
 
         if let Some(sign) = value.sign {
-            return Err(sign.make_error(
-                format!(
-                    "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                    *value.ty
-                ),
-                ErrorKind::Semantic,
-            ));
+            return Err(sign.make_error(format!(
+                "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
+                *value.ty
+            )));
         }
         if let Some(width) = value.width {
-            return Err(width.make_error(
-                format!(
-                    "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                    *value.ty
-                ),
-                ErrorKind::Semantic,
-            ));
+            return Err(width.make_error(format!(
+                "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
+                *value.ty
+            )));
         }
         let ty = value.ty.take().0;
 

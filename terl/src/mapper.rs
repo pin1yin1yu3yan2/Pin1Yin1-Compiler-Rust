@@ -8,26 +8,26 @@ pub trait ExtendTuple {
 }
 
 pub trait ParseMapper<P> {
-    fn mapper(self, result: Result<P>) -> Result<P>;
+    fn mapper(self, result: Result<P, ParseError>) -> Result<P, ParseError>;
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct MapError<M>(M)
 where
-    M: FnOnce(Error) -> Error;
+    M: FnOnce(ParseError) -> ParseError;
 
 impl<P, M> ParseMapper<P> for MapError<M>
 where
-    M: FnOnce(Error) -> Error,
+    M: FnOnce(ParseError) -> ParseError,
 {
-    fn mapper(self, result: Result<P>) -> Result<P> {
+    fn mapper(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         result.map_err(self.0)
     }
 }
 
 impl<M> MapError<M>
 where
-    M: FnOnce(Error) -> Error,
+    M: FnOnce(ParseError) -> ParseError,
 {
     pub fn new(m: M) -> Self {
         Self(m)
@@ -38,9 +38,9 @@ where
 pub struct MustMatch;
 
 impl<P> ParseMapper<P> for MustMatch {
-    fn mapper(self, result: Result<P>) -> Result<P> {
+    fn mapper(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         result.map_err(|e| {
-            if e.kind() == ErrorKind::Unmatch {
+            if e.kind() == ParseErrorKind::Unmatch {
                 e.to_error()
             } else {
                 e
@@ -57,7 +57,7 @@ impl<P: ParseUnit<Src>, Src, S> ParseMapper<PU<P, Src>> for MapMsg<S>
 where
     S: ToString,
 {
-    fn mapper(self, result: Result<PU<P, Src>>) -> Result<PU<P, Src>> {
+    fn mapper(self, result: ParseResult<P, Src>) -> ParseResult<P, Src> {
         result.map_err(|e| e.map(self.0))
     }
 }
@@ -139,7 +139,7 @@ where
 #[derive(Debug, Clone)]
 pub struct Custom<P, M>
 where
-    M: FnOnce(Result<P>) -> Result<P>,
+    M: FnOnce(Result<P, ParseError>) -> Result<P, ParseError>,
 {
     mapper: M,
     _p: PhantomData<P>,
@@ -147,16 +147,16 @@ where
 
 impl<P, M> ParseMapper<P> for Custom<P, M>
 where
-    M: FnOnce(Result<P>) -> Result<P>,
+    M: FnOnce(Result<P, ParseError>) -> Result<P, ParseError>,
 {
-    fn mapper(self, result: Result<P>) -> Result<P> {
+    fn mapper(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         (self.mapper)(result)
     }
 }
 
 impl<P, M> Custom<P, M>
 where
-    M: FnOnce(Result<P>) -> Result<P>,
+    M: FnOnce(Result<P, ParseError>) -> Result<P, ParseError>,
 {
     pub fn new(mapper: M) -> Self {
         Self {

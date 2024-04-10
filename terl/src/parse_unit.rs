@@ -12,7 +12,7 @@ pub trait ParseUnit<S = char>: Sized + Debug {
 
     fn parse(p: &mut Parser<S>) -> ParseResult<Self, S>;
 
-    fn is_or<R, C, Or>(cond: C, or: Or) -> impl FnOnce(PU<Self, S>) -> Result<PU<Self, S>>
+    fn is_or<R, C, Or>(cond: C, or: Or) -> impl FnOnce(PU<Self, S>) -> ParseResult<Self, S>
     where
         C: FnOnce(&Self::Target) -> bool,
         R: Into<ParseResult<Self, S>>,
@@ -27,7 +27,7 @@ pub trait ParseUnit<S = char>: Sized + Debug {
         }
     }
 
-    fn eq_or<R, Or>(rhs: Self::Target, or: Or) -> impl FnOnce(PU<Self, S>) -> Result<PU<Self, S>>
+    fn eq_or<R, Or>(rhs: Self::Target, or: Or) -> impl FnOnce(PU<Self, S>) -> ParseResult<Self, S>
     where
         Self::Target: PartialEq,
         R: Into<ParseResult<Self, S>>,

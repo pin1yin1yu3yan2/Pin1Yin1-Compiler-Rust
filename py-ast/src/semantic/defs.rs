@@ -5,7 +5,7 @@ use terl::Span;
 use crate::ir;
 
 use super::{
-    declare::TypeIdx,
+    declare::Type,
     mangle::{MangleItem, MangleUnit, Mangler},
 };
 
@@ -43,7 +43,7 @@ impl FnSigns {
         s
     }
 
-    pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: FnSign) -> TypeIdx {
+    pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: FnSign) -> Type {
         let idx = self.fn_signs.len();
 
         self.fn_signs.push(FnSignWithName {
@@ -52,30 +52,22 @@ impl FnSigns {
         });
         self.unmangled.entry(unmangled).or_default().push(idx);
         self.mangled.insert(mangled, idx);
-        TypeIdx::from(idx)
+        Type::from(idx)
     }
 
-    pub fn get_unmangled(&self, name: &str) -> Vec<TypeIdx> {
+    pub fn get_unmangled(&self, name: &str) -> Vec<Type> {
         self.unmangled
             .get(name)
-            .map(|idx| idx.iter().map(|&idx| TypeIdx::from(idx)).collect())
+            .map(|idx| idx.iter().map(|&idx| Type::from(idx)).collect())
             .unwrap_or_default()
     }
 
-    pub fn get_mangled(&self, name: &str) -> TypeIdx {
-        self.mangled
-            .get(name)
-            .map(|&idx| TypeIdx::from(idx))
-            .unwrap()
+    pub fn get_mangled(&self, name: &str) -> Type {
+        self.mangled.get(name).map(|&idx| Type::from(idx)).unwrap()
     }
 
-    pub fn get_fn(&self, res: &TypeIdx) -> &FnSignWithName {
-        let TypeIdx::ByIndex(idx) = res else {
-            unreachable!(
-                "only TypeIdx::ByIndex can be used to represent a function's overload's type"
-            )
-        };
-        &self.fn_signs[*idx]
+    pub fn get_fn(&self, res: usize) -> &FnSignWithName {
+        &self.fn_signs[res]
     }
 
     // pub fn search_fns
@@ -111,6 +103,7 @@ impl std::ops::DerefMut for FnSignWithName {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct FnSign {
     /// return type of the function must be cleared (will change in future versions)
     pub ty: ir::TypeDefine,
@@ -118,19 +111,22 @@ pub struct FnSign {
     pub loc: Span,
 }
 
+#[derive(Debug, Clone)]
 pub struct Param {
     pub name: String,
     pub ty: ir::TypeDefine,
     pub loc: Span,
 }
 
+#[derive(Debug, Clone)]
 pub struct VarDef {
-    pub ty: ir::TypeDefine,
+    pub ty: Type,
     pub loc: Span,
+    pub mutable: bool,
 }
 
 impl VarDef {
-    pub fn new(ty: ir::TypeDefine, loc: Span) -> Self {
-        Self { ty, loc }
+    pub fn new(ty: Type, loc: Span, mutable: bool) -> Self {
+        Self { ty, loc, mutable }
     }
 }

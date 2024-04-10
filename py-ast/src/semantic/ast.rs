@@ -1,19 +1,20 @@
+use self::declare::kind::*;
+use self::declare::*;
 use super::mangle::Mangler;
 use super::*;
 use crate::parse;
-use crate::semantic;
 use terl::*;
 
-pub trait Ast<S: Scope = ModScope>: ParseUnit {
+pub trait Ast<M: Mangler>: ParseUnit {
     type Forward;
 
     /// divided [`PU`] into [`ParseUnit::Target`] and [`Span`] becase
     /// variants from [`crate::complex_pu`] isnot [`PU`], and the [`Span`]
     /// was stored in the enum
-    fn to_ast(s: &Self::Target, span: Span, scope: &mut S) -> Result<Self::Forward>;
+    fn to_ast(s: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward>;
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::Item {
+impl<M: Mangler> Ast<M> for parse::Item {
     type Forward = ();
 
     fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
@@ -27,7 +28,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::Item {
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::FnDefine {
+impl<M: Mangler> Ast<M> for parse::FnDefine {
     type Forward = ();
 
     fn to_ast(
@@ -60,7 +61,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::FnDefine {
                 .enumerate()
                 .try_fold(Vec::new(), |mut vec, (idx, param)| {
                     let raw = &fn_define.params.params[idx];
-                    let param = semantic::Param {
+                    let param = Param {
                         name: param.name,
                         ty: param.ty,
                         loc: raw.get_span(),
@@ -69,7 +70,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::FnDefine {
                     Result::Ok(vec)
                 })?;
 
-        let fn_sign = semantic::FnSign {
+        let fn_sign = FnSign {
             ty: ty.clone(),
             params: sign_params,
             loc: span,
@@ -94,7 +95,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::FnDefine {
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::Statement {
+impl<M: Mangler> Ast<M> for parse::Statement {
     type Forward = ();
 
     fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
@@ -126,7 +127,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::Statement {
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::FnCall {
+impl<M: Mangler> Ast<M> for parse::FnCall {
     type Forward = mir::Variable;
 
     fn to_ast(
@@ -143,19 +144,26 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::FnCall {
                 Result::Ok(args)
             })?;
 
-        let overloads = scope.function_overload_declare(&fn_call.fn_name);
-        let bench_builders = vec![];
+        let overload = scope.build_overload_declare(|defs| {
+            let overloads = defs.get_unmangled(&fn_call.fn_name);
+            let bench_builders = overloads
+                .into_iter()
+                .map(|overload| {
+                    let fn_sign = defs.get_fn(overload.as_fn_retty());
+                    let mut bench_builder = BenchBuilder::new(overload);
+                    // overloads with different size will be filtered out
+                    for idx in 0..fn_sign.params.len().min(args.len()) {
+                        let filter = filters::TypeEqual::new(&fn_sign.params[idx].ty);
+                        bench_builder.new_depend::<Directly>(args[idx].ty, filter);
+                    }
+                    bench_builder
+                })
+                .collect();
 
-        for overload_res in overloads {
-            let fn_sign = scope.defs.get_fn(overload_res);
+            let pre_filter = filters::FnParmLenFilter::with_name(args.len(), &fn_call.fn_name);
 
-            let bench_builder = declare::BenchBuilder::new(overload_res);
-            // bench_builder.new_filter()
-        }
-        let pre_filter = declare::filters::FnParmLenFilter::with_name(args.len(), &fn_call.fn_name);
-        let overload_selection =
-            declare::GroupBuilder::new(span, bench_builders).pre_filter(&scope.defs, pre_filter);
-        let overload = scope.new_declare_group(overload_selection)?;
+            GroupBuilder::new(span, bench_builders).pre_filter(defs, pre_filter)
+        })?;
 
         let val = mir::AtomicExpr::FnCall(mir::FnCall { args });
         let fn_call = mir::Variable::new(val, overload);
@@ -164,7 +172,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::FnCall {
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::VarStore {
+impl<M: Mangler> Ast<M> for parse::VarStore {
     type Forward = ();
 
     fn to_ast(
@@ -176,27 +184,28 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::VarStore {
         // function parameters are inmutable
 
         let val = scope.to_ast(&var_store.assign.val)?;
-        let Some((var_def, mutable)) = scope.search_var(&name) else {
+        let Some(var_def) = scope.search_var(&name) else {
             return span.throw(format!("use of undefined variable {}", *name));
         };
-        if !mutable {
+        if !var_def.mutable {
             return span.throw(format!("cant assign to a immmutable variable {}", *name));
         }
-        if var_def.ty != val.ty {
-            return span.throw(format!(
-                "tring to assign to variable with type {} from type {}",
-                var_def.ty, val.ty
-            ));
-        }
-        scope.push_stmt(mir::VarStore {
-            name: name.to_string(),
-            val: val.val,
-        });
+
+        // if var_def.ty != val.ty {
+        //     return span.throw(format!(
+        //         "tring to assign to variable with type {} from type {}",
+        //         var_def.ty, val.ty
+        //     ));
+        // }
+        // scope.push_stmt(mir::VarStore {
+        //     name: name.to_string(),
+        //     val: val.val,
+        // });
         Ok(())
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::VarDefine {
+impl<M: Mangler> Ast<M> for parse::VarDefine {
     type Forward = ();
 
     fn to_ast(
@@ -210,26 +219,25 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::VarDefine {
         let init = match &var_define.init {
             Some(init) => {
                 let init = scope.to_ast(&init.val)?;
-                if init.ty != ty {
-                    return span.throw(format!(
-                        "tring to define a variable with type {} from type {}",
-                        ty, init.ty
-                    ));
-                }
+                // if init.ty != ty {
+                //     return span.throw(format!(
+                //         "tring to define a variable with type {} from type {}",
+                //         ty, init.ty
+                //     ));
+                // }
                 Some(init.val)
             }
             None => None,
         };
 
-        scope.regist_var(name.clone(), semantic::VarDef::new(ty.clone(), span));
-
-        scope.push_stmt(mir::VarDefine { ty, name, init });
+        // scope.regist_var(name.clone(), VarDef::new(ty.clone().into(), span, true));
+        // scope.push_stmt(mir::VarDefine { ty, name, init });
 
         Ok(())
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::If {
+impl<M: Mangler> Ast<M> for parse::If {
     type Forward = ();
 
     fn to_ast(if_: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
@@ -241,23 +249,23 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::If {
                 }
                 parse::ChainIf::AtomicElse(else_) => {
                     let else_ = scope.to_ast(&else_.block)?;
-                    scope.push_stmt(mir::Statement::If(mir::If {
-                        branches,
-                        else_: Some(else_),
-                    }));
+                    // scope.push_stmt(mir::Statement::If(mir::If {
+                    //     branches,
+                    //     else_: Some(else_),
+                    // }));
                     return Ok(());
                 }
             }
         }
-        scope.push_stmt(mir::Statement::If(mir::If {
-            branches,
-            else_: None,
-        }));
+        // scope.push_stmt(mir::Statement::If(mir::If {
+        //     branches,
+        //     else_: None,
+        // }));
         Ok(())
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::While {
+impl<M: Mangler> Ast<M> for parse::While {
     type Forward = ();
 
     fn to_ast(
@@ -267,12 +275,12 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::While {
     ) -> Result<Self::Forward> {
         let cond = scope.to_ast(&while_.conds)?;
         let body = scope.to_ast(&while_.block)?;
-        scope.push_stmt(mir::Statement::While(mir::While { cond, body }));
+        // scope.push_stmt(mir::Statement::While(mir::While { cond, body }));
         Ok(())
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::AtomicIf {
+impl<M: Mangler> Ast<M> for parse::AtomicIf {
     type Forward = mir::IfBranch;
 
     fn to_ast(
@@ -286,7 +294,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::AtomicIf {
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::Return {
+impl<M: Mangler> Ast<M> for parse::Return {
     type Forward = ();
 
     fn to_ast(
@@ -298,14 +306,14 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::Return {
             Some(val) => Some(scope.to_ast(val)?),
             None => None,
         };
-        scope.push_stmt(mir::Statement::Return(mir::Return {
-            val: val.map(|v| v.val),
-        }));
+        // scope.push_stmt(mir::Statement::Return(mir::Return {
+        //     val: val.map(|v| v.val),
+        // }));
         Ok(())
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::CodeBlock {
+impl<M: Mangler> Ast<M> for parse::CodeBlock {
     type Forward = mir::Statements;
 
     fn to_ast(block: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
@@ -321,7 +329,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::CodeBlock {
 }
 
 // TODO: condition`s`
-impl<M: Mangler> Ast<ModScope<M>> for parse::Arguments {
+impl<M: Mangler> Ast<M> for parse::Arguments {
     type Forward = mir::Condition;
 
     fn to_ast(cond: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
@@ -344,7 +352,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::Arguments {
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::Expr {
+impl<M: Mangler> Ast<M> for parse::Expr {
     type Forward = mir::Variable;
 
     fn to_ast(expr: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
@@ -380,7 +388,7 @@ impl<M: Mangler> Ast<ModScope<M>> for parse::Expr {
     }
 }
 
-impl<M: Mangler> Ast<ModScope<M>> for parse::AtomicExpr {
+impl<M: Mangler> Ast<M> for parse::AtomicExpr {
     type Forward = mir::Variable;
 
     fn to_ast(atomic: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {

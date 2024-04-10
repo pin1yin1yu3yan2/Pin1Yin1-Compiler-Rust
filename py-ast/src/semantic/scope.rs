@@ -1,31 +1,11 @@
-use self::declare::kind::DeclareKind;
-
 use super::declare::*;
 use super::mangle::*;
 use super::*;
-use crate::ir;
 use crate::parse::*;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use terl::*;
-
-/// Marker
-pub trait Scope: Sized {
-    fn to_ast_inner<A>(&mut self, s: &A::Target, span: Span) -> Result<A::Forward>
-    where
-        A: Ast<Self>,
-    {
-        A::to_ast(s, span, self)
-    }
-
-    fn to_ast<A>(&mut self, pu: &PU<A>) -> Result<A::Forward>
-    where
-        A: Ast<Self>,
-    {
-        self.to_ast_inner::<A>(&**pu, pu.get_span())
-    }
-}
 
 pub struct DefineScope<M: Mangler> {
     pub(crate) fn_signs: FnSigns,
@@ -62,12 +42,12 @@ impl<M: Mangler> DefineScope<M> {
         M::mangle(unit)
     }
 
-    pub fn mangle_ty(&self, ty: &ir::TypeDefine) -> MangleUnit {
+    pub fn mangle_ty(&self, ty: &mir::TypeDefine) -> MangleUnit {
         match ty {
-            ir::TypeDefine::Primitive(pty) => self.mangle_unit(MangleItem::Type {
+            mir::TypeDefine::Primitive(pty) => self.mangle_unit(MangleItem::Type {
                 ty: Cow::Owned(pty.to_string()),
             }),
-            ir::TypeDefine::Complex(_) => todo!(),
+            mir::TypeDefine::Complex(_) => todo!(),
         }
     }
 
@@ -83,8 +63,16 @@ impl<M: Mangler> DefineScope<M> {
         })
     }
 
-    pub fn get_fn(&self, res: &TypeIdx) -> &FnSignWithName {
+    pub fn get_fn(&self, res: usize) -> &FnSignWithName {
         self.fn_signs.get_fn(res)
+    }
+
+    pub fn get_mangled(&self, name: &str) -> Type {
+        self.fn_signs.get_mangled(name)
+    }
+
+    pub fn get_unmangled(&self, name: &str) -> Vec<Type> {
+        self.fn_signs.get_unmangled(name)
     }
 }
 
@@ -103,7 +91,7 @@ impl<M: Mangler> ModScope<M> {
         }
     }
 
-    pub fn regist_fn(&mut self, name: String, sign: FnSign) -> TypeIdx {
+    pub fn regist_fn(&mut self, name: String, sign: FnSign) -> Type {
         let mangled = self.defs.mangle_fn(&name, &sign);
         self.defs.fn_signs.new_fn(name, mangled, sign)
     }
@@ -125,16 +113,50 @@ impl<M: Mangler> ModScope<M> {
         Ok(())
     }
 
+    pub fn search_var(&self, name: &str) -> Option<defs::VarDef> {
+        if let Some(param) = self
+            .defs
+            .get_fn(self.current)
+            .params
+            .iter()
+            .find(|param| param.name == name)
+        {
+            return Some(defs::VarDef::new(
+                Type::Owned(param.ty.clone()),
+                param.loc,
+                false,
+            ));
+        }
+
+        let fn_scope = self.local();
+
+        for scope in fn_scope.scope_stack.iter().rev() {
+            if let Some(var_def) = scope.vars.get(name) {
+                return Some(var_def.clone());
+            }
+        }
+
+        todo!()
+    }
+
+    fn local(&self) -> &FnScope {
+        &self.fns[self.current]
+    }
+
+    fn local_mut(&mut self) -> &mut FnScope {
+        &mut self.fns[self.current]
+    }
+
     // from FnScope
-    pub fn spoce<T, F>(&mut self, f: F) -> Result<(ir::Statements, T)>
+    pub fn spoce<T, F>(&mut self, f: F) -> Result<(mir::Statements, T)>
     where
         F: FnOnce(&mut Self) -> Result<T>,
     {
         let scope = Default::default();
 
-        self.scope_stack.push(scope);
+        self.local_mut().scope_stack.push(scope);
         let t = f(self)?;
-        let pool = self.scope_stack.pop().unwrap();
+        let pool = self.local_mut().scope_stack.pop().unwrap();
 
         Result::Ok((pool.stmts, t))
     }
@@ -143,18 +165,14 @@ impl<M: Mangler> ModScope<M> {
         todo!()
     }
 
-    pub fn function_overload_declare(&self, fn_name: &str) -> Vec<TypeIdx> {
-        self.defs.fn_signs.get_unmangled(fn_name)
-    }
-
-    pub fn new_declare_group<K>(&mut self, builder: GroupBuilder<M>) -> terl::Result<GroupIdx>
+    pub fn build_overload_declare<B>(&mut self, builder: B) -> terl::Result<GroupIdx>
     where
-        K: DeclareKind,
+        B: FnOnce(&DefineScope<M>) -> GroupBuilder<M>,
     {
-        // no-deref, or compiler error
+        let builder = builder(&self.defs);
         self.fns[self.current]
             .declare_map
-            .new_group::<K, _>(&self.defs, builder)
+            .new_group::<declare::kind::Overload, M>(&self.defs, builder)
     }
 
     pub fn load_stmts(&mut self, stmts: &[PU<Statement>]) -> Result<()> {
@@ -163,21 +181,19 @@ impl<M: Mangler> ModScope<M> {
         }
         Result::Ok(())
     }
-}
 
-impl<M: Mangler> Scope for ModScope<M> {}
-
-impl<M: Mangler> std::ops::Deref for ModScope<M> {
-    type Target = FnScope;
-
-    fn deref(&self) -> &Self::Target {
-        self.fns.last().unwrap()
+    pub fn to_ast_inner<A>(&mut self, s: &A::Target, span: Span) -> Result<A::Forward>
+    where
+        A: Ast<M>,
+    {
+        A::to_ast(s, span, self)
     }
-}
 
-impl<M: Mangler> std::ops::DerefMut for ModScope<M> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.fns.last_mut().unwrap()
+    pub fn to_ast<A>(&mut self, pu: &PU<A>) -> Result<A::Forward>
+    where
+        A: Ast<M>,
+    {
+        self.to_ast_inner::<A>(&**pu, pu.get_span())
     }
 }
 
@@ -199,32 +215,6 @@ pub struct FnScope {
     pub declare_map: DeclareMap,
 }
 
-impl Scope for FnScope {
-    fn to_ast_inner<A>(&mut self, s: &A::Target, span: Span) -> Result<A::Forward>
-    where
-        A: Ast<Self>,
-    {
-        A::to_ast(s, span, self)
-    }
-}
-
-/// usually be folded into other structs,like FnDef, If, While...
-pub struct BasicScope {
-    // defines
-    pub vars: HashMap<String, VarDef>,
-    // statements in scope
-    pub stmts: ir::Statements,
-}
-
-impl Default for BasicScope {
-    fn default() -> Self {
-        Self {
-            vars: Default::default(),
-            stmts: Default::default(),
-        }
-    }
-}
-
 impl FnScope {
     pub fn new(fn_name: impl ToString) -> Self {
         Self {
@@ -235,36 +225,33 @@ impl FnScope {
         }
     }
 
-    pub(crate) fn this_scope(&mut self) -> &mut BasicScope {
+    fn this_scope(&mut self) -> &mut BasicScope {
         self.scope_stack.last_mut().unwrap()
     }
 
-    pub(crate) fn push_stmt(&mut self, stmt: impl Into<ir::Statement>) {
+    pub(crate) fn push_stmt(&mut self, stmt: impl Into<mir::Statement>) {
         self.this_scope().stmts.push(stmt.into())
     }
 
-    pub fn finish(mut self) -> ir::Statements {
+    pub fn finish(mut self) -> mir::Statements {
         assert!(self.scope_stack.len() == 1, "unclosed parse!?");
         self.scope_stack.pop().unwrap().stmts
     }
+}
 
-    // pub fn mangle(&mut self, name: &str) {}
+/// usually be folded into other structs,like FnDef, If, While...
+pub struct BasicScope {
+    // defines
+    pub vars: HashMap<String, VarDef>,
+    // statements in scope
+    pub stmts: mir::Statements,
+}
 
-    pub fn push_compute<T, E>(&mut self, ty: T, init: E) -> ir::Variable
-    where
-        T: Into<ir::PrimitiveType>,
-        E: Into<ir::OperateExpr>,
-    {
-        let name = format!("_{}", self.alloc_id);
-        self.alloc_id += 1;
-
-        let eval = init.into();
-        let compute = ir::Compute {
-            ty: ty.into(),
-            name: name.clone(),
-            eval,
-        };
-        self.this_scope().stmts.push(compute.into());
-        ir::AtomicExpr::Variable(name)
+impl Default for BasicScope {
+    fn default() -> Self {
+        Self {
+            vars: Default::default(),
+            stmts: Default::default(),
+        }
     }
 }

@@ -5,7 +5,7 @@ use std::fmt::Debug;
 ///
 /// be different from &[char], this type contains
 /// two data: the start of the span, and the end of the span
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Span {
     pub(crate) start: usize,
     pub(crate) end: usize,
@@ -32,7 +32,7 @@ impl Span {
     }
 }
 
-impl std::fmt::Display for Span {
+impl std::fmt::Debug for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "@{}..{}", self.start, self.end)
     }

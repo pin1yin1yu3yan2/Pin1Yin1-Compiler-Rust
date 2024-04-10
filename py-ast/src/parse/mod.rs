@@ -1,4 +1,5 @@
 use terl::*;
+type Result<T> = terl::Result<T, terl::ParseError>;
 
 mod expr;
 mod flow;
