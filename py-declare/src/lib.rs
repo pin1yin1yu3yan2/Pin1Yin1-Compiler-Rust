@@ -1,73 +1,17 @@
 mod bench;
+mod defs;
 mod filter;
 mod group;
 mod map;
+mod res;
 pub use bench::*;
+pub use defs::*;
 pub use filter::*;
 pub use group::*;
 pub use map::*;
-use py_ir::ir::TypeDefine;
+pub use res::*;
 
-use super::{mangle::Mangler, DefineScope};
-
-pub mod kind;
-
-#[derive(Debug, Clone)]
-pub enum Type {
-    /// this's index can represent to a function's overload's return type. and
-    /// the index is overloads index
-    FnRetty(usize),
-    Owned(TypeDefine),
-}
-
-impl Type {
-    pub fn as_fn_retty(&self) -> usize {
-        if let Self::FnRetty(v) = self {
-            *v
-        } else {
-            panic!("how about using if let or match stmt first?")
-        }
-    }
-
-    pub fn as_owned(&self) -> &TypeDefine {
-        if let Self::Owned(v) = self {
-            v
-        } else {
-            panic!("how about using if let or match stmt first?")
-        }
-    }
-
-    pub fn as_type<'a, M: Mangler>(&'a self, defs: &'a DefineScope<M>) -> &'a TypeDefine {
-        match self {
-            Type::FnRetty(idx) => &defs.get_fn(*idx).ty,
-            Type::Owned(ty) => ty,
-        }
-    }
-}
-
-impl From<TypeDefine> for Type {
-    fn from(v: TypeDefine) -> Self {
-        Self::Owned(v)
-    }
-}
-
-impl From<py_ir::ir::ComplexType> for Type {
-    fn from(v: py_ir::ir::ComplexType) -> Self {
-        Self::Owned(v.into())
-    }
-}
-
-impl From<py_ir::ir::PrimitiveType> for Type {
-    fn from(v: py_ir::ir::PrimitiveType) -> Self {
-        Self::Owned(v.into())
-    }
-}
-
-impl From<usize> for Type {
-    fn from(v: usize) -> Self {
-        Self::FnRetty(v)
-    }
-}
+pub mod mir;
 
 #[cfg(test)]
 mod tests {
@@ -81,7 +25,7 @@ mod tests {
             let mut possiables = std::collections::HashMap::default();
 
             for (idx, (res, deps)) in iter.into_iter().enumerate() {
-                possiables.insert(idx, BenchStatus::Available(res));
+                possiables.insert(idx, Ok(res));
                 let this_node = Bench::new(declare_idx, idx);
 
                 self.deps.insert(this_node, deps.iter().copied().collect());
@@ -93,7 +37,7 @@ mod tests {
             }
 
             self.groups
-                .push(DeclareGroup::new(terl::Span::new(0, 0), possiables));
+                .push(Group::new(terl::Span::new(0, 0), possiables));
 
             declare_idx
         }
@@ -107,7 +51,7 @@ mod tests {
 
         macro_rules! ty {
             ($idx:literal) => {
-                Type::FnRetty { 0: $idx }
+                Type::Overload(Overload($idx))
             };
         }
 

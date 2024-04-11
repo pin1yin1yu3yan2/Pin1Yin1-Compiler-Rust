@@ -1,8 +1,9 @@
-use super::{declare::*, mangle::Mangler};
-use crate::{benches, ops::Operators};
 use std::borrow::Cow;
 
 pub use py_ir::ir::{ComplexType, PrimitiveType, TypeDefine};
+use py_ir::ops::Operators;
+
+use crate::{benches, BenchBuilder, GroupIdx};
 
 pub type Statements = Vec<Statement>;
 
@@ -81,15 +82,6 @@ pub struct Type {
     mangle: Cow<'static, str>,
 }
 
-impl Type {
-    const DEFAULT_INT: Self = Self {
-        mangle: Cow::Borrowed("i64"),
-    };
-    const DEFAULT_FLOAT: Self = Self {
-        mangle: Cow::Borrowed("f32"),
-    };
-}
-
 #[derive(Debug, Clone)]
 pub enum AtomicExpr {
     Char(char),
@@ -117,7 +109,7 @@ impl Variable {
         !matches!(self.val, AtomicExpr::FnCall(..) | AtomicExpr::Variable(..))
     }
 
-    pub fn literal_benches<M: Mangler>(atomic: &AtomicExpr) -> Vec<BenchBuilder<M>> {
+    pub fn literal_benches(atomic: &AtomicExpr) -> Vec<BenchBuilder> {
         match atomic {
             AtomicExpr::Char(_) => benches! {() => PrimitiveType::char()},
             // String: greatly in processing...

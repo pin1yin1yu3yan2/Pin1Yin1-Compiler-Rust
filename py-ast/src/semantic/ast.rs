@@ -1,5 +1,3 @@
-use self::declare::kind::*;
-use self::declare::*;
 use super::mangle::Mangler;
 use super::*;
 use crate::parse;
@@ -185,10 +183,10 @@ impl<M: Mangler> Ast<M> for parse::VarStore {
 
         let val = scope.to_ast(&var_store.assign.val)?;
         let Some(var_def) = scope.search_var(&name) else {
-            return span.throw(format!("use of undefined variable {}", *name));
+            return Err(span.make_error(format!("use of undefined variable {}", *name)));
         };
         if !var_def.mutable {
-            return span.throw(format!("cant assign to a immmutable variable {}", *name));
+            return Err(span.make_error(format!("cant assign to a immmutable variable {}", *name)));
         }
 
         // if var_def.ty != val.ty {
@@ -216,24 +214,14 @@ impl<M: Mangler> Ast<M> for parse::VarDefine {
         // TODO: testfor if  ty exist
         let ty = var_define.ty.to_ast_ty()?;
         let name = var_define.name.to_string();
+
         let init = match &var_define.init {
-            Some(init) => {
-                let init = scope.to_ast(&init.val)?;
-                // if init.ty != ty {
-                //     return span.throw(format!(
-                //         "tring to define a variable with type {} from type {}",
-                //         ty, init.ty
-                //     ));
-                // }
-                Some(init.val)
-            }
+            Some(init) => Some(scope.to_ast(&init.val)?),
             None => None,
         };
+        let var_define = mir::VarDefine { ty, name, init };
 
-        // scope.regist_var(name.clone(), VarDef::new(ty.clone().into(), span, true));
-        // scope.push_stmt(mir::VarDefine { ty, name, init });
-
-        Ok(())
+        scope.regist_var(var_define, span)
     }
 }
 

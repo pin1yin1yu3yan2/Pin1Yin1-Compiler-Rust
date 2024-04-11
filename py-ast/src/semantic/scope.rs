@@ -1,80 +1,11 @@
-use super::declare::*;
 use super::mangle::*;
 use super::*;
 use crate::parse::*;
-use std::borrow::Cow;
+use py_declare::*;
+
 use std::collections::HashMap;
-use std::marker::PhantomData;
+
 use terl::*;
-
-pub struct DefineScope<M: Mangler> {
-    pub(crate) fn_signs: FnSigns,
-    prefex: Vec<ManglePrefix>,
-    _m: PhantomData<M>,
-}
-
-impl<M: Mangler> DefineScope<M> {
-    pub fn new() -> Self {
-        Self {
-            fn_signs: FnSigns::default(),
-            prefex: Vec::default(),
-            _m: PhantomData,
-        }
-    }
-
-    pub fn new_with_main() -> Self {
-        // Fns::new_with_main must mangel "main" to "main"
-        Self {
-            fn_signs: FnSigns::new_with_main::<M>(),
-            prefex: Vec::default(),
-            _m: PhantomData,
-        }
-    }
-    fn mangle_unit<'m>(&'m self, item: MangleItem<'m>) -> MangleUnit {
-        MangleUnit {
-            prefix: std::borrow::Cow::Borrowed(&self.prefex),
-            item,
-        }
-    }
-
-    pub fn mangle(&self, item: MangleItem) -> String {
-        let unit = self.mangle_unit(item);
-        M::mangle(unit)
-    }
-
-    pub fn mangle_ty(&self, ty: &mir::TypeDefine) -> MangleUnit {
-        match ty {
-            mir::TypeDefine::Primitive(pty) => self.mangle_unit(MangleItem::Type {
-                ty: Cow::Owned(pty.to_string()),
-            }),
-            mir::TypeDefine::Complex(_) => todo!(),
-        }
-    }
-
-    pub fn mangle_fn(&self, name: &str, sign: &FnSign) -> String {
-        let params = sign
-            .params
-            .iter()
-            .map(|param| self.mangle_ty(&param.ty))
-            .collect::<Vec<_>>();
-        self.mangle(MangleItem::Fn {
-            name: Cow::Borrowed(name),
-            params,
-        })
-    }
-
-    pub fn get_fn(&self, res: usize) -> &FnSignWithName {
-        self.fn_signs.get_fn(res)
-    }
-
-    pub fn get_mangled(&self, name: &str) -> Type {
-        self.fn_signs.get_mangled(name)
-    }
-
-    pub fn get_unmangled(&self, name: &str) -> Vec<Type> {
-        self.fn_signs.get_unmangled(name)
-    }
-}
 
 pub struct ModScope<M: Mangler = DefaultMangler> {
     current: usize,
@@ -113,6 +44,19 @@ impl<M: Mangler> ModScope<M> {
         Ok(())
     }
 
+    pub fn regist_var(&mut self, stmt: mir::VarDefine, stmt_span: terl::Span) -> terl::Result<()> {
+        if let Some(ref init) = stmt.init {
+            let init_group = init.ty;
+            self.fns[self.current]
+                .declare_map
+                .declare_type(&self.defs, stmt_span, init_group, &stmt.ty)?;
+        }
+
+        self.current_fn_mut().push_stmt(stmt);
+
+        Ok(())
+    }
+
     pub fn search_var(&self, name: &str) -> Option<defs::VarDef> {
         if let Some(param) = self
             .defs
@@ -121,14 +65,10 @@ impl<M: Mangler> ModScope<M> {
             .iter()
             .find(|param| param.name == name)
         {
-            return Some(defs::VarDef::new(
-                Type::Owned(param.ty.clone()),
-                param.loc,
-                false,
-            ));
+            return Some(defs::VarDef::new(param.ty.clone().into(), param.loc, false));
         }
 
-        let fn_scope = self.local();
+        let fn_scope = self.current_fn();
 
         for scope in fn_scope.scope_stack.iter().rev() {
             if let Some(var_def) = scope.vars.get(name) {
@@ -136,14 +76,14 @@ impl<M: Mangler> ModScope<M> {
             }
         }
 
-        todo!()
+        None
     }
 
-    fn local(&self) -> &FnScope {
+    fn current_fn(&self) -> &FnScope {
         &self.fns[self.current]
     }
 
-    fn local_mut(&mut self) -> &mut FnScope {
+    fn current_fn_mut(&mut self) -> &mut FnScope {
         &mut self.fns[self.current]
     }
 
@@ -154,9 +94,9 @@ impl<M: Mangler> ModScope<M> {
     {
         let scope = Default::default();
 
-        self.local_mut().scope_stack.push(scope);
+        self.current_fn_mut().scope_stack.push(scope);
         let t = f(self)?;
-        let pool = self.local_mut().scope_stack.pop().unwrap();
+        let pool = self.current_fn_mut().scope_stack.pop().unwrap();
 
         Result::Ok((pool.stmts, t))
     }
@@ -167,12 +107,12 @@ impl<M: Mangler> ModScope<M> {
 
     pub fn build_overload_declare<B>(&mut self, builder: B) -> terl::Result<GroupIdx>
     where
-        B: FnOnce(&DefineScope<M>) -> GroupBuilder<M>,
+        B: FnOnce(&Defs) -> GroupBuilder,
     {
         let builder = builder(&self.defs);
         self.fns[self.current]
             .declare_map
-            .new_group::<declare::kind::Overload, M>(&self.defs, builder)
+            .new_group(&self.defs, builder)
     }
 
     pub fn load_stmts(&mut self, stmts: &[PU<Statement>]) -> Result<()> {
@@ -213,6 +153,7 @@ pub struct FnScope {
     pub alloc_id: usize,
     pub scope_stack: Vec<BasicScope>,
     pub declare_map: DeclareMap,
+    pub errors: Vec<terl::Error>,
 }
 
 impl FnScope {
@@ -222,6 +163,7 @@ impl FnScope {
             scope_stack: Default::default(),
             alloc_id: Default::default(),
             declare_map: Default::default(),
+            errors: Default::default(),
         }
     }
 

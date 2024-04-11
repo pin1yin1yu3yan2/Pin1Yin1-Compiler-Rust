@@ -1,13 +1,100 @@
-use std::{borrow::Cow, collections::HashMap, rc::Rc};
+use std::{borrow::Cow, collections::HashMap, marker::PhantomData, rc::Rc};
 
+use py_declare::{mir, Defines, Directly, Overload, Type};
 use terl::Span;
 
 use crate::ir;
 
-use super::{
-    declare::Type,
-    mangle::{MangleItem, MangleUnit, Mangler},
-};
+use super::mangle::*;
+
+pub struct DefineScope<M: Mangler> {
+    pub(crate) fn_signs: FnSigns,
+    prefex: Vec<ManglePrefix>,
+    _m: PhantomData<M>,
+}
+
+impl<M: Mangler> DefineScope<M> {
+    pub fn new() -> Self {
+        Self {
+            fn_signs: FnSigns::default(),
+            prefex: Vec::default(),
+            _m: PhantomData,
+        }
+    }
+
+    pub fn new_with_main() -> Self {
+        // Fns::new_with_main must mangel "main" to "main"
+        Self {
+            fn_signs: FnSigns::new_with_main::<M>(),
+            prefex: Vec::default(),
+            _m: PhantomData,
+        }
+    }
+    fn mangle_unit<'m>(&'m self, item: MangleItem<'m>) -> MangleUnit {
+        MangleUnit {
+            prefix: std::borrow::Cow::Borrowed(&self.prefex),
+            item,
+        }
+    }
+
+    pub fn mangle(&self, item: MangleItem) -> String {
+        let unit = self.mangle_unit(item);
+        M::mangle(unit)
+    }
+
+    pub fn mangle_ty(&self, ty: &mir::TypeDefine) -> MangleUnit {
+        match ty {
+            mir::TypeDefine::Primitive(pty) => self.mangle_unit(MangleItem::Type {
+                ty: Cow::Owned(pty.to_string()),
+            }),
+            mir::TypeDefine::Complex(_) => todo!(),
+        }
+    }
+
+    pub fn mangle_fn(&self, name: &str, sign: &FnSign) -> String {
+        let params = sign
+            .params
+            .iter()
+            .map(|param| self.mangle_ty(&param.ty))
+            .collect::<Vec<_>>();
+        self.mangle(MangleItem::Fn {
+            name: Cow::Borrowed(name),
+            params,
+        })
+    }
+
+    pub fn get_fn(&self, res: usize) -> &FnSignWithName {
+        self.fn_signs.get_fn(res)
+    }
+
+    pub fn get_mangled(&self, name: &str) -> Type {
+        self.fn_signs.get_mangled(name)
+    }
+
+    pub fn get_unmangled(&self, name: &str) -> Vec<Type> {
+        self.fn_signs.get_unmangled(name)
+    }
+}
+
+impl<M: Mangler> Defines<Overload> for DefineScope<M> {
+    fn get_type(&self, item: &Overload) -> &ir::TypeDefine {
+        &self.get_fn(item.0).ty
+    }
+
+    fn display(&self, item: &Overload) -> String {
+        format!("{:?}", self.get_fn(item.0))
+    }
+}
+
+impl<M: Mangler> Defines<Directly> for DefineScope<M> {
+    fn get_type<'a>(&'a self, item: &'a Directly) -> &ir::TypeDefine {
+        &item.0
+    }
+
+    fn display(&self, item: &Directly) -> String {
+        item.0.to_string()
+    }
+}
 
 #[derive(Default)]
 pub struct FnSigns {
@@ -52,18 +139,21 @@ impl FnSigns {
         });
         self.unmangled.entry(unmangled).or_default().push(idx);
         self.mangled.insert(mangled, idx);
-        Type::from(idx)
+        Type::overload(idx)
     }
 
     pub fn get_unmangled(&self, name: &str) -> Vec<Type> {
         self.unmangled
             .get(name)
-            .map(|idx| idx.iter().map(|&idx| Type::from(idx)).collect())
+            .map(|idx| idx.iter().map(|&idx| Type::overload(idx)).collect())
             .unwrap_or_default()
     }
 
     pub fn get_mangled(&self, name: &str) -> Type {
-        self.mangled.get(name).map(|&idx| Type::from(idx)).unwrap()
+        self.mangled
+            .get(name)
+            .map(|&idx| Type::overload(idx))
+            .unwrap()
     }
 
     pub fn get_fn(&self, res: usize) -> &FnSignWithName {
@@ -84,6 +174,7 @@ impl FnDef {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct FnSignWithName {
     sign: FnSign,
     pub name: String,

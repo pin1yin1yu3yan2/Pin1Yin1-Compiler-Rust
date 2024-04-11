@@ -97,6 +97,30 @@ impl std::ops::Add for Error {
         self
     }
 }
+
+impl std::ops::AddAssign for Error {
+    fn add_assign(&mut self, rhs: Self) {
+        self.messages.extend(
+            std::iter::once(Message::rich(rhs.main_message, rhs.main_span)).chain(rhs.messages),
+        );
+    }
+}
+
+impl<M: Into<Message>> std::ops::Add<M> for Error {
+    type Output = Error;
+
+    fn add(mut self, rhs: M) -> Self::Output {
+        self.messages.push(rhs.into());
+        self
+    }
+}
+
+impl<M: Into<Message>> std::ops::AddAssign<M> for Error {
+    fn add_assign(&mut self, rhs: M) {
+        self.messages.push(rhs.into());
+    }
+}
+
 impl ParseError {
     pub fn new(span: Span, reason: impl ToString, kind: ParseErrorKind) -> Self {
         Self {

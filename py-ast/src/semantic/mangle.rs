@@ -25,7 +25,7 @@ pub struct MangleUnit<'m> {
     pub item: MangleItem<'m>,
 }
 
-pub trait Mangler: Sized {
+pub trait Mangler: Sized + 'static {
     fn mangle(unit: MangleUnit) -> String;
 
     fn demangle(str: &str) -> MangleUnit<'static>;

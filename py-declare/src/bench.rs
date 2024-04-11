@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use terl::{Span, WithSpan};
 
-use crate::semantic::{mangle::Mangler, DefineScope};
+use crate::{Defs, Type, Types};
 
-use super::{kind::DeclareKind, BenchFilter, DeclareMap, GroupIdx, Type};
+use super::{BenchFilter, DeclareMap, GroupIdx};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bench {
@@ -24,12 +24,6 @@ impl Bench {
 }
 
 #[derive(Debug, Clone)]
-pub enum BenchStatus {
-    Available(Type),
-    Faild(terl::Error),
-}
-
-#[derive(Debug, Clone)]
 pub enum BenchBuildError {
     NonBenchSelected(GroupIdx, String),
     MultipleSelected(GroupIdx, Vec<usize>),
@@ -37,11 +31,7 @@ pub enum BenchBuildError {
 }
 
 impl BenchBuildError {
-    fn make<K, M>(self, at: Span, map: &DeclareMap, defs: &DefineScope<M>) -> terl::Error
-    where
-        M: Mangler,
-        K: DeclareKind,
-    {
+    fn make(self, at: Span, map: &DeclareMap, defs: &Defs) -> terl::Error {
         match self {
             BenchBuildError::NonBenchSelected(gidx, expect) => map[gidx]
                 .make_error("for this bench, non of depend bench matched")
@@ -51,30 +41,29 @@ impl BenchBuildError {
 
                 for bench in benches {
                     use std::fmt::Write;
+
                     writeln!(
                         &mut msg,
                         "this can be declare to {}",
-                        map.display_bench::<K, M>(Bench::new(gidx, bench), defs)
-                    );
+                        map[Bench::new(gidx, bench)].as_ref().unwrap().display(defs)
+                    )
+                    .unwrap();
                 }
 
-                let err = at
-                    .make_error("multiple possible branches are selected to satisfy this bench\n")
-                    .append(map[gidx].span.make_message(msg));
-
-                err
+                at.make_error("multiple possible branches are selected to satisfy this bench\n")
+                    .append(map[gidx].span.make_message(msg))
             }
             BenchBuildError::ConflictSelected(selected, conflict) => {
                 let msg1 = format!(
                     "the bench requires this to be delcared as {}",
-                    map.display_bench::<K, M>(selected, defs)
+                    map[selected].as_ref().unwrap().display(defs)
                 );
                 let msg2 = format!(
                     "but the bench also requires this to be delcared as {}",
-                    map.display_bench::<K, M>(conflict, defs)
+                    map[conflict].as_ref().unwrap().display(defs)
                 );
 
-                at.make_error(format!("conflict requirements"))
+                at.make_error("conflict requirements")
                     .append(map[selected.belong_to].span.make_message(msg1))
                     .append(map[conflict.belong_to].span.make_message(msg2))
             }
@@ -82,15 +71,14 @@ impl BenchBuildError {
     }
 }
 
-type BenchBuildAction<'b, M: Mangler> =
-    dyn Fn(&DeclareMap, &DefineScope<M>) -> terl::Result<Bench, BenchBuildError> + 'b;
+type BenchBuildAction<'b> = dyn Fn(&DeclareMap, &Defs) -> terl::Result<Bench, BenchBuildError> + 'b;
 
-pub struct BenchBuilder<'b, M: Mangler> {
+pub struct BenchBuilder<'b> {
     pub(super) res: Type,
-    pub(super) actinons: Vec<Box<BenchBuildAction<'b, M>>>,
+    pub(super) actinons: Vec<Box<BenchBuildAction<'b>>>,
 }
 
-impl<'b, M: Mangler> BenchBuilder<'b, M> {
+impl<'b> BenchBuilder<'b> {
     pub fn new(res: Type) -> Self {
         Self {
             res,
@@ -98,13 +86,10 @@ impl<'b, M: Mangler> BenchBuilder<'b, M> {
         }
     }
 
-    pub fn new_depend<K>(&mut self, gidx: GroupIdx, filter: impl BenchFilter<K, M> + 'b)
-    where
-        K: DeclareKind,
-    {
-        let action = move |map: &DeclareMap, defs: &DefineScope<M>| {
+    pub fn new_depend<T: Types>(&mut self, gidx: GroupIdx, filter: impl BenchFilter<T> + 'b) {
+        let action = move |map: &DeclareMap, defs: &Defs| {
             let mut iter = map[gidx].res.iter().filter_map(|(idx, res)| match res {
-                BenchStatus::Available(avalable) if filter.satisfy(avalable, defs) => Some(idx),
+                Ok(avalable) if filter.satisfy(avalable, defs) => Some(idx),
                 _ => None,
             });
             let Some(&idx) = iter.next() else {
@@ -123,11 +108,11 @@ impl<'b, M: Mangler> BenchBuilder<'b, M> {
     }
 
     /// return [BenchStatus] and
-    pub fn build<K: DeclareKind>(
+    pub fn build(
         self,
         at: Span,
         map: &mut DeclareMap,
-        defs: &DefineScope<M>,
+        defs: &Defs,
     ) -> terl::Result<(Type, HashSet<Bench>)> {
         let mut deps: HashSet<Bench> = HashSet::new();
         let mut used_group = HashSet::new();
@@ -142,13 +127,13 @@ impl<'b, M: Mangler> BenchBuilder<'b, M> {
                         .find(|bench| bench.belong_to == conflict.belong_to)
                         .unwrap();
 
-                    let err = BenchBuildError::ConflictSelected(selected, conflict)
-                        .make::<K, M>(at, map, defs);
+                    let err =
+                        BenchBuildError::ConflictSelected(selected, conflict).make(at, map, defs);
                     return Err(err);
                 }
 
                 Err(error) => {
-                    let err = error.make::<K, M>(at, map, defs);
+                    let err = error.make(at, map, defs);
                     return Err(err);
                 }
 
@@ -173,7 +158,7 @@ macro_rules! benches {
     } => {
         {
             vec![$(
-                $crate::semantic::declare::BenchBuilder::new(From::from($res))
+                $crate::BenchBuilder::new(From::from($res))
                     $(.new_filter($filter))*
             ),*]
         }
