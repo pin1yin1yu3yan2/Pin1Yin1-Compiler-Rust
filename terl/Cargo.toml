@@ -5,6 +5,3 @@ edition = "2021"
 
 [features]
 parser_calling_tree = []
-
-[dependencies]
-lazy_static = "1.4.0"

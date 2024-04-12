@@ -34,8 +34,8 @@ macro_rules! keywords {
                 use std::collections::HashMap;
                 use terl::WithSpan;
 
-                $crate::lazy_static::lazy_static! {
-                    static ref MAP: HashMap<Vec<char>, $enum_name> = {
+                thread_local! {
+                    static MAP: HashMap<Vec<char>, $enum_name> = {
                         let mut _map = HashMap::new();
                         $(
                             _map.insert($string.chars().collect::<Vec<_>>(), $enum_name::$var);
@@ -47,7 +47,7 @@ macro_rules! keywords {
 
                 let s = p.get_chars()?;
                 let s = &**s;
-                let opt = MAP.get(s).copied().map(|t| p.make_pu(t));
+                let opt = MAP.with(|map| map.get(s).copied()).map(|t| p.make_pu(t));
 
                 let error = || p.make_parse_error(format!("non of {} matched", stringify!($enum_name)),terl::ParseErrorKind::Unmatch);
                 opt.ok_or_else(error)
@@ -57,8 +57,8 @@ macro_rules! keywords {
         )*
 
 
-        $crate::lazy_static::lazy_static! {
-            pub static ref KEPPING_KEYWORDS: std::collections::HashSet<Vec<char>> = {
+        thread_local! {
+            pub static KEPPING_KEYWORDS: std::collections::HashSet<Vec<char>> = {
                 let mut set = std::collections::HashSet::<Vec<char>>::default();
                 $($(
                     set.insert($string.chars().collect::<Vec<_>>());

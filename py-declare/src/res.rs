@@ -8,7 +8,7 @@ use std::any::Any;
 
 use py_ir::ir::TypeDefine;
 
-use crate::Defines;
+use crate::Defs;
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -17,12 +17,26 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn overload(idx: usize) -> Self {
+    pub fn new_overload(idx: usize) -> Self {
         Self::Overload(Overload(idx))
     }
 }
 
-impl Types for Type {}
+impl Types for Type {
+    fn get_type<'t>(&'t self, defs: &'t Defs) -> &TypeDefine {
+        match self {
+            Type::Overload(item) => item.get_type(defs),
+            Type::Directly(item) => item.get_type(defs),
+        }
+    }
+
+    fn display(&self, defs: &Defs) -> String {
+        match self {
+            Type::Overload(item) => item.display(defs),
+            Type::Directly(item) => item.display(defs),
+        }
+    }
+}
 
 impl<T: Into<TypeDefine>> From<T> for Type {
     fn from(value: T) -> Self {
@@ -32,19 +46,23 @@ impl<T: Into<TypeDefine>> From<T> for Type {
 
 /// only difference between DeclareKinds are how they are printed
 pub trait Types: Any + Sized {
-    fn get_type<'t>(&'t self, defs: &'t dyn Defines<Self>) -> &TypeDefine {
-        defs.get_type(self)
-    }
+    fn get_type<'t>(&'t self, defs: &'t Defs) -> &TypeDefine;
 
-    fn display(&self, defs: &dyn Defines<Self>) -> String {
-        defs.display(self)
-    }
+    fn display(&self, defs: &Defs) -> String;
 }
 
 /// the return type of a fn's overload
 #[derive(Debug, Clone)]
 pub struct Overload(pub usize);
-impl Types for Overload {}
+impl Types for Overload {
+    fn get_type<'t>(&'t self, defs: &'t Defs) -> &TypeDefine {
+        &defs.get_fn(self.0).ty
+    }
+
+    fn display(&self, defs: &Defs) -> String {
+        format!("{:?}", defs.get_fn(self.0))
+    }
+}
 
 /// directly represent to a val's type
 ///
@@ -52,6 +70,12 @@ impl Types for Overload {}
 /// function's return type nor function's full sign
 #[derive(Debug, Clone)]
 pub struct Directly(pub TypeDefine);
-impl Types for Directly {}
+impl Types for Directly {
+    fn get_type<'t>(&'t self, _: &'t Defs) -> &TypeDefine {
+        &self.0
+    }
 
-pub type Defs = dyn Defines<Type>;
+    fn display(&self, _: &Defs) -> String {
+        self.0.to_string()
+    }
+}

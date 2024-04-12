@@ -1,6 +1,7 @@
 use super::mangle::Mangler;
 use super::*;
 use crate::parse;
+use py_declare::*;
 use terl::*;
 
 pub trait Ast<M: Mangler>: ParseUnit {
@@ -44,50 +45,30 @@ impl<M: Mangler> Ast<M> for parse::FnDefine {
             .iter()
             .try_fold(Vec::new(), |mut vec, pu| {
                 let ty = pu.ty.to_ast_ty()?;
-                let name = pu.name.clone();
-                vec.push(mir::Parameter {
+                let name = pu.name.to_string();
+                let param = defs::Param {
+                    name,
                     ty,
-                    name: name.to_string(),
-                });
+                    loc: pu.get_span(),
+                };
+                vec.push(param);
                 Result::Ok(vec)
             })?;
 
-        let sign_params =
-            params
-                .iter()
-                .cloned()
-                .enumerate()
-                .try_fold(Vec::new(), |mut vec, (idx, param)| {
-                    let raw = &fn_define.params.params[idx];
-                    let param = Param {
-                        name: param.name,
-                        ty: param.ty,
-                        loc: raw.get_span(),
-                    };
-                    vec.push(param);
-                    Result::Ok(vec)
-                })?;
-
-        let fn_sign = FnSign {
+        let fn_sign = defs::FnSign {
             ty: ty.clone(),
-            params: sign_params,
+            params,
             loc: span,
         };
 
         // generate ast
-        scope.create_fn(name, fn_sign, |scope| {
+        scope.create_fn(name, fn_sign, &fn_define.params, |scope| {
             // scope.regist_params(params_iter);
             for stmt in &fn_define.codes.stmts {
                 scope.to_ast(stmt)?;
             }
             Ok(())
         })?;
-        // scope.push_stmt(mir::Statement::FnDefine(mir::FnDefine {
-        //     ty,
-        //     name,
-        //     params,
-        //     body,
-        // }));
 
         Ok(())
     }
@@ -142,24 +123,25 @@ impl<M: Mangler> Ast<M> for parse::FnCall {
                 Result::Ok(args)
             })?;
 
-        let overload = scope.build_overload_declare(|defs| {
+        let overload = scope.new_declare_group(|defs| {
             let overloads = defs.get_unmangled(&fn_call.fn_name);
             let bench_builders = overloads
                 .into_iter()
                 .map(|overload| {
-                    let fn_sign = defs.get_fn(overload.as_fn_retty());
+                    let fn_sign = defs.try_get_fn(&overload);
                     let mut bench_builder = BenchBuilder::new(overload);
                     // overloads with different size will be filtered out
-                    for idx in 0..fn_sign.params.len().min(args.len()) {
-                        let filter = filters::TypeEqual::new(&fn_sign.params[idx].ty);
-                        bench_builder.new_depend::<Directly>(args[idx].ty, filter);
+
+                    for (param, arg) in fn_sign.params.iter().zip(args.iter()) {
+                        let filter = filters::TypeEqual::new(&param.ty);
+                        bench_builder.new_depend::<Directly>(arg.ty, filter);
                     }
+
                     bench_builder
                 })
                 .collect();
 
-            let pre_filter = filters::FnParmLenFilter::with_name(args.len(), &fn_call.fn_name);
-
+            let pre_filter = filters::FnParamLen::new(Some(&fn_call.fn_name), args.len());
             GroupBuilder::new(span, bench_builders).pre_filter(defs, pre_filter)
         })?;
 
@@ -178,27 +160,21 @@ impl<M: Mangler> Ast<M> for parse::VarStore {
         span: Span,
         scope: &mut ModScope<M>,
     ) -> Result<Self::Forward> {
-        let name = var_store.name.clone();
+        let name = var_store.name.to_string();
         // function parameters are inmutable
 
         let val = scope.to_ast(&var_store.assign.val)?;
         let Some(var_def) = scope.search_var(&name) else {
-            return Err(span.make_error(format!("use of undefined variable {}", *name)));
+            return Err(span.make_error(format!("use of undefined variable {}", name)));
         };
         if !var_def.mutable {
-            return Err(span.make_error(format!("cant assign to a immmutable variable {}", *name)));
+            return Err(span.make_error(format!("cant assign to a immmutable variable {}", name)));
         }
 
-        // if var_def.ty != val.ty {
-        //     return span.throw(format!(
-        //         "tring to assign to variable with type {} from type {}",
-        //         var_def.ty, val.ty
-        //     ));
-        // }
-        // scope.push_stmt(mir::VarStore {
-        //     name: name.to_string(),
-        //     val: val.val,
-        // });
+        scope.merge_group(span, var_def.ty, val.ty)?;
+
+        scope.push_stmt(mir::VarStore { name, val });
+
         Ok(())
     }
 }
@@ -237,10 +213,10 @@ impl<M: Mangler> Ast<M> for parse::If {
                 }
                 parse::ChainIf::AtomicElse(else_) => {
                     let else_ = scope.to_ast(&else_.block)?;
-                    // scope.push_stmt(mir::Statement::If(mir::If {
-                    //     branches,
-                    //     else_: Some(else_),
-                    // }));
+                    scope.push_stmt(mir::Statement::If(mir::If {
+                        branches,
+                        else_: Some(else_),
+                    }));
                     return Ok(());
                 }
             }
@@ -263,7 +239,7 @@ impl<M: Mangler> Ast<M> for parse::While {
     ) -> Result<Self::Forward> {
         let cond = scope.to_ast(&while_.conds)?;
         let body = scope.to_ast(&while_.block)?;
-        // scope.push_stmt(mir::Statement::While(mir::While { cond, body }));
+        scope.push_stmt(mir::Statement::While(mir::While { cond, body }));
         Ok(())
     }
 }
@@ -294,9 +270,7 @@ impl<M: Mangler> Ast<M> for parse::Return {
             Some(val) => Some(scope.to_ast(val)?),
             None => None,
         };
-        // scope.push_stmt(mir::Statement::Return(mir::Return {
-        //     val: val.map(|v| v.val),
-        // }));
+        scope.push_stmt(mir::Statement::Return(mir::Return { val }));
         Ok(())
     }
 }
@@ -329,12 +303,13 @@ impl<M: Mangler> Ast<M> for parse::Arguments {
             Result::Ok(last_cond)
         })?;
 
-        if last_cond.ty != mir::PrimitiveType::Bool {
-            return cond.args.last().unwrap().throw("condition must be boolean");
-        }
+        let span = cond.args.last().unwrap().get_span();
+        scope
+            .assert_type_is(span, last_cond.ty, &mir::PrimitiveType::Bool.into())
+            .map_err(|e| e + Message::from("condition must be `bu4` (either `zhen2` or `jia3`)"))?;
 
         Result::Ok(mir::Condition {
-            val: last_cond.val,
+            val: last_cond,
             compute,
         })
     }
@@ -350,27 +325,15 @@ impl<M: Mangler> Ast<M> for parse::Expr {
                 let l = scope.to_ast(l)?;
                 let r = scope.to_ast(r)?;
 
-                // TODO: type declaration
-                if l.ty != r.ty {
-                    return span.throw(format!(
-                        "operator around different type: `{}` and `{}`!",
-                        l.ty, r.ty
-                    ));
-                }
-
+                // TODO: operator overload(type system)
+                // TODO: primitive operators
                 // TODO: operator -> function call
-                if !l.ty.is_primitive() {
-                    return span.throw("only operator around primitive types are supported");
-                }
 
-                let ty = if o.ty() == crate::ops::OperatorTypes::CompareOperator {
-                    mir::PrimitiveType::Bool
-                } else {
-                    l.ty.clone().try_into().unwrap()
-                };
+                // now, we suppert primitive operators only, so they should be same type
+                scope.merge_group(span, l.ty, r.ty)?;
 
-                let expr = scope.push_compute(ty, mir::OperateExpr::binary(o.take(), l.val, r.val));
-                Result::Ok(TypedExpr::new(ty, expr))
+                let op = mir::OperateExpr::binary(o.take(), l, r);
+                Result::Ok(scope.push_compute(op))
             }
         }
     }
@@ -394,30 +357,32 @@ impl<M: Mangler> Ast<M> for parse::AtomicExpr {
             }
             parse::AtomicExpr::Variable(var) => {
                 let Some(def) = scope.search_var(var) else {
-                    return span.throw("use of undefined variable");
+                    return Err(span.make_error("use of undefined variable"));
                 };
 
-                todo!()
+                let variable = mir::Variable {
+                    val: mir::AtomicExpr::Variable(var.to_string()),
+                    ty: def.ty,
+                };
+                return Ok(variable);
             }
 
             // here, this is incorrect because operators may be overloadn
             // all operator overloadn must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
-                // let l = scope.to_ast(&unary.expr)?; x nm
-                // if !l.ty.is_primitive() {
-                //     return span.throw("only operator around primitive types are supported");
-                // }
-                // let ty = mir::PrimitiveType::try_from(l.ty).unwrap();
-                // let expr = scope.push_compute(ty, mir::OperateExpr::unary(*unary.operator, l.val));
-                // Result::Ok(TypedExpr::new(ty, expr))
-                todo!()
+                let l = scope.to_ast(&unary.expr)?;
+                let expr = scope.push_compute(mir::OperateExpr::unary(*unary.operator, l));
+                return Ok(expr);
             }
             parse::AtomicExpr::BracketExpr(expr) => return scope.to_ast(&expr.expr),
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),
         };
 
-        let benches = mir::Variable::literal_benches::<M>(&atomic);
-        let ty = scope.new_declare_group(benches)?;
+        let ty = scope.new_declare_group(|_| {
+            let benches = mir::Variable::literal_benches(&atomic);
+            let builder = GroupBuilder::new(span, benches);
+            builder
+        })?;
         Ok(mir::Variable::new(atomic, ty))
     }
 }

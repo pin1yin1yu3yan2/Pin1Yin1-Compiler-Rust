@@ -279,6 +279,7 @@ impl std::fmt::Display for ComplexType {
     }
 }
 
+/// TODO: use Rc to wrap this, to improve prefer
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum TypeDefine {
     Primitive(PrimitiveType),

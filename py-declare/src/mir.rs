@@ -136,9 +136,6 @@ impl Variable {
 pub type Variables = Vec<Variable>;
 
 /// be different of [py_ir::ir::OperateExpr], this is **not** around primitive types
-///
-/// even the function overload may be delay
-
 #[derive(Debug, Clone)]
 pub enum OperateExpr {
     // type must be known, and then pick a operator-overload
@@ -158,7 +155,7 @@ impl OperateExpr {
 
 #[derive(Debug, Clone)]
 pub struct Compute {
-    pub ty: PrimitiveType,
+    pub ty: GroupIdx,
     pub name: String,
     pub eval: OperateExpr,
 }

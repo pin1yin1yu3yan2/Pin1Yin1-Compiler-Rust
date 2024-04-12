@@ -81,4 +81,43 @@ pub mod filters {
             }
         }
     }
+
+    pub struct FnParamLen<'n> {
+        name: Option<&'n str>,
+        expect: usize,
+    }
+
+    impl<'n> FnParamLen<'n> {
+        pub fn new(name: Option<&'n str>, expect: usize) -> Self {
+            Self { name, expect }
+        }
+    }
+
+    impl BenchFilter<Overload> for FnParamLen<'_> {
+        fn satisfy(&self, ty: &Type, defs: &Defs) -> bool {
+            let f = defs.try_get_fn(ty);
+            f.params.len() == self.expect
+        }
+
+        fn expect(&self, defs: &Defs) -> String {
+            let mut msg = format!("a funcion with {} parameters", self.expect);
+
+            if let Some(name) = self.name {
+                // TODO: import api so that note could be output here
+                msg += "\nexist overloads whose length is expected:\n";
+                let satisfies = defs
+                    .get_unmangled(name)
+                    .iter()
+                    .filter(|ol| defs.try_get_fn(ol).params.len() == self.expect)
+                    .map(|ol| ol.display(defs))
+                    .collect::<Vec<_>>();
+                if satisfies.is_empty() {
+                    msg += "emm, no-overload a matched :("
+                } else {
+                    msg += &satisfies.join("\n");
+                }
+            }
+            msg
+        }
+    }
 }

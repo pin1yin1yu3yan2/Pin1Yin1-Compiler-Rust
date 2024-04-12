@@ -1,17 +1,21 @@
 mod bench;
-mod defs;
+mod error;
 mod filter;
 mod group;
 mod map;
 mod res;
 pub use bench::*;
-pub use defs::*;
+pub use error::*;
 pub use filter::*;
 pub use group::*;
 pub use map::*;
 pub use res::*;
 
+pub mod defs;
 pub mod mir;
+pub use defs::Defs;
+
+type Result<T, E = DeclareError> = std::result::Result<T, E>;
 
 #[cfg(test)]
 mod tests {
@@ -82,7 +86,8 @@ mod tests {
         ]);
 
         let k = map.test_declare([(ty!(5), vec![Bench::new(i, 0), Bench::new(j, 1)])]);
-        map.make_sure(Bench::new(k, 0), terl::Message::Text("".to_owned()));
+        map.make_sure(Bench::new(k, 0), terl::Message::Text("".to_owned()))
+            .unwrap();
 
         for group in [m1, n1, i, m2, n2, j, k] {
             let bench_idx = *map.groups[group.idx].res.keys().next().unwrap();

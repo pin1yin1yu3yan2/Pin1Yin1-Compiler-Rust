@@ -11,5 +11,3 @@ mod tokens;
 pub use self::{
     error::*, lexer::*, mapper::*, parse_unit::*, parser::*, result::*, source::*, tokens::*,
 };
-
-pub use lazy_static;

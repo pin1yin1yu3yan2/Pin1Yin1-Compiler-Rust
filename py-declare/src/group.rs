@@ -1,6 +1,4 @@
-use crate::{Defs, Type, Types};
-
-use super::{BenchBuilder, BenchFilter};
+use super::*;
 use std::collections::HashMap;
 use terl::{Span, WithSpan};
 
@@ -19,8 +17,10 @@ impl GroupIdx {
 
 #[derive(Debug, Clone)]
 pub struct Group {
-    pub(super) span: Span,
-    pub(super) res: HashMap<usize, terl::Result<Type>>,
+    pub(crate) declared: bool,
+    pub(crate) span: Span,
+    // this can only be init once, or keep empty to init later(UNKNOWN type)
+    pub(crate) res: HashMap<usize, Result<Type>>,
 }
 
 impl WithSpan for Group {
@@ -30,12 +30,26 @@ impl WithSpan for Group {
 }
 
 impl Group {
-    pub fn new(span: Span, res: HashMap<usize, terl::Result<Type>>) -> Self {
-        Self { span, res }
+    pub fn new(span: Span, res: HashMap<usize, Result<Type>>) -> Self {
+        Self {
+            span,
+            res,
+            declared: false,
+        }
     }
 
-    pub fn is_unique(&self) -> bool {
-        self.available().count() == 1
+    /// return a [`Ok`] to use [`std::mem::swap`]
+    /// to replace previous_result
+    ///
+    /// this method return [`None`] if provious declare result is removed,
+    /// or the Group is even not declared
+    pub fn unique(&mut self) -> Option<&mut Result<Type>> {
+        if !self.declared {
+            return None;
+        }
+
+        // must be Some
+        self.res.values_mut().filter(|r| r.is_ok()).next()
     }
 
     pub fn available(&self) -> impl Iterator<Item = (usize, &Type)> {
@@ -75,9 +89,9 @@ impl Group {
 }
 
 pub struct GroupBuilder<'b> {
-    pub(super) span: Span,
-    pub(super) builders: Vec<BenchBuilder<'b>>,
-    pub(super) filtered: Vec<(Type, terl::Error)>,
+    pub(crate) span: Span,
+    pub(crate) builders: Vec<BenchBuilder<'b>>,
+    pub(crate) filtered: Vec<(Type, terl::Error)>,
 }
 
 impl GroupBuilder<'_> {

@@ -54,15 +54,21 @@ impl ParseUnit for Ident {
         use crate::lex::*;
         use py_ir::ops;
 
-        // keeping keywords cant be used as identifiers
-        if ops::KEPPING_KEYWORDS.contains(*ident)
-            || ops::sub_classes::KEPPING_KEYWORDS.contains(*ident)
-            || preprocess::KEPPING_KEYWORDS.contains(*ident)
-            || syntax::KEPPING_KEYWORDS.contains(*ident)
-            || types::KEPPING_KEYWORDS.contains(*ident)
-        {
-            return p.unmatch("keeping keywords could not be ident");
+        let keeps = &[
+            ops::KEPPING_KEYWORDS,
+            ops::sub_classes::KEPPING_KEYWORDS,
+            preprocess::KEPPING_KEYWORDS,
+            syntax::KEPPING_KEYWORDS,
+            types::KEPPING_KEYWORDS,
+        ];
+
+        for keeps in keeps {
+            if keeps.with(|keeps| keeps.contains(*ident)) {
+                return p.unmatch("keeping keywords could not be ident");
+            }
         }
+
+        // keeping keywords cant be used as identifiers
 
         let t = Ident(ident.iter().collect());
         p.finish(t)
