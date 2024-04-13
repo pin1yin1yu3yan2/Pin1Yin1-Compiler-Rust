@@ -19,6 +19,10 @@ type Result<T, E = DeclareError> = std::result::Result<T, E>;
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
+    use super::*;
+
     impl DeclareMap {
         fn test_declare<I>(&mut self, iter: I) -> GroupIdx
         where
@@ -29,7 +33,7 @@ mod tests {
             let mut possiables = std::collections::HashMap::default();
 
             for (idx, (res, deps)) in iter.into_iter().enumerate() {
-                possiables.insert(idx, Ok(res));
+                possiables.insert(idx, Ok(Rc::new(res)));
                 let this_node = Bench::new(declare_idx, idx);
 
                 self.deps.insert(this_node, deps.iter().copied().collect());
@@ -46,8 +50,6 @@ mod tests {
             declare_idx
         }
     }
-
-    use super::*;
 
     #[test]
     fn feature() {
@@ -86,8 +88,7 @@ mod tests {
         ]);
 
         let k = map.test_declare([(ty!(5), vec![Bench::new(i, 0), Bench::new(j, 1)])]);
-        map.make_sure(Bench::new(k, 0), terl::Message::Text("".to_owned()))
-            .unwrap();
+        map.make_sure(Bench::new(k, 0), DeclareError::Empty);
 
         for group in [m1, n1, i, m2, n2, j, k] {
             let bench_idx = *map.groups[group.idx].res.keys().next().unwrap();

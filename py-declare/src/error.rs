@@ -1,37 +1,67 @@
-use std::{collections::HashMap, rc::Rc};
-
-use crate::{Bench, Type};
+use crate::Type;
+use std::rc::Rc;
+use terl::Span;
 
 #[derive(Debug, Clone)]
 pub enum DeclareError {
     UniqueDeleted {
-        previous: Type,
         reason: Box<DeclareError>,
     },
     NonBenchSelected {
         expect: String,
     },
-    MultSelected {
-        expect: String,
-        selected: HashMap<Bench, Type>,
-    },
     ConflictSelected {
-        conflict_with: Type,
-    },
-    Unexpect {
-        expect: String,
+        conflict_with: Rc<Type>,
     },
     GroupSolved {
         decalre_as: Type,
     },
-    TypeUnmatch {
-        previous: Type,
+
+    WithLocation {
+        location: Span,
+        err: Box<DeclareError>,
     },
+    WithPrevious {
+        previous: Rc<Type>,
+        error: Box<DeclareError>,
+    },
+    Shared {
+        err: Rc<DeclareError>,
+    },
+
     RemovedDuoDeclared {
         reason: Box<DeclareError>,
     },
-    ReasonDeclared {
+
+    //
+    Declared {
         declare_as: Rc<Type>,
     },
+    Unexpect {
+        expect: String,
+    },
+
+    Filtered,
+
     Empty,
+}
+
+impl DeclareError {
+    pub fn with_location(self, location: Span) -> Self {
+        Self::WithLocation {
+            location,
+            err: Box::new(self),
+        }
+    }
+
+    pub fn into_shared(self) -> Self {
+        Self::Shared { err: Rc::new(self) }
+    }
+
+    pub fn with_previous(self, previous: Rc<Type>) -> Self {
+        Self::WithPrevious {
+            previous,
+            error: Box::new(self),
+        }
+    }
 }

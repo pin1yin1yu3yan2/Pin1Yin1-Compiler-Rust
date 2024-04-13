@@ -94,14 +94,13 @@ impl<M: Mangler> ModScope<M> {
         Ok(())
     }
 
-    pub fn regist_var(&mut self, stmt: mir::VarDefine, stmt_span: terl::Span) -> terl::Result<()> {
+    pub fn regist_var(&mut self, stmt: mir::VarDefine, stmt_span: terl::Span) {
         if let Some(ref init) = stmt.init {
             let init_group = init.ty;
-            self.assert_type_is(stmt_span, init_group, &stmt.ty)?;
+            self.assert_type_is(stmt_span, init_group, &stmt.ty);
         }
 
         self.push_stmt(stmt);
-        Ok(())
     }
 
     pub fn assert_type_is(
@@ -109,7 +108,7 @@ impl<M: Mangler> ModScope<M> {
         stmt_span: terl::Span,
         val_ty: GroupIdx,
         expect_ty: &mir::TypeDefine,
-    ) -> Result<()> {
+    ) {
         self.mir_fns[self.current]
             .declare_map
             .declare_type(&self.defs, stmt_span, val_ty, expect_ty)
@@ -154,22 +153,15 @@ impl<M: Mangler> ModScope<M> {
         Result::Ok((pool.stmts, t))
     }
 
-    pub fn new_declare_group<'b, B>(&'b mut self, builder: B) -> terl::Result<GroupIdx>
+    pub fn new_declare_group<B>(&mut self, builder: B) -> GroupIdx
     where
-        B: FnOnce(&'b Defs) -> GroupBuilder<'b>,
+        B: FnOnce(&mut DeclareMap, &Defs) -> GroupBuilder,
     {
-        let builder = builder(&self.defs);
-        self.mir_fns[self.current]
-            .declare_map
-            .new_group(&self.defs, builder)
+        let builder = builder(&mut self.mir_fns[self.current].declare_map, &self.defs);
+        self.mir_fns[self.current].declare_map.new_group(builder)
     }
 
-    pub fn merge_group(
-        &mut self,
-        stmt_span: terl::Span,
-        to: GroupIdx,
-        from: GroupIdx,
-    ) -> terl::Result<()> {
+    pub fn merge_group(&mut self, stmt_span: terl::Span, to: GroupIdx, from: GroupIdx) {
         self.mir_fns[self.current]
             .declare_map
             .merge_group(&self.defs, stmt_span, to, from)

@@ -32,7 +32,7 @@ impl DeclareMap {
             at,
             items
                 .into_iter()
-                .map(|ty| Ok(ty.into()))
+                .map(|ty| Ok(Rc::new(ty.into())))
                 .enumerate()
                 .collect(),
         ));
@@ -41,26 +41,37 @@ impl DeclareMap {
         }
     }
 
-    pub fn new_group(&mut self, defs: &Defs, gb: GroupBuilder) -> Result<GroupIdx> {
+    pub fn new_group(&mut self, gb: GroupBuilder) -> GroupIdx {
         let gidx = GroupIdx::new(self.groups.len());
 
-        let mut bench_res = HashMap::new();
+        let mut group_res = HashMap::new();
 
-        for (bench_idx, builder) in gb.builders.into_iter().enumerate() {
-            let bench = Bench::new(gidx, bench_idx);
-            let status = builder.build(self, defs).map(|(res, deps)| {
-                for &dep in &deps {
-                    self.rdeps.get_mut(&dep).unwrap().insert(bench);
+        for builder in gb.builders {
+            let bench = Bench::new(gidx, group_res.len());
+
+            let ty = match builder.main_state {
+                Ok(ty) => Rc::new(ty),
+                Err(e) => {
+                    group_res.insert(group_res.len(), Err(e));
+                    continue;
                 }
-                self.deps.insert(bench, deps);
-                res
-            });
-            bench_res.insert(bench_idx, status);
+            };
+
+            for state in builder.states {
+                let state = state.map(|deps| {
+                    for dep in &deps {
+                        self.rdeps.get_mut(dep).unwrap().insert(bench);
+                    }
+                    self.deps.insert(bench, deps);
+                    ty.clone()
+                });
+                group_res.insert(group_res.len(), state);
+            }
         }
 
-        self.groups.push(Group::new(gb.span, bench_res));
+        self.groups.push(Group::new(gb.span, group_res));
 
-        Ok(gidx)
+        gidx
     }
 
     pub fn apply_filter<T>(
@@ -72,17 +83,18 @@ impl DeclareMap {
     where
         T: Types,
     {
-        let span = self[gidx].get_span();
         let benches: Vec<_> = self[gidx]
-            .apply_filter(defs, &filter, |expect| {
-                span.make_error(format!("expect this to be {}", expect))
-            })
+            .apply_filter(defs, &filter)
             .map(|idx| Bench::new(gidx, idx))
             .collect();
 
+        let reason = DeclareError::Unexpect {
+            expect: filter.expect(defs),
+        }
+        .with_location(self[gidx].get_span())
+        .into_shared();
         for bench in benches {
-            let msg = self[gidx].make_message(format!("expect this to be {}", filter.expect(defs)));
-            self.delete_bench(bench, msg)?;
+            self.delete_bench(bench, reason.clone());
         }
         Ok(())
     }
@@ -93,7 +105,7 @@ impl DeclareMap {
         stmt_span: terl::Span,
         to: GroupIdx,
         from: GroupIdx,
-    ) -> Result<()> {
+    ) {
         let froms = self[from]
             .available()
             .map(|(idx, ty)| (Bench::new(from, idx), ty.get_type(defs)))
@@ -116,8 +128,6 @@ impl DeclareMap {
         let (to_keeped, from_keeped): (HashSet<_>, HashSet<_>) =
             merge.iter().map(|(to, from, _)| (*to, *from)).unzip();
 
-        let delete_reason = stmt_span.make_message("filtered here");
-
         let removed = froms
             .iter()
             .map(|(bidx, ..)| *bidx)
@@ -130,11 +140,13 @@ impl DeclareMap {
             )
             .collect::<Vec<_>>();
 
-        for remove in removed {
-            self.delete_bench(remove, delete_reason.clone())?;
-        }
+        let delete_reason = DeclareError::Filtered
+            .with_location(stmt_span)
+            .into_shared();
 
-        Ok(())
+        for remove in removed {
+            self.delete_bench(remove, delete_reason.clone());
+        }
     }
 
     /// declare a [`Group`]'s result is a type
@@ -147,7 +159,7 @@ impl DeclareMap {
         stmt_span: terl::Span,
         val_ty: GroupIdx,
         expect_ty: &TypeDefine,
-    ) -> Result<()> {
+    ) {
         // TODO: unknown type support
         let any_match = self[val_ty]
             .available()
@@ -156,33 +168,24 @@ impl DeclareMap {
 
         match any_match {
             Some(matched) => {
-                let reason = DeclareError::ReasonDeclared {
-                    declare_as: Rc::new(self[val_ty].res[&matched].unwrap().clone()),
-                };
+                let reason = DeclareError::Declared {
+                    declare_as: self[val_ty].res[&matched].clone().unwrap(),
+                }
+                .into_shared();
+
                 self.make_sure(Bench::new(val_ty, matched), reason);
-                Ok(())
             }
             None => {
-                let mut error = stmt_span.make_error(format!("type unmatch, expect {expect_ty}"));
-
-                for (.., res) in &self[val_ty].res {
-                    match res {
-                        Ok(decalre_as) => {
-                            error += self[val_ty].span.make_message(format!(
-                                "a bench declared as {}",
-                                decalre_as.get_type(defs)
-                            ));
-                        }
-                        Err(err) => {
-                            error += self[val_ty]
-                                .span
-                                .make_message("a bench has been filterd out: ");
-                            error += err.clone();
-                        }
+                let error = DeclareError::Unexpect {
+                    expect: expect_ty.to_string(),
+                }
+                .into_shared()
+                .with_location(stmt_span);
+                for (.., result) in &mut self[val_ty].res {
+                    if result.is_ok() {
+                        replace_result(result, |previous| error.clone().with_previous(previous));
                     }
                 }
-
-                Err(error)
             }
         }
     }
@@ -227,14 +230,12 @@ impl DeclareMap {
         // TOOD: use custom error type to replace make_error everywhere
 
         if let Some(unique) = self[bench.belong_to].unique() {
-            let empty = Err(DeclareError::Empty);
-            let previous = std::mem::replace(unique, empty).unwrap();
-            let err = DeclareError::UniqueDeleted {
-                previous,
-                reason: Box::new(reason.clone()),
-            };
-            *unique = Err(err);
-            // "Ok"
+            replace_result(unique, |previous| {
+                DeclareError::UniqueDeleted {
+                    reason: Box::new(reason.clone()),
+                }
+                .with_previous(previous)
+            });
             return;
         }
 
@@ -253,6 +254,16 @@ impl DeclareMap {
     }
 }
 
+fn replace_result<E>(unique: &mut Result<Rc<Type>>, err_builder: E)
+where
+    E: FnOnce(Rc<Type>) -> DeclareError,
+{
+    let empty = Err(DeclareError::Empty);
+    let previous = std::mem::replace(unique, empty).unwrap();
+    let err = err_builder(previous);
+    *unique = Err(err);
+}
+
 impl std::ops::Index<GroupIdx> for DeclareMap {
     type Output = Group;
 
@@ -268,7 +279,7 @@ impl std::ops::IndexMut<GroupIdx> for DeclareMap {
 }
 
 impl std::ops::Index<Bench> for DeclareMap {
-    type Output = Result<Type, DeclareError>;
+    type Output = Result<Rc<Type>, DeclareError>;
 
     fn index(&self, index: Bench) -> &Self::Output {
         &self[index.belong_to].res[&index.bench_idx]

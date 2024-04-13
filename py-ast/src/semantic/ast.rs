@@ -123,27 +123,30 @@ impl<M: Mangler> Ast<M> for parse::FnCall {
                 Result::Ok(args)
             })?;
 
-        let overload = scope.new_declare_group(|defs| {
+        let overload = scope.new_declare_group(|map, defs| {
             let overloads = defs.get_unmangled(&fn_call.fn_name);
+            let pre_filter = filters::FnParamLen::new(Some(&fn_call.fn_name), args.len(), span);
             let bench_builders = overloads
                 .into_iter()
                 .map(|overload| {
                     let fn_sign = defs.try_get_fn(&overload);
                     let mut bench_builder = BenchBuilder::new(overload);
-                    // overloads with different size will be filtered out
+                    bench_builder.filter_self(defs, &pre_filter);
 
-                    for (param, arg) in fn_sign.params.iter().zip(args.iter()) {
-                        let filter = filters::TypeEqual::new(&param.ty);
-                        bench_builder.new_depend::<Directly>(arg.ty, filter);
+                    if bench_builder.is_ok() {
+                        for (param, arg) in fn_sign.params.iter().zip(args.iter()) {
+                            let filter = filters::TypeEqual::new(&param.ty, span);
+                            bench_builder =
+                                bench_builder.new_depend::<Directly, _>(map, defs, arg.ty, &filter);
+                        }
                     }
 
                     bench_builder
                 })
                 .collect();
 
-            let pre_filter = filters::FnParamLen::new(Some(&fn_call.fn_name), args.len());
-            GroupBuilder::new(span, bench_builders).pre_filter(defs, pre_filter)
-        })?;
+            GroupBuilder::new(span, bench_builders)
+        });
 
         let val = mir::AtomicExpr::FnCall(mir::FnCall { args });
         let fn_call = mir::Variable::new(val, overload);
@@ -171,8 +174,7 @@ impl<M: Mangler> Ast<M> for parse::VarStore {
             return Err(span.make_error(format!("cant assign to a immmutable variable {}", name)));
         }
 
-        scope.merge_group(span, var_def.ty, val.ty)?;
-
+        scope.merge_group(span, var_def.ty, val.ty);
         scope.push_stmt(mir::VarStore { name, val });
 
         Ok(())
@@ -197,7 +199,9 @@ impl<M: Mangler> Ast<M> for parse::VarDefine {
         };
         let var_define = mir::VarDefine { ty, name, init };
 
-        scope.regist_var(var_define, span)
+        scope.regist_var(var_define, span);
+
+        Ok(())
     }
 }
 
@@ -304,9 +308,7 @@ impl<M: Mangler> Ast<M> for parse::Arguments {
         })?;
 
         let span = cond.args.last().unwrap().get_span();
-        scope
-            .assert_type_is(span, last_cond.ty, &mir::PrimitiveType::Bool.into())
-            .map_err(|e| e + Message::from("condition must be `bu4` (either `zhen2` or `jia3`)"))?;
+        scope.assert_type_is(span, last_cond.ty, &mir::PrimitiveType::Bool.into());
 
         Result::Ok(mir::Condition {
             val: last_cond,
@@ -330,7 +332,7 @@ impl<M: Mangler> Ast<M> for parse::Expr {
                 // TODO: operator -> function call
 
                 // now, we suppert primitive operators only, so they should be same type
-                scope.merge_group(span, l.ty, r.ty)?;
+                scope.merge_group(span, l.ty, r.ty);
 
                 let op = mir::OperateExpr::binary(o.take(), l, r);
                 Result::Ok(scope.push_compute(op))
@@ -378,11 +380,10 @@ impl<M: Mangler> Ast<M> for parse::AtomicExpr {
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),
         };
 
-        let ty = scope.new_declare_group(|_| {
+        let ty = scope.new_declare_group(|_, _| {
             let benches = mir::Variable::literal_benches(&atomic);
-            let builder = GroupBuilder::new(span, benches);
-            builder
-        })?;
+            GroupBuilder::new(span, benches)
+        });
         Ok(mir::Variable::new(atomic, ty))
     }
 }

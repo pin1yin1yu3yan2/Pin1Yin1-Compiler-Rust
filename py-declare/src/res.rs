@@ -10,6 +10,7 @@ use py_ir::ir::TypeDefine;
 
 use crate::Defs;
 
+/// TODO: consider use Rc in [`Overload`] and [`Directly`]
 #[derive(Debug, Clone)]
 pub enum Type {
     Overload(Overload),

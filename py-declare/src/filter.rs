@@ -1,8 +1,10 @@
 use std::marker::PhantomData;
 
+use terl::{Span, WithSpan};
+
 use crate::{Defs, Type, Types};
 
-pub trait BenchFilter<T: Types> {
+pub trait BenchFilter<T: Types>: WithSpan {
     fn satisfy(&self, ty: &Type, defs: &Defs) -> bool;
 
     fn expect(&self, defs: &Defs) -> String;
@@ -15,7 +17,33 @@ where
 {
     satisfy: Fs,
     expect: Fe,
+    at: Span,
     _p: PhantomData<T>,
+}
+
+impl<T: Types, Fs, Fe> CustomFilter<T, Fs, Fe>
+where
+    Fs: Fn(&Type, &Defs) -> bool,
+    Fe: Fn(&Defs) -> String,
+{
+    pub fn new(satisfy: Fs, expect: Fe, at: Span) -> Self {
+        Self {
+            satisfy,
+            expect,
+            at,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<T: Types, Fs, Fe> WithSpan for CustomFilter<T, Fs, Fe>
+where
+    Fs: Fn(&Type, &Defs) -> bool,
+    Fe: Fn(&Defs) -> String,
+{
+    fn get_span(&self) -> Span {
+        self.at
+    }
 }
 
 impl<T: Types, Fs, Fe> BenchFilter<T> for CustomFilter<T, Fs, Fe>
@@ -32,20 +60,6 @@ where
     }
 }
 
-impl<T: Types, Fs, Fe> CustomFilter<T, Fs, Fe>
-where
-    Fs: Fn(&Type, &Defs) -> bool,
-    Fe: Fn(&Defs) -> String,
-{
-    pub fn new(satisfy: Fs, expect: Fe) -> Self {
-        Self {
-            satisfy,
-            expect,
-            _p: PhantomData,
-        }
-    }
-}
-
 pub mod filters {
 
     use std::any::TypeId;
@@ -58,11 +72,18 @@ pub mod filters {
 
     pub struct TypeEqual<'t> {
         expect: &'t TypeDefine,
+        at: Span,
     }
 
     impl<'t> TypeEqual<'t> {
-        pub fn new(expect: &'t TypeDefine) -> Self {
-            Self { expect }
+        pub fn new(expect: &'t TypeDefine, at: Span) -> Self {
+            Self { expect, at }
+        }
+    }
+
+    impl WithSpan for TypeEqual<'_> {
+        fn get_span(&self) -> Span {
+            self.at
         }
     }
 
@@ -85,11 +106,18 @@ pub mod filters {
     pub struct FnParamLen<'n> {
         name: Option<&'n str>,
         expect: usize,
+        at: Span,
     }
 
     impl<'n> FnParamLen<'n> {
-        pub fn new(name: Option<&'n str>, expect: usize) -> Self {
-            Self { name, expect }
+        pub fn new(name: Option<&'n str>, expect: usize, at: Span) -> Self {
+            Self { name, expect, at }
+        }
+    }
+
+    impl<'n> WithSpan for FnParamLen<'n> {
+        fn get_span(&self) -> Span {
+            self.at
         }
     }
 
