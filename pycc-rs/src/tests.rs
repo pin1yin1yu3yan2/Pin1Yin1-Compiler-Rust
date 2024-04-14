@@ -54,6 +54,7 @@ zheng3 jian can1 zheng3 x jie2
 han2
     fan3 x jian3 1 fen1
 jie2
+
 ";
 
 #[test]
@@ -61,8 +62,14 @@ fn jia_jian_around_114514() {
     compile_tester(TEST_SRC1, |compiler| unsafe {
         type TestFn = unsafe extern "C" fn(i64) -> i64;
 
-        let jia: JitFunction<TestFn> = compiler.execution_engine.get_function("jia").unwrap();
-        let jian: JitFunction<TestFn> = compiler.execution_engine.get_function("jian").unwrap();
+        let jia: JitFunction<TestFn> = compiler
+            .execution_engine
+            .get_function("jia 参 i64 结")
+            .unwrap();
+        let jian: JitFunction<TestFn> = compiler
+            .execution_engine
+            .get_function("jian 参 i64 结")
+            .unwrap();
 
         assert_eq!(jia.call(114513), 114514);
         assert_eq!(jian.call(114515), 114514);
@@ -71,7 +78,7 @@ fn jia_jian_around_114514() {
 
 #[test]
 fn serde_test() {
-    let ast = get_ast(TEST_SRC1);
+    let ast = get_ast(MORE_OPERATOES);
 
     let str1 = serde_json::to_string(&ast).unwrap();
     let ast1: Vec<Statement> = serde_json::from_str(&str1).unwrap();
@@ -104,8 +111,14 @@ fn fn_call() {
     compile_tester(TEST_SRC2, |tester| unsafe {
         type TestFn = unsafe extern "C" fn(i64) -> i64;
 
-        let jia: JitFunction<TestFn> = tester.execution_engine.get_function("jia").unwrap();
-        let jia2: JitFunction<TestFn> = tester.execution_engine.get_function("jia2").unwrap();
+        let jia: JitFunction<TestFn> = tester
+            .execution_engine
+            .get_function("jia 参 i64 结")
+            .unwrap();
+        let jia2: JitFunction<TestFn> = tester
+            .execution_engine
+            .get_function("jia2 参 i64 结")
+            .unwrap();
 
         assert_eq!(jia.call(114513), 114514);
         assert_eq!(jia2.call(114512), 114514);
@@ -113,27 +126,34 @@ fn fn_call() {
 }
 
 const MORE_OPERATOES: &str = "
-zheng3 yi can1 zheng3 x jie2
-han2
-    fan3 x zuo3yi2 2 fen1
-jie2
-
 fu2 cheng can1 fu2 x jie2
 han2
-    fan3 x cheng2 2 fen1
+    fu2 ret deng3 x cheng2 2.0 fen1
+    fan3 ret fen1
+jie2
+
+zheng3 yi can1 zheng3 x jie2
+han2
+    fan3 x zuo3yi2 1 fen1
 jie2
 ";
 
 #[test]
 fn more_operations() {
     compile_tester(MORE_OPERATOES, |tester| unsafe {
-        type Cheng2 = unsafe extern "C" fn(f32) -> f32;
+        type Cheng = unsafe extern "C" fn(f32) -> f32;
         type Yi = unsafe extern "C" fn(i64) -> i64;
 
-        let cheng2: JitFunction<Cheng2> = tester.execution_engine.get_function("cheng").unwrap();
-        let yi: JitFunction<Yi> = tester.execution_engine.get_function("yi").unwrap();
+        let cheng: JitFunction<Cheng> = tester
+            .execution_engine
+            .get_function("cheng 参 f32 结")
+            .unwrap();
+        let yi: JitFunction<Yi> = tester
+            .execution_engine
+            .get_function("yi 参 i64 结")
+            .unwrap();
 
-        assert_eq!(cheng2.call(114514.0 / 2.0), 114514.0);
-        assert_eq!(yi.call(114514 / 2), 114514);
+        assert_eq!(cheng.call(57257.0), 114514.0);
+        assert_eq!(yi.call(57257), 114514);
     })
 }

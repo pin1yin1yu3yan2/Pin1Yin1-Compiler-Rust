@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn variable_define_init() {
         let src = "kuan1 32 zheng3 a deng3 114514 fen1";
-        parse_test(src, |p| assert!(dbg!(p.parse::<VarDefine>()).is_ok()));
+        parse_test(src, |p| assert!(p.parse::<VarDefine>().is_ok()));
         parse_test(src, |p| {
             assert!(p.parse::<Statement>().is_ok());
         });

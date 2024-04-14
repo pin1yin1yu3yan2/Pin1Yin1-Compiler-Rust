@@ -114,9 +114,22 @@ pub struct FnSign {
     pub loc: Span,
 }
 
-impl std::fmt::Display for FnSign {
+impl std::fmt::Display for FnSignWithName {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        _f.write_str(&self.name)?;
+        _f.write_str("(")?;
+        match self.params.len() {
+            0 => _f.write_str(")")?,
+            1 => _f.write_fmt(format_args!("{})", self.params[0].ty))?,
+            _ => {
+                _f.write_fmt(format_args!("{}", self.params[0].ty))?;
+                for param in &self.params[1..] {
+                    _f.write_fmt(format_args!(", {}", param.name))?;
+                }
+                _f.write_str(")")?
+            }
+        }
+        _f.write_fmt(format_args!(" -> {}", self.ty))
     }
 }
 

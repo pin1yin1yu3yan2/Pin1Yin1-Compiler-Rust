@@ -156,6 +156,21 @@ impl PrimitiveType {
             Self::U8 | Self::U16 | Self::U32 | Self::U64 | Self::U128 | Self::Usize
         )
     }
+
+    pub fn width(&self) -> usize {
+        match self {
+            PrimitiveType::Bool => 1,
+            PrimitiveType::I8 | PrimitiveType::U8 => 8,
+            PrimitiveType::I16 | PrimitiveType::U16 => 16,
+            PrimitiveType::I32 | PrimitiveType::U32 => 32,
+            PrimitiveType::I64 | PrimitiveType::U64 => 64,
+            PrimitiveType::I128 | PrimitiveType::U128 => 128,
+            // !
+            PrimitiveType::Usize | PrimitiveType::Isize => 64,
+            PrimitiveType::F32 => 32,
+            PrimitiveType::F64 => 64,
+        }
+    }
 }
 
 impl std::fmt::Display for PrimitiveType {

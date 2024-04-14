@@ -48,7 +48,7 @@ impl Mangler for ChineseMangler {
         match unit.item {
             MangleItem::Fn { name, params } => {
                 use std::fmt::Write;
-                let mut output = format!("{prefix}{name}参");
+                let mut output = format!("{prefix}{name} 参");
                 for param in params.into_iter() {
                     write!(&mut output, " {} ", Self::mangle(param)).ok();
                 }

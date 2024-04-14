@@ -2,7 +2,6 @@ use std::error::Error;
 
 use crate::scope::{AllocVariable, ComputeResult, Global, Scope, Variable};
 use inkwell::{
-    basic_block::BasicBlock,
     builder::{Builder, BuilderError},
     context::Context,
     execution_engine::ExecutionEngine,
@@ -65,23 +64,23 @@ impl<'ctx> CodeGen<'ctx> {
         self.global.regist_fn(name, val)
     }
 
+    fn primitive_type_cast(&self, ty: &ir::PrimitiveType) -> BasicTypeEnum<'ctx> {
+        match ty {
+            ir::PrimitiveType::Bool => self.context.bool_type().into(),
+            ir::PrimitiveType::I8 | ir::PrimitiveType::U8 => self.context.i8_type().into(),
+            ir::PrimitiveType::I16 | ir::PrimitiveType::U16 => self.context.i16_type().into(),
+            ir::PrimitiveType::I32 | ir::PrimitiveType::U32 => self.context.i32_type().into(),
+            ir::PrimitiveType::I64 | ir::PrimitiveType::U64 => self.context.i64_type().into(),
+            ir::PrimitiveType::I128 | ir::PrimitiveType::U128 => self.context.i128_type().into(),
+            ir::PrimitiveType::Usize | ir::PrimitiveType::Isize => self.context.i64_type().into(),
+            ir::PrimitiveType::F32 => self.context.f32_type().into(),
+            ir::PrimitiveType::F64 => self.context.f64_type().into(),
+        }
+    }
+
     fn type_cast(&self, ty: &ir::TypeDefine) -> BasicTypeEnum<'ctx> {
         match ty {
-            ir::TypeDefine::Primitive(ty) => match ty {
-                ir::PrimitiveType::Bool => self.context.bool_type().into(),
-                ir::PrimitiveType::I8 | ir::PrimitiveType::U8 => self.context.i8_type().into(),
-                ir::PrimitiveType::I16 | ir::PrimitiveType::U16 => self.context.i16_type().into(),
-                ir::PrimitiveType::I32 | ir::PrimitiveType::U32 => self.context.i32_type().into(),
-                ir::PrimitiveType::I64 | ir::PrimitiveType::U64 => self.context.i64_type().into(),
-                ir::PrimitiveType::I128 | ir::PrimitiveType::U128 => {
-                    self.context.i128_type().into()
-                }
-                ir::PrimitiveType::Usize | ir::PrimitiveType::Isize => {
-                    self.context.i64_type().into()
-                }
-                ir::PrimitiveType::F32 => self.context.f32_type().into(),
-                ir::PrimitiveType::F64 => self.context.f64_type().into(),
-            },
+            ir::TypeDefine::Primitive(ty) => self.primitive_type_cast(ty),
             ir::TypeDefine::Complex(_ty) => {
                 todo!()
             }
@@ -125,6 +124,61 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(val)
             }
         }
+    }
+
+    fn atomic_expr_with_ty(
+        &self,
+        atomic: &ir::AtomicExpr,
+        ty: &ir::PrimitiveType,
+    ) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+        let ret = match atomic {
+            ir::AtomicExpr::Integer(int) if ty.is_integer() => match ty.width() {
+                1 => self
+                    .context
+                    .bool_type()
+                    .const_int(*int as _, ty.is_signed())
+                    .into(),
+                8 => self
+                    .context
+                    .i8_type()
+                    .const_int(*int as _, ty.is_signed())
+                    .into(),
+                16 => self
+                    .context
+                    .i16_type()
+                    .const_int(*int as _, ty.is_signed())
+                    .into(),
+                32 => self
+                    .context
+                    .i32_type()
+                    .const_int(*int as _, ty.is_signed())
+                    .into(),
+                64 => self
+                    .context
+                    .i64_type()
+                    .const_int(*int as _, ty.is_signed())
+                    .into(),
+                128 => self
+                    .context
+                    .i128_type()
+                    .const_int(*int as _, ty.is_signed())
+                    .into(),
+                _ => unreachable!(),
+            },
+            ir::AtomicExpr::Float(float) if ty.is_float() => match ty.width() {
+                32 => self.context.f32_type().const_float(*float).into(),
+                64 => self.context.f64_type().const_float(*float).into(),
+                _ => unreachable!(),
+            },
+            ir::AtomicExpr::Char(char) if ty == &ir::PrimitiveType::U32 => self
+                .context
+                .i32_type()
+                .const_int(*char as _, ty.is_signed())
+                .into(),
+            ir::AtomicExpr::Variable(var) => self.get_var(var).load(&self.builder)?,
+            _ => panic!("not primitive, or passed a incorrect PrimitiveType"),
+        };
+        Ok(ret)
     }
 
     fn generate_stmts(&mut self, stmts: &[ir::Statement]) -> Result<&mut Self, BuilderError> {
@@ -208,8 +262,8 @@ impl Compile for ir::Compute {
                 state.regist_var(self.name.to_owned(), ComputeResult { val })
             }
             ir::OperateExpr::Binary(op, l, r) => {
-                let l = state.atomic_epxr(l)?;
-                let r = state.atomic_epxr(r)?;
+                let l = state.atomic_expr_with_ty(l, &self.ty)?;
+                let r = state.atomic_expr_with_ty(r, &self.ty)?;
                 let val =
                     crate::primitive::binary_compute(builder, self.ty, *op, l, r, &self.name)?;
                 state.regist_var(self.name.to_owned(), ComputeResult { val })

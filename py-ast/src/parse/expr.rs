@@ -83,8 +83,13 @@ impl ParseUnit for NumberLiteral {
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         let number = *p.parse::<usize>()?; // digit
         if p.once(|p| p.match_('.')).is_ok() {
-            let decimal = p.parse::<usize>().r#try()?.map(|t| *t).unwrap_or(0) as f64;
-            let decimal = decimal / 10f64.powi(decimal.log10().ceil() as _);
+            let decimal = p.parse::<usize>().r#try()?.map(|t| *t).unwrap_or(0);
+            let decimal = if decimal == 0 {
+                0.0
+            } else {
+                let decimal = decimal as f64;
+                decimal / 10f64.powi(decimal.log10().ceil() as _)
+            };
             p.finish(NumberLiteral::Float {
                 number: number as f64 + decimal,
             })
@@ -329,7 +334,7 @@ mod tests {
     #[test]
     fn function_call() {
         parse_test("han2shu41 can1 1919810 fen1 chuan4 acminoac jie2", |p| {
-            assert!(dbg!(p.parse::<FnCall>()).is_ok());
+            assert!(p.parse::<FnCall>().is_ok());
         })
     }
 

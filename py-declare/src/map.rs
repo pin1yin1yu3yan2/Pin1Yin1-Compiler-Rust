@@ -54,7 +54,9 @@ impl DeclareMap {
                 match state {
                     Ok(deps) => {
                         for dep in &deps {
-                            self.rdeps.get_mut(dep).unwrap().insert(bench);
+                            if let Some(val) = self.rdeps.get_mut(dep) {
+                                val.insert(bench);
+                            }
                         }
                         self.deps.insert(bench, deps);
                         alive.insert(bench.bench_idx, ty.clone());

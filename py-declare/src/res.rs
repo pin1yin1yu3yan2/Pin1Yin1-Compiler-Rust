@@ -39,7 +39,7 @@ impl Type {
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Overload(ol) => std::fmt::Display::fmt(&***ol, f),
+            Type::Overload(ol) => std::fmt::Display::fmt(ol, f),
             Type::Directly(ty) => std::fmt::Display::fmt(&ty.0, f),
             #[cfg(test)]
             Type::Number(_) => unreachable!(),
