@@ -36,8 +36,27 @@ pub type DefaultMangler = ChineseMangler;
 pub struct ChineseMangler;
 
 impl Mangler for ChineseMangler {
-    fn mangle(_unit: MangleUnit) -> String {
-        todo!()
+    fn mangle(unit: MangleUnit) -> String {
+        fn mangle_prefex(prefix: &[ManglePrefix]) -> String {
+            prefix.iter().fold(String::new(), |buffer, pf| match pf {
+                ManglePrefix::Mod(s) | ManglePrefix::Type(s) => buffer + &format!("{s}的"),
+            })
+        }
+
+        let prefix = mangle_prefex(&unit.prefix);
+
+        match unit.item {
+            MangleItem::Fn { name, params } => {
+                use std::fmt::Write;
+                let mut output = format!("{prefix}{name}参");
+                for param in params.into_iter() {
+                    write!(&mut output, " {} ", Self::mangle(param)).ok();
+                }
+                format!("{output}结")
+            }
+            MangleItem::Type { ty } => prefix + &ty,
+            MangleItem::Val() => todo!(),
+        }
     }
 
     fn demangle(_str: &str) -> MangleUnit<'static> {

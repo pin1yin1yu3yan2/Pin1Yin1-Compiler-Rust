@@ -134,41 +134,51 @@ impl TypeDefine {
 impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
     type Error = terl::Error;
 
-    fn try_from(value: crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
+    fn try_from(def: crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
         use crate::ir::{ComplexType, PrimitiveType};
         /*
            int: sign, width
            float: width
         */
 
-        if &**value.ty == "zheng3" {
+        if &**def.ty == "zheng3" {
             // default to be i64
-            let sign = value.sign.map(|pu| pu.sign).unwrap_or(true);
-            let sign_char = if sign { 'i' } else { 'u' };
-            let width = if let Some(width) = value.width {
-                if !width.width.is_power_of_two() || *width.width > 64 {
-                    return Err(width.make_error(format!(
+            let sign = def.sign.map(|pu| pu.sign).unwrap_or(true);
+
+            let width = if let Some(width_extend) = def.width {
+                if !width_extend.width.is_power_of_two()
+                    || *width_extend.width > 128
+                    || *width_extend.width < 64
+                {
+                    return Err(width_extend.make_error(format!(
                         "`zheng3` with width {} is not suppert now",
-                        *width.width
+                        *width_extend.width
                     )));
                 }
-                *width.width
+                *width_extend.width
             } else {
                 64
             };
-            value.width.map(|pu| *pu.width).unwrap_or(64);
-            return Ok(format!("{sign_char}{width}")
-                .parse::<PrimitiveType>()
-                .unwrap()
-                .into());
-        } else if &**value.ty == "fu2" {
+
+            use PrimitiveType::*;
+            #[rustfmt::skip]
+            let ty = match width {
+                8   => if sign { I8   } else { U8   },                
+                16  => if sign { I16  } else { U16  },                
+                32  => if sign { I32  } else { U32  },                
+                64  => if sign { I64  } else { U64  },            
+                128 => if sign { I128 } else { U128 },
+                _ => unreachable!(),
+            };
+            return Ok(ty.into());
+        } else if &**def.ty == "fu2" {
             // default to be f32
-            if let Some(sign) = value.sign {
+            if let Some(sign) = def.sign {
                 return Err(
                     sign.make_error("`fu2` type cant be decorated with `you3fu2` or `wu2fu2`")
                 );
             }
-            let width = if let Some(width) = value.width {
+            let width = if let Some(width) = def.width {
                 if *width.width == 32 || *width.width == 64 {
                     *width.width
                 } else {
@@ -181,33 +191,38 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
                 32
             };
 
-            return Ok(format!("f{width}").parse::<PrimitiveType>().unwrap().into());
+            let ty = match width{
+                32 => PrimitiveType::F32,
+                64 => PrimitiveType::F64,
+                _=>unreachable!()
+            };
+            return Ok(ty.into())
         }
 
-        if let Some(sign) = value.sign {
+        if let Some(sign) = def.sign {
             return Err(sign.make_error(format!(
                 "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                *value.ty
+                *def.ty
             )));
         }
-        if let Some(width) = value.width {
+        if let Some(width) = def.width {
             return Err(width.make_error(format!(
                 "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                *value.ty
+                *def.ty
             )));
         }
-        let ty = value.ty.take().0;
+        let ty = def.ty.take().0;
 
-        if value.const_.is_none() && value.decorators.is_empty() {
+        if def.const_.is_none() && def.decorators.is_empty() {
             return Ok(ComplexType::no_decorators(ty).into());
         }
 
         let mut decorators = vec![];
-        if value.const_.is_some() {
+        if def.const_.is_some() {
             decorators.push(crate::ir::TypeDecorators::Const);
         }
 
-        for decorator in value.decorators {
+        for decorator in def.decorators {
             let decorator = match decorator.take() {
                 crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
                     Some(size) => crate::ir::TypeDecorators::SizedArray(size.take()),

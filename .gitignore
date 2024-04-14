@@ -5,6 +5,6 @@
 /test.ll
 /test.s
 
-/pin1yin1-compiler/test.json
-/pin1yin1-complier/test.ll
-/pin1yin1-compiler/test.s
+/pycc-rs/test.json
+/pycc-rs/test.ll
+/pycc-rs/test.s

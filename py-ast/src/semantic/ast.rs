@@ -46,19 +46,15 @@ impl<M: Mangler> Ast<M> for parse::FnDefine {
             .try_fold(Vec::new(), |mut vec, pu| {
                 let ty = pu.ty.to_ast_ty()?;
                 let name = pu.name.to_string();
-                let param = defs::Param {
-                    name,
-                    ty,
-                    loc: pu.get_span(),
-                };
+                let param = defs::Param { name, ty };
                 vec.push(param);
                 Result::Ok(vec)
             })?;
 
         let fn_sign = defs::FnSign {
+            loc: span,
             ty: ty.clone(),
             params,
-            loc: span,
         };
 
         // generate ast
@@ -80,7 +76,10 @@ impl<M: Mangler> Ast<M> for parse::Statement {
     fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
         match stmt {
             parse::Statement::FnCallStmt(fn_call) => {
-                scope.to_ast(fn_call)?;
+                let fn_call = scope.to_ast(fn_call)?;
+                // so that a meanless FnDefine Statement will be generate,
+                // avoiding implement IntoIR for FnCall
+                scope.fn_call_stmt(fn_call);
             }
             parse::Statement::VarStoreStmt(var_store) => {
                 scope.to_ast(var_store)?;
@@ -124,17 +123,17 @@ impl<M: Mangler> Ast<M> for parse::FnCall {
             })?;
 
         let overload = scope.new_declare_group(|map, defs| {
-            let overloads = defs.get_unmangled(&fn_call.fn_name);
+            // TODO: call non-exist function error
+            let overloads = defs.get_unmangled(&fn_call.fn_name).unwrap();
             let pre_filter = filters::FnParamLen::new(Some(&fn_call.fn_name), args.len(), span);
             let bench_builders = overloads
-                .into_iter()
+                .iter()
                 .map(|overload| {
-                    let fn_sign = defs.try_get_fn(&overload);
-                    let mut bench_builder = BenchBuilder::new(overload);
+                    let mut bench_builder = BenchBuilder::new(Type::Overload(overload.clone()));
                     bench_builder.filter_self(defs, &pre_filter);
 
                     if bench_builder.is_ok() {
-                        for (param, arg) in fn_sign.params.iter().zip(args.iter()) {
+                        for (param, arg) in overload.params.iter().zip(args.iter()) {
                             let filter = filters::TypeEqual::new(&param.ty, span);
                             bench_builder =
                                 bench_builder.new_depend::<Directly, _>(map, defs, arg.ty, &filter);
@@ -197,9 +196,14 @@ impl<M: Mangler> Ast<M> for parse::VarDefine {
             Some(init) => Some(scope.to_ast(&init.val)?),
             None => None,
         };
-        let var_define = mir::VarDefine { ty, name, init };
 
-        scope.regist_var(var_define, span);
+        let def = defs::VarDef {
+            ty: scope.new_static_group(span, std::iter::once(ty.clone().into())),
+
+            mutable: true,
+        };
+        let stmt = mir::VarDefine { ty, name, init };
+        scope.regist_var(stmt, def, span);
 
         Ok(())
     }
@@ -225,10 +229,10 @@ impl<M: Mangler> Ast<M> for parse::If {
                 }
             }
         }
-        // scope.push_stmt(mir::Statement::If(mir::If {
-        //     branches,
-        //     else_: None,
-        // }));
+        scope.push_stmt(mir::Statement::If(mir::If {
+            branches,
+            else_: None,
+        }));
         Ok(())
     }
 }
@@ -294,7 +298,6 @@ impl<M: Mangler> Ast<M> for parse::CodeBlock {
     }
 }
 
-// TODO: condition`s`
 impl<M: Mangler> Ast<M> for parse::Arguments {
     type Forward = mir::Condition;
 

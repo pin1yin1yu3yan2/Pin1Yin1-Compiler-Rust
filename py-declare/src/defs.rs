@@ -19,35 +19,24 @@ impl Defs {
         }
     }
 
-    pub fn try_get_fn(&self, ty: &Type) -> &defs::FnSignWithName {
-        match ty {
-            Type::Overload(overload) => self.get_fn(overload.0),
-            Type::Directly(_) => panic!(),
-        }
+    pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: defs::FnSign) -> Type {
+        self.fn_signs.new_fn(unmangled, mangled, sign)
     }
 
-    pub fn get_fn(&self, res: usize) -> &defs::FnSignWithName {
-        self.fn_signs.get_fn(res)
-    }
-
-    pub fn get_mangled(&self, name: &str) -> Type {
+    pub fn get_mangled(&self, name: &str) -> Overload {
         self.fn_signs.get_mangled(name)
     }
 
-    pub fn get_unmangled(&self, name: &str) -> Vec<Type> {
+    pub fn get_unmangled(&self, name: &str) -> Option<&[Overload]> {
         self.fn_signs.get_unmangled(name)
-    }
-
-    pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: defs::FnSign) -> Type {
-        self.fn_signs.new_fn(unmangled, mangled, sign)
     }
 }
 
 #[derive(Default)]
 pub struct FnSigns {
-    fn_signs: Vec<defs::FnSignWithName>,
-    unmangled: HashMap<String, Vec<usize>>,
-    mangled: HashMap<String, usize>,
+    fn_signs: Vec<Overload>,
+    unmangled: HashMap<String, Vec<Overload>>,
+    mangled: HashMap<String, Overload>,
 }
 
 impl FnSigns {
@@ -59,10 +48,9 @@ impl FnSigns {
         use py_ir::ir::PrimitiveType;
         let mut s = Self::default();
         let main_sign = defs::FnSign {
+            loc: Span::new(0, 0),
             ty: TypeDefine::Primitive(PrimitiveType::I32),
             params: vec![],
-            // no location
-            loc: Span::new(0, 0),
         };
 
         s.new_fn("main".to_owned(), "main".to_owned(), main_sign);
@@ -71,33 +59,28 @@ impl FnSigns {
     }
 
     pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: defs::FnSign) -> Type {
-        let idx = self.fn_signs.len();
-
-        self.fn_signs.push(defs::FnSignWithName {
+        let value = defs::FnSignWithName {
             sign,
             name: mangled.clone(),
-        });
-        self.unmangled.entry(unmangled).or_default().push(idx);
-        self.mangled.insert(mangled, idx);
-        Type::new_overload(idx)
-    }
+        };
 
-    pub fn get_unmangled(&self, name: &str) -> Vec<Type> {
+        let overload: Overload = value.into();
+
+        self.fn_signs.push(overload.clone());
         self.unmangled
-            .get(name)
-            .map(|idx| idx.iter().map(|&idx| Type::new_overload(idx)).collect())
-            .unwrap_or_default()
+            .entry(unmangled)
+            .or_default()
+            .push(overload.clone());
+        self.mangled.insert(mangled, overload.clone());
+        Type::Overload(overload)
     }
 
-    pub fn get_mangled(&self, name: &str) -> Type {
-        self.mangled
-            .get(name)
-            .map(|&idx| Type::new_overload(idx))
-            .unwrap()
+    pub fn get_unmangled(&self, name: &str) -> Option<&[Overload]> {
+        self.unmangled.get(name).map(|v| &**v)
     }
 
-    pub fn get_fn(&self, res: usize) -> &defs::FnSignWithName {
-        &self.fn_signs[res]
+    pub fn get_mangled(&self, name: &str) -> Overload {
+        self.mangled.get(name).cloned().unwrap()
     }
 
     // pub fn search_fns
@@ -105,7 +88,7 @@ impl FnSigns {
 
 #[derive(Debug, Clone)]
 pub struct FnSignWithName {
-    pub(crate) sign: FnSign,
+    pub sign: FnSign,
     pub name: String,
 }
 
@@ -131,22 +114,20 @@ pub struct FnSign {
     pub loc: Span,
 }
 
+impl std::fmt::Display for FnSign {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: String,
     pub ty: TypeDefine,
-    pub loc: Span,
 }
 
 #[derive(Debug, Clone)]
 pub struct VarDef {
     pub ty: GroupIdx,
-    pub loc: Span,
     pub mutable: bool,
-}
-
-impl VarDef {
-    pub fn new(ty: GroupIdx, loc: Span, mutable: bool) -> Self {
-        Self { ty, loc, mutable }
-    }
 }

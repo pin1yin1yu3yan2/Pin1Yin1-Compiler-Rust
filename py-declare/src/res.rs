@@ -4,64 +4,75 @@ pub struct OverloadIndex(pub usize);
 // #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 // pub struct CacheTypeIndex(pub usize);
 
-use std::any::Any;
+use std::{any::Any, rc::Rc};
 
 use py_ir::ir::TypeDefine;
 
-use crate::Defs;
+use crate::defs::FnSignWithName;
 
-/// TODO: consider use Rc in [`Overload`] and [`Directly`]
 #[derive(Debug, Clone)]
 pub enum Type {
     Overload(Overload),
     Directly(Directly),
+    #[cfg(test)]
+    Number(usize),
 }
 
 impl Type {
-    pub fn new_overload(idx: usize) -> Self {
-        Self::Overload(Overload(idx))
+    pub fn overload(&self) -> &Overload {
+        if let Type::Overload(ol) = self {
+            ol
+        } else {
+            panic!()
+        }
+    }
+
+    pub fn directly(&self) -> &TypeDefine {
+        if let Type::Directly(ty) = self {
+            &ty.0
+        } else {
+            panic!()
+        }
+    }
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Overload(ol) => std::fmt::Display::fmt(&***ol, f),
+            Type::Directly(ty) => std::fmt::Display::fmt(&ty.0, f),
+            #[cfg(test)]
+            Type::Number(_) => unreachable!(),
+        }
     }
 }
 
 impl Types for Type {
-    fn get_type<'t>(&'t self, defs: &'t Defs) -> &TypeDefine {
+    fn get_type(&self) -> &TypeDefine {
         match self {
-            Type::Overload(item) => item.get_type(defs),
-            Type::Directly(item) => item.get_type(defs),
-        }
-    }
-
-    fn display(&self, defs: &Defs) -> String {
-        match self {
-            Type::Overload(item) => item.display(defs),
-            Type::Directly(item) => item.display(defs),
+            Type::Overload(item) => item.get_type(),
+            Type::Directly(item) => item.get_type(),
+            #[cfg(test)]
+            Type::Number(_) => unreachable!(),
         }
     }
 }
 
 impl<T: Into<TypeDefine>> From<T> for Type {
     fn from(value: T) -> Self {
-        Self::Directly(Directly(value.into()))
+        Self::Directly(Directly(Rc::new(value.into())))
     }
 }
 
 /// only difference between DeclareKinds are how they are printed
 pub trait Types: Any + Sized {
-    fn get_type<'t>(&'t self, defs: &'t Defs) -> &TypeDefine;
-
-    fn display(&self, defs: &Defs) -> String;
+    fn get_type(&self) -> &TypeDefine;
 }
 
-/// the return type of a fn's overload
-#[derive(Debug, Clone)]
-pub struct Overload(pub usize);
+pub type Overload = Rc<FnSignWithName>;
 impl Types for Overload {
-    fn get_type<'t>(&'t self, defs: &'t Defs) -> &TypeDefine {
-        &defs.get_fn(self.0).ty
-    }
-
-    fn display(&self, defs: &Defs) -> String {
-        format!("{:?}", defs.get_fn(self.0))
+    fn get_type(&self) -> &TypeDefine {
+        &self.ty
     }
 }
 
@@ -70,13 +81,9 @@ impl Types for Overload {
 /// alyhough its fro'm a function's overload( [`Type::FnRetty`]), it will only display
 /// function's return type nor function's full sign
 #[derive(Debug, Clone)]
-pub struct Directly(pub TypeDefine);
+pub struct Directly(pub Rc<TypeDefine>);
 impl Types for Directly {
-    fn get_type<'t>(&'t self, _: &'t Defs) -> &TypeDefine {
+    fn get_type(&self) -> &TypeDefine {
         &self.0
-    }
-
-    fn display(&self, _: &Defs) -> String {
-        self.0.to_string()
     }
 }

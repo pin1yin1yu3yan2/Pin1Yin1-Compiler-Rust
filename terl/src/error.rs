@@ -1,7 +1,5 @@
 use crate::*;
 
-// TODO: lazy eval error messages for better performance
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseErrorKind {
     Unmatch,
@@ -130,10 +128,7 @@ impl ParseError {
     }
 
     pub fn map(mut self, new_reason: impl ToString) -> Self {
-        match self.messages.last_mut().unwrap() {
-            Message::Location(_) => self.messages.push(Message::Text(new_reason.to_string())),
-            Message::Rich(text, _) | Message::Text(text) => *text = new_reason.to_string(),
-        }
+        self.main_message = new_reason.to_string();
         self
     }
 
@@ -154,6 +149,10 @@ impl ParseError {
     pub fn to_unmatch(mut self) -> Self {
         self.kind = ParseErrorKind::Unmatch;
         self
+    }
+
+    pub fn error(self) -> Error {
+        self.error
     }
 }
 

@@ -5,14 +5,14 @@ use terl::{Span, WithSpan};
 use crate::{Defs, Type, Types};
 
 pub trait BenchFilter<T: Types>: WithSpan {
-    fn satisfy(&self, ty: &Type, defs: &Defs) -> bool;
+    fn satisfy(&self, ty: &Type) -> bool;
 
     fn expect(&self, defs: &Defs) -> String;
 }
 
 pub struct CustomFilter<T: Types, Fs, Fe>
 where
-    Fs: Fn(&Type, &Defs) -> bool,
+    Fs: Fn(&Type) -> bool,
     Fe: Fn(&Defs) -> String,
 {
     satisfy: Fs,
@@ -23,7 +23,7 @@ where
 
 impl<T: Types, Fs, Fe> CustomFilter<T, Fs, Fe>
 where
-    Fs: Fn(&Type, &Defs) -> bool,
+    Fs: Fn(&Type) -> bool,
     Fe: Fn(&Defs) -> String,
 {
     pub fn new(satisfy: Fs, expect: Fe, at: Span) -> Self {
@@ -38,7 +38,7 @@ where
 
 impl<T: Types, Fs, Fe> WithSpan for CustomFilter<T, Fs, Fe>
 where
-    Fs: Fn(&Type, &Defs) -> bool,
+    Fs: Fn(&Type) -> bool,
     Fe: Fn(&Defs) -> String,
 {
     fn get_span(&self) -> Span {
@@ -48,11 +48,11 @@ where
 
 impl<T: Types, Fs, Fe> BenchFilter<T> for CustomFilter<T, Fs, Fe>
 where
-    Fs: Fn(&Type, &Defs) -> bool,
+    Fs: Fn(&Type) -> bool,
     Fe: Fn(&Defs) -> String,
 {
-    fn satisfy(&self, ty: &Type, defs: &Defs) -> bool {
-        (self.satisfy)(ty, defs)
+    fn satisfy(&self, ty: &Type) -> bool {
+        (self.satisfy)(ty)
     }
 
     fn expect(&self, defs: &Defs) -> String {
@@ -88,8 +88,8 @@ pub mod filters {
     }
 
     impl<T: Types> BenchFilter<T> for TypeEqual<'_> {
-        fn satisfy(&self, ty: &Type, defs: &Defs) -> bool {
-            ty.get_type(defs) == self.expect
+        fn satisfy(&self, ty: &Type) -> bool {
+            ty.get_type() == self.expect
         }
 
         fn expect(&self, _: &Defs) -> String {
@@ -122,9 +122,8 @@ pub mod filters {
     }
 
     impl BenchFilter<Overload> for FnParamLen<'_> {
-        fn satisfy(&self, ty: &Type, defs: &Defs) -> bool {
-            let f = defs.try_get_fn(ty);
-            f.params.len() == self.expect
+        fn satisfy(&self, ty: &Type) -> bool {
+            ty.overload().params.len() == self.expect
         }
 
         fn expect(&self, defs: &Defs) -> String {
@@ -135,9 +134,10 @@ pub mod filters {
                 msg += "\nexist overloads whose length is expected:\n";
                 let satisfies = defs
                     .get_unmangled(name)
+                    .unwrap()
                     .iter()
-                    .filter(|ol| defs.try_get_fn(ol).params.len() == self.expect)
-                    .map(|ol| ol.display(defs))
+                    .filter(|ol| ol.params.len() == self.expect)
+                    .map(|ol| ol.to_string())
                     .collect::<Vec<_>>();
                 if satisfies.is_empty() {
                     msg += "emm, no-overload a matched :("

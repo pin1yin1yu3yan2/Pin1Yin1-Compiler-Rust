@@ -1,6 +1,6 @@
 use crate::Type;
 use std::rc::Rc;
-use terl::Span;
+use terl::{Message, Span};
 
 #[derive(Debug, Clone)]
 pub enum DeclareError {
@@ -11,31 +11,25 @@ pub enum DeclareError {
         expect: String,
     },
     ConflictSelected {
-        conflict_with: Rc<Type>,
-    },
-    GroupSolved {
-        decalre_as: Type,
+        conflict_with: Type,
+        this: Type,
     },
 
     WithLocation {
         location: Span,
-        err: Box<DeclareError>,
+        error: Box<DeclareError>,
     },
     WithPrevious {
-        previous: Rc<Type>,
+        previous: Type,
         error: Box<DeclareError>,
     },
     Shared {
         err: Rc<DeclareError>,
     },
 
-    RemovedDuoDeclared {
-        reason: Box<DeclareError>,
-    },
-
     //
     Declared {
-        declare_as: Rc<Type>,
+        declare_as: Type,
     },
     Unexpect {
         expect: String,
@@ -50,7 +44,7 @@ impl DeclareError {
     pub fn with_location(self, location: Span) -> Self {
         Self::WithLocation {
             location,
-            err: Box::new(self),
+            error: Box::new(self),
         }
     }
 
@@ -58,10 +52,59 @@ impl DeclareError {
         Self::Shared { err: Rc::new(self) }
     }
 
-    pub fn with_previous(self, previous: Rc<Type>) -> Self {
+    pub fn with_previous(self, previous: Type) -> Self {
         Self::WithPrevious {
             previous,
             error: Box::new(self),
         }
+    }
+
+    fn generate_inner(&self, msgs: &mut Vec<terl::Message>) {
+        match self {
+            DeclareError::UniqueDeleted { reason } => {
+                msgs.push(Message::Text(
+                    "this has been declared, but filtered latter".to_owned(),
+                ));
+                reason.generate_inner(msgs)
+            }
+            DeclareError::NonBenchSelected { expect } => msgs.push(Message::Text(format!(
+                "this should be {expect}, but non of this are matched"
+            ))),
+            DeclareError::ConflictSelected {
+                conflict_with,
+                this,
+            } => msgs.push(Message::Text(format!(
+                "this is required to been decalred as {} and {} together, but its impossiable",
+                this, conflict_with
+            ))),
+
+            DeclareError::Declared { declare_as } => msgs.push(Message::Text(format!(
+                "this has been declared as {declare_as}"
+            ))),
+            DeclareError::Unexpect { expect } => msgs.push(Message::Text(expect.to_owned())),
+            DeclareError::Filtered => msgs.push(Message::Text("this has been filtered".to_owned())),
+            DeclareError::Shared { err } => err.generate_inner(msgs),
+
+            DeclareError::WithLocation { location, error } => {
+                let len = msgs.len();
+                error.generate_inner(msgs);
+                if let Message::Text(ref mut msg) = msgs[len] {
+                    msgs[len] = Message::Rich(std::mem::take(msg), *location)
+                }
+            }
+            DeclareError::WithPrevious { previous, error } => {
+                error.generate_inner(msgs);
+                msgs.push(Message::Text(format!(
+                    "this used to be guessed as {previous}"
+                )))
+            }
+            DeclareError::Empty => {}
+        }
+    }
+
+    pub fn generate(&self) -> Vec<terl::Message> {
+        let mut msgs = vec![];
+        self.generate_inner(&mut msgs);
+        msgs
     }
 }

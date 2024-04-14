@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-terl = { path = "../terl" }
+terl = { path = "../terl", features = ["parser_calling_tree"] }
 py-ast = { path = "../py-ast" }
 py-ir = { path = "../py-ir", features = ["parser"] }
 serde_json = "1"

@@ -1,6 +1,9 @@
 use inkwell::{context::Context, execution_engine::JitFunction};
 
-use py_ast::{parse::do_parse, semantic::GLobalScope};
+use py_ast::{
+    parse::do_parse,
+    semantic::{mangle::DefaultMangler, ModScope},
+};
 use py_ir::ir::{Statement, Statements};
 use terl::{Parser, Source};
 
@@ -11,17 +14,25 @@ fn get_ast(src: &str) -> Statements {
     let mut parser = Parser::<char>::new(source);
 
     let pus = do_parse(&mut parser)
-        .map_err(|e| parser.handle_error(e).unwrap())
-        .map_err(|e| eprintln!("{e}"))
+        .map_err(|e| eprintln!("{}", parser.handle_error(e.error()).unwrap()))
+        .map_err(|_| println!("{}", parser.get_calling_tree()))
         .unwrap();
 
-    let mut global = GLobalScope::new();
-    global
-        .load(&pus)
-        .map_err(|e| parser.handle_error(e).unwrap())
-        .map_err(|e| eprintln!("{e}"))
+    let mut scope = ModScope::<DefaultMangler>::new_with_main();
+    scope
+        .load_fns(&pus)
+        .map_err(|e| parser.handle_error(e))
         .unwrap();
-    global.finish()
+
+    match scope.finish() {
+        Ok(fn_defs) => fn_defs.into_iter().map(Statement::from).collect(),
+        Err(errors) => {
+            for err in errors {
+                eprintln!("{}", parser.handle_error(err).unwrap());
+            }
+            panic!()
+        }
+    }
 }
 
 fn compile_tester(src: &str, tester: impl FnOnce(CodeGen)) {

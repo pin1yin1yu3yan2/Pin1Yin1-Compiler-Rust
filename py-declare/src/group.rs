@@ -1,5 +1,5 @@
 use super::*;
-use std::{collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 use terl::{Span, WithSpan};
 
 /// used to represent a group of type, types in group may be declared
@@ -17,10 +17,10 @@ impl GroupIdx {
 
 #[derive(Debug, Clone)]
 pub struct Group {
-    pub(crate) declared: bool,
     pub(crate) span: Span,
     // this can only be init once, or keep empty to init later(UNKNOWN type)
-    pub(crate) res: HashMap<usize, Result<Rc<Type>>>,
+    pub(crate) alive: HashMap<usize, Type>,
+    pub(crate) faild: HashMap<usize, DeclareError>,
 }
 
 impl WithSpan for Group {
@@ -30,64 +30,23 @@ impl WithSpan for Group {
 }
 
 impl Group {
-    pub fn new(span: Span, res: HashMap<usize, Result<Rc<Type>>>) -> Self {
+    pub fn new(
+        span: Span,
+        alive: HashMap<usize, Type>,
+        removed: HashMap<usize, DeclareError>,
+    ) -> Self {
         Self {
             span,
-            res,
-            declared: false,
+            alive,
+            faild: removed,
         }
     }
 
-    /// return a [`Ok`] to use [`std::mem::swap`]
-    /// to replace previous_result
-    ///
-    /// this method return [`None`] if provious declare result is removed,
-    /// or the Group is even not declared
-    pub fn unique(&mut self) -> Option<&mut Result<Rc<Type>>> {
-        if !self.declared {
+    pub fn unique(&self) -> Option<&Type> {
+        if self.alive.len() != 1 {
             return None;
         }
-
-        // must be Some
-        self.res.values_mut().find(|r| r.is_ok())
-    }
-
-    pub fn available(&self) -> impl Iterator<Item = (usize, &Type)> {
-        self.res.iter().filter_map(|(idx, status)| match status {
-            Ok(ty) => Some((*idx, &**ty)),
-            Err(..) => None,
-        })
-    }
-
-    pub fn removed(&self) -> impl Iterator<Item = (usize, &DeclareError)> {
-        self.res.iter().filter_map(|(idx, status)| match status {
-            Ok(..) => None,
-            Err(err) => Some((*idx, err)),
-        })
-    }
-
-    pub fn apply_filter<'a, T, B>(
-        &'a mut self,
-        defs: &'a Defs,
-        filter: &'a B,
-    ) -> impl Iterator<Item = usize> + 'a
-    where
-        T: Types,
-        B: BenchFilter<T> + 'a,
-    {
-        let err = DeclareError::Unexpect {
-            expect: filter.expect(defs),
-        }
-        .into_shared();
-        self.res
-            .iter_mut()
-            .filter_map(move |(idx, status)| match status {
-                Ok(ty) if !filter.satisfy(ty, defs) => {
-                    *status = Err(err.clone());
-                    Some(*idx)
-                }
-                _ => None,
-            })
+        self.alive.values().next()
     }
 }
 

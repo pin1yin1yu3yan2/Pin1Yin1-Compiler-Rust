@@ -17,7 +17,7 @@ pub struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
-    position_block: BasicBlock<'ctx>,
+
     pub execution_engine: ExecutionEngine<'ctx>,
     global: Global<'ctx>,
 }
@@ -30,14 +30,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<Self, Box<dyn Error>> {
         let module = context.create_module(module);
 
-        // `i32 main()`
-        let i32 = context.i32_type();
-        let no_return = i32.fn_type(&[], false);
-        let main = module.add_function("main", no_return, None);
-        let basic_block = context.append_basic_block(main, "entry");
-
         let builder = context.create_builder();
-        builder.position_at_end(basic_block);
 
         let mut s = Self {
             execution_engine: module
@@ -45,7 +38,7 @@ impl<'ctx> CodeGen<'ctx> {
             context,
             module,
             builder,
-            position_block: basic_block,
+
             global: Default::default(),
         };
 
@@ -168,7 +161,6 @@ impl Compile for ir::Statement {
             ir::Statement::Compute(c) => c.generate(state),
             ir::Statement::VarDefine(v) => v.generate(state),
             ir::Statement::VarStore(v) => v.generate(state),
-            ir::Statement::FnCall(f) => f.generate(state),
             ir::Statement::If(i) => i.generate(state),
             ir::Statement::While(w) => w.generate(state),
             ir::Statement::Return(r) => r.generate(state),
@@ -178,8 +170,6 @@ impl Compile for ir::Statement {
 }
 impl Compile for ir::FnDefine {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
-        let start_block = state.position_block;
-
         let retty = state.type_cast(&self.ty);
         let param_ty = self
             .params
@@ -205,7 +195,6 @@ impl Compile for ir::FnDefine {
             Ok(())
         })?;
 
-        state.builder.position_at_end(start_block);
         Ok(())
     }
 }

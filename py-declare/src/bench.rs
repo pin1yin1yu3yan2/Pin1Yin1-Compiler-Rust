@@ -1,5 +1,5 @@
 use crate::*;
-use std::{collections::HashSet, rc::Rc};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bench {
@@ -42,13 +42,13 @@ impl BenchBuilder {
         T: Types,
         B: BenchFilter<T>,
     {
-        if matches!(self.main_state,Ok(ref ty) if !filter.satisfy(ty, defs) ) {
+        if matches!(self.main_state,Ok(ref ty) if !filter.satisfy(ty) ) {
             let privious =
                 std::mem::replace(&mut self.main_state, Err(DeclareError::Empty)).unwrap();
             let err = DeclareError::Unexpect {
                 expect: filter.expect(defs),
             }
-            .with_previous(Rc::new(privious));
+            .with_previous(privious);
             self.main_state = Err(err)
         }
     }
@@ -69,12 +69,9 @@ impl BenchBuilder {
         }
 
         let new_deps = map[gidx]
-            .res
+            .alive
             .iter()
-            .filter_map(|(idx, res)| match res {
-                Ok(avalable) if filter.satisfy(avalable, defs) => Some(idx),
-                _ => None,
-            })
+            .filter_map(|(idx, ty)| if filter.satisfy(ty) { Some(idx) } else { None })
             .map(|bench_idx| Bench::new(gidx, *bench_idx))
             .collect::<Vec<_>>();
 
@@ -85,10 +82,8 @@ impl BenchBuilder {
             .with_location(filter.get_span())
             .into_shared();
 
-            for (.., not_selected) in &mut map[gidx].res {
-                if not_selected.is_ok() {
-                    *not_selected = Err(err.clone())
-                }
+            for (k, ty) in std::mem::take(&mut map[gidx].alive) {
+                map[gidx].faild.insert(k, err.clone().with_previous(ty));
             }
         } else {
             self.states = self.states.into_iter().fold(vec![], |mut states, state| {
@@ -121,7 +116,17 @@ fn update_deps(
     if new_deps.len() == 1 {
         let dep = new_deps[0];
         if used_groups.contains(&dep.belong_to) && !previous.contains(&dep) {
-            reciver(Err(conflict_error(map, dep, at)))
+            let previous = previous
+                .iter()
+                .find(|p| p.belong_to == dep.belong_to)
+                .unwrap();
+
+            let conflict_error = DeclareError::ConflictSelected {
+                conflict_with: map[*previous].clone(),
+                this: map[dep].clone(),
+            }
+            .with_location(at);
+            reciver(Err(conflict_error))
         } else {
             previous.insert(dep);
             reciver(Ok(previous))
@@ -129,7 +134,17 @@ fn update_deps(
     } else {
         new_deps.iter().for_each(|&dep| {
             if used_groups.contains(&dep.belong_to) && !previous.contains(&dep) {
-                reciver(Err(conflict_error(map, dep, at)))
+                let previous = previous
+                    .iter()
+                    .find(|p| p.belong_to == dep.belong_to)
+                    .unwrap();
+
+                let conflict_error = DeclareError::ConflictSelected {
+                    conflict_with: map[*previous].clone(),
+                    this: map[dep].clone(),
+                }
+                .with_location(at);
+                reciver(Err(conflict_error))
             } else {
                 let mut deps = previous.clone();
                 deps.insert(dep);
@@ -137,13 +152,6 @@ fn update_deps(
             }
         })
     }
-}
-
-fn conflict_error(map: &mut DeclareMap, dep: Bench, location: terl::Span) -> DeclareError {
-    DeclareError::ConflictSelected {
-        conflict_with: map[dep].clone().unwrap(),
-    }
-    .with_location(location)
 }
 
 #[macro_export]

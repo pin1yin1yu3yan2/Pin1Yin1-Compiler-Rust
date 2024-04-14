@@ -86,8 +86,8 @@ mod calling_tree {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 Self::Start => write!(f, "Start: "),
-                Self::Success(span) => write!(f, "Success<{span}>"),
-                Self::Err(arg0, span) => write!(f, "{:?}<{span}>", arg0),
+                Self::Success(span) => write!(f, "Success<{span:?}>"),
+                Self::Err(arg0, span) => write!(f, "{:?}<{span:?}>", arg0),
             }
         }
     }
@@ -372,12 +372,12 @@ impl<S> Parser<S> {
         P::Target: PartialEq + std::fmt::Display,
     {
         self.once(|p| {
-            let lhs = P::parse(p).apply(MapError::new(|e| e.map(format!("exprct `{}`", rhs))))?;
+            let lhs = P::parse(p).apply(MapError::new(|e| e.map(format!("expect `{}`", rhs))))?;
             if *lhs == rhs {
                 Ok(lhs)
             } else {
                 Err(lhs.make_parse_error(
-                    format!("exprct `{}`, but `{}` found", rhs, *lhs),
+                    format!("expect `{}`, but `{}` found", rhs, *lhs),
                     ParseErrorKind::Unmatch,
                 ))
             }

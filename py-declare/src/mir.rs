@@ -1,11 +1,21 @@
-use std::borrow::Cow;
+use crate::{benches, BenchBuilder, DeclareMap, GroupIdx};
+pub use py_ir::ir::{ComplexType, Parameter, Parameters, PrimitiveType, TypeDefine};
+use py_ir::{ir, ops::Operators};
 
-pub use py_ir::ir::{ComplexType, PrimitiveType, TypeDefine};
-use py_ir::ops::Operators;
-
-use crate::{benches, BenchBuilder, GroupIdx};
+pub trait IntoIR {
+    type Forward;
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward;
+}
 
 pub type Statements = Vec<Statement>;
+
+impl IntoIR for Statements {
+    type Forward = ir::Statements;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        self.into_iter().map(|stmt| stmt.into_ir(map)).collect()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Statement {
@@ -13,11 +23,29 @@ pub enum Statement {
     Compute(Compute),
     VarDefine(VarDefine),
     VarStore(VarStore),
-    FnCall(FnCall),
     Block(Statements),
+    FnCall(FnCallStmt),
     If(If),
     While(While),
     Return(Return),
+}
+
+impl IntoIR for Statement {
+    type Forward = ir::Statement;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        match self {
+            Statement::FnDefine(item) => item.into_ir(map).into(),
+            Statement::Compute(item) => item.into_ir(map).into(),
+            Statement::VarDefine(item) => item.into_ir(map).into(),
+            Statement::VarStore(item) => item.into_ir(map).into(),
+            Statement::Block(item) => item.into_ir(map).into(),
+            Statement::FnCall(item) => item.into_ir(map).into(),
+            Statement::If(item) => item.into_ir(map).into(),
+            Statement::While(item) => item.into_ir(map).into(),
+            Statement::Return(item) => item.into_ir(map).into(),
+        }
+    }
 }
 
 mod from_impls {
@@ -46,15 +74,15 @@ mod from_impls {
         }
     }
 
-    impl From<FnCall> for Statement {
-        fn from(v: FnCall) -> Self {
-            Self::FnCall(v)
-        }
-    }
-
     impl From<Statements> for Statement {
         fn from(v: Statements) -> Self {
             Self::Block(v)
+        }
+    }
+
+    impl From<FnCallStmt> for Statement {
+        fn from(v: FnCallStmt) -> Self {
+            Self::FnCall(v)
         }
     }
 
@@ -77,11 +105,6 @@ mod from_impls {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Type {
-    mangle: Cow<'static, str>,
-}
-
 #[derive(Debug, Clone)]
 pub enum AtomicExpr {
     Char(char),
@@ -89,6 +112,7 @@ pub enum AtomicExpr {
     Integer(usize),
     Float(f64),
     Variable(String),
+    // mir and ir has different fn_call define
     FnCall(FnCall),
     // #[deprecated = "unsupported now"]
     // Initialization(Vec<Expr>),
@@ -98,6 +122,26 @@ pub enum AtomicExpr {
 pub struct Variable {
     pub val: AtomicExpr,
     pub ty: GroupIdx,
+}
+
+impl IntoIR for Variable {
+    type Forward = ir::AtomicExpr;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        match self.val {
+            AtomicExpr::Char(item) => ir::AtomicExpr::Char(item),
+            AtomicExpr::String(item) => ir::AtomicExpr::String(item),
+            AtomicExpr::Integer(item) => ir::AtomicExpr::Integer(item),
+            AtomicExpr::Float(item) => ir::AtomicExpr::Float(item),
+            AtomicExpr::Variable(item) => ir::AtomicExpr::Variable(item),
+            AtomicExpr::FnCall(item) => {
+                let unique = &map[self.ty].unique().unwrap();
+                let fn_name = unique.overload().name.clone();
+                let args = item.args.into_ir(map);
+                ir::AtomicExpr::FnCall(ir::FnCall { fn_name, args })
+            }
+        }
+    }
 }
 
 impl Variable {
@@ -135,12 +179,38 @@ impl Variable {
 
 pub type Variables = Vec<Variable>;
 
-/// be different of [py_ir::ir::OperateExpr], this is **not** around primitive types
+impl IntoIR for Variables {
+    type Forward = ir::Variables;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        self.into_iter().map(|var| var.into_ir(map)).collect()
+    }
+}
+
+/// be same as [`ir::OperateExpr`], this is also around primitive types
 #[derive(Debug, Clone)]
 pub enum OperateExpr {
     // type must be known, and then pick a operator-overload
     Unary(Operators, Variable),
     Binary(Operators, Variable, Variable),
+}
+
+impl IntoIR for OperateExpr {
+    type Forward = ir::OperateExpr;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        match self {
+            OperateExpr::Unary(op, l) => {
+                let l = l.into_ir(map);
+                ir::OperateExpr::Unary(op, l)
+            }
+            OperateExpr::Binary(op, l, r) => {
+                let l = l.into_ir(map);
+                let r = r.into_ir(map);
+                ir::OperateExpr::Binary(op, l, r)
+            }
+        }
+    }
 }
 
 impl OperateExpr {
@@ -160,30 +230,39 @@ pub struct Compute {
     pub eval: OperateExpr,
 }
 
-#[derive(Debug, Clone)]
-pub enum TypeDecorators {
-    Const,
-    Array,
-    Reference,
-    Pointer,
-    SizedArray(usize),
-}
+impl IntoIR for Compute {
+    type Forward = ir::Compute;
 
-#[derive(Debug, Clone)]
-pub struct Parameter {
-    pub ty: TypeDefine,
-    /// using string because its the name of parameter, not a value
-    pub name: String,
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        let ty = *map.get_type(self.ty).as_primitive().unwrap();
+        ir::Compute {
+            ty,
+            eval: self.eval.into_ir(map),
+            name: self.name,
+        }
+    }
 }
-
-pub type Parameters = Vec<Parameter>;
 
 #[derive(Debug, Clone)]
 pub struct FnDefine {
     pub ty: TypeDefine,
+    // mangled
     pub name: String,
     pub params: Parameters,
     pub body: Statements,
+}
+
+impl IntoIR for FnDefine {
+    type Forward = ir::FnDefine;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        ir::FnDefine {
+            ty: self.ty,
+            name: self.name,
+            params: self.params,
+            body: self.body.into_ir(map),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -193,15 +272,62 @@ pub struct VarDefine {
     pub init: Option<Variable>,
 }
 
+impl IntoIR for VarDefine {
+    type Forward = ir::VarDefine;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        ir::VarDefine {
+            ty: self.ty,
+            name: self.name,
+            init: self.init.map(|init| init.into_ir(map)),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VarStore {
     pub name: String,
     pub val: Variable,
 }
 
+impl IntoIR for VarStore {
+    type Forward = ir::VarStore;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        ir::VarStore {
+            name: self.name,
+            val: self.val.into_ir(map),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FnCall {
     pub args: Variables,
+}
+
+#[derive(Debug, Clone)]
+pub struct FnCallStmt {
+    pub temp: String,
+    pub called: GroupIdx,
+    pub args: FnCall,
+}
+
+impl IntoIR for FnCallStmt {
+    type Forward = ir::VarDefine;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        let unique = &map[self.called].unique().unwrap();
+        VarDefine {
+            ty: unique.overload().ty.clone(),
+            name: self.temp,
+            init: Some(Variable {
+                val: AtomicExpr::FnCall(self.args),
+                ty: self.called,
+            }),
+        }
+        .into_ir(map)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -211,10 +337,32 @@ pub struct Condition {
     pub compute: Statements,
 }
 
+impl IntoIR for Condition {
+    type Forward = ir::Condition;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        ir::Condition {
+            val: self.val.into_ir(map),
+            compute: self.compute.into_ir(map),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct IfBranch {
     pub cond: Condition,
     pub body: Statements,
+}
+
+impl IntoIR for IfBranch {
+    type Forward = ir::IfBranch;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        ir::IfBranch {
+            cond: self.cond.into_ir(map),
+            body: self.body.into_ir(map),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -223,13 +371,49 @@ pub struct If {
     pub else_: Option<Statements>,
 }
 
+impl IntoIR for If {
+    type Forward = ir::If;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        ir::If {
+            branches: self
+                .branches
+                .into_iter()
+                .map(|bench| bench.into_ir(map))
+                .collect(),
+            else_: self.else_.map(|else_| else_.into_ir(map)),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct While {
     pub cond: Condition,
     pub body: Statements,
 }
 
+impl IntoIR for While {
+    type Forward = ir::While;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        ir::While {
+            cond: self.cond.into_ir(map),
+            body: self.body.into_ir(map),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Return {
     pub val: Option<Variable>,
+}
+
+impl IntoIR for Return {
+    type Forward = ir::Return;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        ir::Return {
+            val: self.val.map(|val| val.into_ir(map)),
+        }
+    }
 }

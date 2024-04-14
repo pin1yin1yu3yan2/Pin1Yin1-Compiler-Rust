@@ -19,7 +19,6 @@ type Result<T, E = DeclareError> = std::result::Result<T, E>;
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
 
     use super::*;
 
@@ -33,7 +32,7 @@ mod tests {
             let mut possiables = std::collections::HashMap::default();
 
             for (idx, (res, deps)) in iter.into_iter().enumerate() {
-                possiables.insert(idx, Ok(Rc::new(res)));
+                possiables.insert(idx, res);
                 let this_node = Bench::new(declare_idx, idx);
 
                 self.deps.insert(this_node, deps.iter().copied().collect());
@@ -44,8 +43,11 @@ mod tests {
                 }
             }
 
-            self.groups
-                .push(Group::new(terl::Span::new(0, 0), possiables));
+            self.groups.push(Group::new(
+                terl::Span::new(0, 0),
+                possiables,
+                Default::default(),
+            ));
 
             declare_idx
         }
@@ -57,7 +59,7 @@ mod tests {
 
         macro_rules! ty {
             ($idx:literal) => {
-                Type::Overload(Overload($idx))
+                Type::Number($idx)
             };
         }
 
@@ -88,13 +90,9 @@ mod tests {
         ]);
 
         let k = map.test_declare([(ty!(5), vec![Bench::new(i, 0), Bench::new(j, 1)])]);
+
         map.make_sure(Bench::new(k, 0), DeclareError::Empty);
 
-        for group in [m1, n1, i, m2, n2, j, k] {
-            let bench_idx = *map.groups[group.idx].res.keys().next().unwrap();
-            let bench = Bench::new(group, bench_idx);
-
-            dbg!(&map.deps[&bench]);
-        }
+        assert!(map.declare_all().is_empty());
     }
 }

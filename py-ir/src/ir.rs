@@ -8,7 +8,6 @@ pub enum Statement {
     Compute(Compute),
     VarDefine(VarDefine),
     VarStore(VarStore),
-    FnCall(FnCall),
     Block(Statements),
     If(If),
     While(While),
@@ -38,12 +37,6 @@ mod from_impls {
     impl From<VarStore> for Statement {
         fn from(v: VarStore) -> Self {
             Self::VarStore(v)
-        }
-    }
-
-    impl From<FnCall> for Statement {
-        fn from(v: FnCall) -> Self {
-            Self::FnCall(v)
         }
     }
 
@@ -96,7 +89,6 @@ pub enum AtomicExpr {
     // Initialization(Vec<Expr>),
 }
 
-/// comes from [`Compute`] or just a
 pub type Variable = AtomicExpr;
 pub type Variables = Vec<Variable>;
 
@@ -166,32 +158,6 @@ impl PrimitiveType {
     }
 }
 
-/// [`std::str::FromStr`] provide builtin type support
-impl std::str::FromStr for PrimitiveType {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "bu4" => Ok(Self::Bool),
-            "kuan1 8 zheng3" => Ok(Self::I8),
-            "wu2fu2 kuan1 8 zheng3" => Ok(Self::U8),
-            "kuan1 16 zheng3" => Ok(Self::I16),
-            "wu2fu2 kuan1 16 zheng3" => Ok(Self::U16),
-            "kuan1 32 zheng3" => Ok(Self::I32),
-            "wu2fu2 kuan1 32 zheng3" => Ok(Self::U32),
-            "kuan1 64 zheng3" => Ok(Self::I64),
-            "wu2fu2 kuan1 64 zheng3" => Ok(Self::U64),
-            "kuan1 128 zheng3" => Ok(Self::I128),
-            "wu2fu2 kuan1 128 zheng3" => Ok(Self::U128),
-            "wu2fu2 zheng3" => Ok(Self::Usize),
-            "zheng3" => Ok(Self::Isize),
-            "kuan1 32 fu2" | "fu2" => Ok(Self::F32),
-            "kuan1 64 fu2" => Ok(Self::F64),
-            _ => Err(()),
-        }
-    }
-}
-
 impl std::fmt::Display for PrimitiveType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // hmmm...
@@ -248,19 +214,6 @@ impl ComplexType {
     }
 }
 
-/// [`std::str::FromStr`] provide builtin type support
-impl std::str::FromStr for ComplexType {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "chuan4" {
-            Ok(Self::string())
-        } else {
-            Err(())
-        }
-    }
-}
-
 impl std::fmt::Display for ComplexType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(decorators) = &self.decorators {
@@ -283,7 +236,6 @@ impl std::fmt::Display for ComplexType {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum TypeDefine {
     Primitive(PrimitiveType),
-    // TODO: change this
     Complex(ComplexType),
 }
 
@@ -303,6 +255,14 @@ impl TypeDefine {
     pub fn is_complex(&self) -> bool {
         matches!(self, Self::Complex(..))
     }
+
+    pub fn as_primitive(&self) -> Option<&PrimitiveType> {
+        if let Self::Primitive(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl std::fmt::Display for TypeDefine {
@@ -311,16 +271,6 @@ impl std::fmt::Display for TypeDefine {
             TypeDefine::Primitive(ty) => write!(f, "{}", ty),
             TypeDefine::Complex(ty) => write!(f, "{}", ty),
         }
-    }
-}
-
-impl std::str::FromStr for TypeDefine {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        PrimitiveType::from_str(s)
-            .map(Into::into)
-            .or_else(|_| ComplexType::from_str(s).map(Into::into))
     }
 }
 
