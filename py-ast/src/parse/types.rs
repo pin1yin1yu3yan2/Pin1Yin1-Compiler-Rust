@@ -239,7 +239,7 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
         }
 
         Ok(ComplexType {
-            decorators: decorators.into(),
+            decorators,
             ty,
         }
         .into())

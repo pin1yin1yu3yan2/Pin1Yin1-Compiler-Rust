@@ -1,6 +1,9 @@
 use crate::{benches, BenchBuilder, DeclareMap, GroupIdx};
-pub use py_ir::ir::{ComplexType, Parameter, Parameters, PrimitiveType, TypeDefine};
-use py_ir::{ir, ops::Operators};
+pub use py_ir::ir::{ComplexType, Literal, Parameter, Parameters, PrimitiveType, TypeDefine};
+use py_ir::{
+    ir::{self},
+    ops::Operators,
+};
 
 pub trait IntoIR {
     type Forward;
@@ -107,15 +110,18 @@ mod from_impls {
 
 #[derive(Debug, Clone)]
 pub enum AtomicExpr {
-    Char(char),
-    String(String),
-    Integer(usize),
-    Float(f64),
+    Literal(Literal),
     Variable(String),
     // mir and ir has different fn_call define
     FnCall(FnCall),
     // #[deprecated = "unsupported now"]
     // Initialization(Vec<Expr>),
+}
+
+impl From<Literal> for AtomicExpr {
+    fn from(v: Literal) -> Self {
+        Self::Literal(v)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -125,20 +131,20 @@ pub struct Variable {
 }
 
 impl IntoIR for Variable {
-    type Forward = ir::AtomicExpr;
+    type Forward = ir::Variable;
 
     fn into_ir(self, map: &DeclareMap) -> Self::Forward {
         match self.val {
-            AtomicExpr::Char(item) => ir::AtomicExpr::Char(item),
-            AtomicExpr::String(item) => ir::AtomicExpr::String(item),
-            AtomicExpr::Integer(item) => ir::AtomicExpr::Integer(item),
-            AtomicExpr::Float(item) => ir::AtomicExpr::Float(item),
-            AtomicExpr::Variable(item) => ir::AtomicExpr::Variable(item),
+            AtomicExpr::Literal(literal) => {
+                let primitive_type = *map.get_type(self.ty).as_primitive().unwrap();
+                ir::Variable::Literal(literal, primitive_type)
+            }
+            AtomicExpr::Variable(item) => ir::Variable::Variable(item),
             AtomicExpr::FnCall(item) => {
                 let unique = &map[self.ty].unique().unwrap();
                 let fn_name = unique.overload().name.clone();
                 let args = item.args.into_ir(map);
-                ir::AtomicExpr::FnCall(ir::FnCall { fn_name, args })
+                ir::Variable::FnCall(ir::FnCall { fn_name, args })
             }
         }
     }
@@ -153,12 +159,11 @@ impl Variable {
         !matches!(self.val, AtomicExpr::FnCall(..) | AtomicExpr::Variable(..))
     }
 
-    pub fn literal_benches(atomic: &AtomicExpr) -> Vec<BenchBuilder> {
-        match atomic {
-            AtomicExpr::Char(_) => benches! {() => PrimitiveType::char()},
+    pub fn literal_benches(var: &Literal) -> Vec<BenchBuilder> {
+        match var {
+            Literal::Char(_) => benches! {() => PrimitiveType::char()},
             // String: greatly in processing...
-            AtomicExpr::String(_) => benches! {() => ComplexType::string()},
-            AtomicExpr::Integer(_) => benches! {
+            Literal::Integer(_) => benches! {
                 () => PrimitiveType::U8, () => PrimitiveType::U16,
                 () => PrimitiveType::U32,() => PrimitiveType::U64,
                 () => PrimitiveType::U128,() => PrimitiveType::Usize,
@@ -167,12 +172,10 @@ impl Variable {
                 () => PrimitiveType::I128,() => PrimitiveType::Isize
 
             },
-            AtomicExpr::Float(_) => benches! {
+            Literal::Float(_) => benches! {
                 () => PrimitiveType::F32,
                 () => PrimitiveType::F64
             },
-
-            _ => unreachable!("should be filtered out before, and extend stored by GroupIdx"),
         }
     }
 }

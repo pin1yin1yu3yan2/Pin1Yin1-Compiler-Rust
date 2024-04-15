@@ -32,7 +32,7 @@ impl<M: Mangler> Ast<M> for parse::FnDefine {
 
     fn to_ast(
         fn_define: &Self::Target,
-        span: Span,
+        _span: Span,
         scope: &mut ModScope<M>,
     ) -> Result<Self::Forward> {
         let name = fn_define.name.to_string();
@@ -52,7 +52,7 @@ impl<M: Mangler> Ast<M> for parse::FnDefine {
             })?;
 
         let fn_sign = defs::FnSign {
-            loc: span,
+            retty_span: fn_define.ty.get_span(),
             ty: ty.clone(),
             params,
         };
@@ -133,10 +133,12 @@ impl<M: Mangler> Ast<M> for parse::FnCall {
                     bench_builder.filter_self(defs, &pre_filter);
 
                     if bench_builder.is_ok() {
-                        for (param, arg) in overload.params.iter().zip(args.iter()) {
+                        let spans = fn_call.args.args.iter().map(|pu| pu.get_span());
+                        let args = args.iter();
+                        for ((param, arg), span) in overload.params.iter().zip(args).zip(spans) {
                             let filter = filters::TypeEqual::new(&param.ty, span);
                             bench_builder =
-                                bench_builder.new_depend::<Directly, _>(map, defs, arg.ty, &filter);
+                                bench_builder.new_depend::<Directly, _>(map, arg.ty, &filter);
                         }
                     }
 
@@ -275,7 +277,11 @@ impl<M: Mangler> Ast<M> for parse::Return {
         scope: &mut ModScope<M>,
     ) -> Result<Self::Forward> {
         let val = match &return_.val {
-            Some(val) => Some(scope.to_ast(val)?),
+            Some(val) => {
+                let val = scope.to_ast(val)?;
+                scope.function_return_type_declare(val.ty);
+                Some(val)
+            }
             None => None,
         };
         scope.push_stmt(mir::Statement::Return(mir::Return { val }));
@@ -311,7 +317,7 @@ impl<M: Mangler> Ast<M> for parse::Arguments {
         })?;
 
         let span = cond.args.last().unwrap().get_span();
-        scope.assert_type_is(span, last_cond.ty, &mir::PrimitiveType::Bool.into());
+        scope.decalre_group_as(span, last_cond.ty, &mir::PrimitiveType::Bool.into());
 
         Result::Ok(mir::Condition {
             val: last_cond,
@@ -348,15 +354,17 @@ impl<M: Mangler> Ast<M> for parse::AtomicExpr {
     type Forward = mir::Variable;
 
     fn to_ast(atomic: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
-        let atomic = match atomic {
+        let literal = match atomic {
             // atomics
-            parse::AtomicExpr::CharLiteral(char) => mir::AtomicExpr::Char(char.parsed),
-            parse::AtomicExpr::StringLiteral(str) => mir::AtomicExpr::String(str.parsed.clone()),
+            parse::AtomicExpr::CharLiteral(char) => mir::Literal::Char(char.parsed),
             parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float { number, .. } => mir::AtomicExpr::Float(*number),
-                parse::NumberLiteral::Digit { number, .. } => mir::AtomicExpr::Integer(*number),
+                parse::NumberLiteral::Float { number, .. } => mir::Literal::Float(*number),
+                parse::NumberLiteral::Digit { number, .. } => mir::Literal::Integer(*number),
             },
 
+            parse::AtomicExpr::StringLiteral(_str) => {
+                todo!("a VarDefine statement will be generate...")
+            }
             parse::AtomicExpr::FnCall(fn_call) => {
                 return parse::FnCall::to_ast(fn_call, span, scope)
             }
@@ -384,9 +392,9 @@ impl<M: Mangler> Ast<M> for parse::AtomicExpr {
         };
 
         let ty = scope.new_declare_group(|_, _| {
-            let benches = mir::Variable::literal_benches(&atomic);
+            let benches = mir::Variable::literal_benches(&literal);
             GroupBuilder::new(span, benches)
         });
-        Ok(mir::Variable::new(atomic, ty))
+        Ok(mir::Variable::new(literal.into(), ty))
     }
 }

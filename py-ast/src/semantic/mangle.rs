@@ -50,9 +50,9 @@ impl Mangler for ChineseMangler {
                 use std::fmt::Write;
                 let mut output = format!("{prefix}{name} 参");
                 for param in params.into_iter() {
-                    write!(&mut output, " {} ", Self::mangle(param)).ok();
+                    write!(&mut output, " {}", Self::mangle(param)).ok();
                 }
-                format!("{output}结")
+                format!("{output} 结")
             }
             MangleItem::Type { ty } => prefix + &ty,
             MangleItem::Val() => todo!(),

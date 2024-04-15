@@ -148,4 +148,38 @@ pub mod filters {
             msg
         }
     }
+
+    pub struct NthParamTyEqual<'t> {
+        pub at: Span,
+        pub nth: usize,
+        pub expect: &'t TypeDefine,
+    }
+
+    impl<'t> NthParamTyEqual<'t> {
+        pub fn new(nth: usize, expect: &'t TypeDefine, at: Span) -> Self {
+            Self { at, nth, expect }
+        }
+    }
+
+    impl<'t> WithSpan for NthParamTyEqual<'t> {
+        fn get_span(&self) -> Span {
+            self.at
+        }
+    }
+
+    impl<'t> BenchFilter<Overload> for NthParamTyEqual<'t> {
+        fn satisfy(&self, ty: &Type) -> bool {
+            ty.overload()
+                .params
+                .get(self.nth)
+                .is_some_and(|param| &param.ty == self.expect)
+        }
+
+        fn expect(&self, _defs: &Defs) -> String {
+            format!(
+                "a function whose {}th parameter is {}",
+                self.nth, self.expect
+            )
+        }
+    }
 }

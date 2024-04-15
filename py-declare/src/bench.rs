@@ -53,13 +53,7 @@ impl BenchBuilder {
         }
     }
 
-    pub fn new_depend<T, B>(
-        mut self,
-        map: &mut DeclareMap,
-        defs: &Defs,
-        gidx: GroupIdx,
-        filter: &B,
-    ) -> Self
+    pub fn new_depend<T, B>(mut self, map: &mut DeclareMap, gidx: GroupIdx, filter: &B) -> Self
     where
         T: Types,
         B: BenchFilter<T>,
@@ -75,30 +69,18 @@ impl BenchBuilder {
             .map(|bench_idx| Bench::new(gidx, *bench_idx))
             .collect::<Vec<_>>();
 
-        if new_deps.is_empty() {
-            let err = DeclareError::NonBenchSelected {
-                expect: filter.expect(defs),
-            }
-            .with_location(filter.get_span())
-            .into_shared();
-
-            for (k, ty) in std::mem::take(&mut map[gidx].alive) {
-                map[gidx].faild.insert(k, err.clone().with_previous(ty));
-            }
-        } else {
-            self.states = self.states.into_iter().fold(vec![], |mut states, state| {
-                match state {
-                    Ok(deps) => {
-                        let reciver = |item| states.push(item);
-                        let at = filter.get_span();
-                        let used_groups = &self.used_groups;
-                        update_deps(at, used_groups, &new_deps, deps, map, reciver);
-                    }
-                    Err(e) => states.push(Err(e)),
+        self.states = self.states.into_iter().fold(vec![], |mut states, state| {
+            match state {
+                Ok(deps) => {
+                    let reciver = |item| states.push(item);
+                    let at = filter.get_span();
+                    let used_groups = &self.used_groups;
+                    update_deps(at, used_groups, &new_deps, deps, map, reciver);
                 }
-                states
-            });
-        }
+                Err(e) => states.push(Err(e)),
+            }
+            states
+        });
 
         self.used_groups.insert(gidx);
         self

@@ -204,8 +204,10 @@ impl DeclareMap {
         }
 
         // forward delcare result to lower level group
-        for sub_bench in self.deps.get(&bidx).unwrap().clone() {
-            self.make_sure(sub_bench, reason.clone());
+        if let Some(val) = self.deps.get(&bidx) {
+            for sub_bench in val.clone() {
+                self.make_sure(sub_bench, reason.clone());
+            }
         }
     }
 
@@ -256,16 +258,16 @@ impl DeclareMap {
             // un-decalred group
             if group.unique().is_none() {
                 let mut err = group.make_error("cant infer type");
-                if !group.alive.is_empty() {
-                    err += "this can be decalred as:";
+                if group.alive.is_empty() {
+                    err += "this cant be decalred as any type!";
+                } else {
+                    err += "this cant be decalred as:";
                     for alive in group.alive.values() {
                         err += format!("\t{alive}")
                     }
-                } else {
-                    err += "this cant be decalred as any";
                 }
-                for faild in group.faild.values() {
-                    err += "";
+                for (idx, faild) in group.faild.values().enumerate() {
+                    err += format!("faild bench <{idx}>:");
                     err.extend(faild.generate());
                 }
                 errors.push(err);

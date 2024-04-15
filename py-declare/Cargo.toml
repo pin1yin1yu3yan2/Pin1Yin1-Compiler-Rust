@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 py-ir = { path = "../py-ir" }
+# TODO: rewrite, or use another parser
 terl = { path = "../terl" }

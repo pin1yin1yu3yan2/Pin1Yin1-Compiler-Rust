@@ -67,9 +67,9 @@ impl DeclareError {
                 ));
                 reason.generate_inner(msgs)
             }
-            DeclareError::NonBenchSelected { expect } => msgs.push(Message::Text(format!(
-                "this should be {expect}, but non of this are matched"
-            ))),
+            DeclareError::NonBenchSelected { expect } => {
+                msgs.push(Message::Text(format!("this should be `{expect}`")))
+            }
             DeclareError::ConflictSelected {
                 conflict_with,
                 this,
@@ -81,7 +81,10 @@ impl DeclareError {
             DeclareError::Declared { declare_as } => msgs.push(Message::Text(format!(
                 "this has been declared as {declare_as}"
             ))),
-            DeclareError::Unexpect { expect } => msgs.push(Message::Text(expect.to_owned())),
+            DeclareError::Unexpect { expect } => msgs.push(Message::Text(format!(
+                "expect this to be decalred as `{}`",
+                expect.to_owned()
+            ))),
             DeclareError::Filtered => msgs.push(Message::Text("this has been filtered".to_owned())),
             DeclareError::Shared { err } => err.generate_inner(msgs),
 
@@ -95,7 +98,7 @@ impl DeclareError {
             DeclareError::WithPrevious { previous, error } => {
                 error.generate_inner(msgs);
                 msgs.push(Message::Text(format!(
-                    "this used to be guessed as {previous}"
+                    "note: this used to be guessed as {previous}"
                 )))
             }
             DeclareError::Empty => {}

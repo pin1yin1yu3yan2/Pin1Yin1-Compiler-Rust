@@ -86,7 +86,9 @@ impl Source<char> {
             }
             let mut hats = (0..space_len).map(|_| ' ').collect::<String>();
             while idx < src.len() && src[idx] != '\n' {
-                hats.push('^');
+                if idx < span.end {
+                    hats.push('^');
+                }
                 idx += 1;
             }
 

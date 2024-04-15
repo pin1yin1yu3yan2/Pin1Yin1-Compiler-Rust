@@ -87,28 +87,9 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn atomic_epxr(&self, atomic: &ir::AtomicExpr) -> Result<BasicValueEnum<'ctx>, BuilderError> {
-        match atomic {
-            ir::AtomicExpr::Char(c) => {
-                // char -> u32
-                Ok(self.context.i32_type().const_int(*c as _, false).into())
-            }
-            ir::AtomicExpr::String(s) => {
-                let u8 = self.context.i8_type();
-                let mut bytes = vec![];
-                for byte in s.bytes() {
-                    bytes.push(u8.const_int(byte as _, false));
-                }
-                // &str -> &[u8]
-                Ok(u8.const_array(&bytes).into())
-            }
-            ir::AtomicExpr::Integer(i) => {
-                Ok(self.context.i64_type().const_int(*i as _, false).into())
-            }
-            ir::AtomicExpr::Float(f) => Ok(self.context.f64_type().const_float(*f).into()),
-            ir::AtomicExpr::Variable(v) => self.get_var(v).load(&self.builder),
-
-            ir::AtomicExpr::FnCall(fn_call) => {
+    fn atomic_epxr(&self, var: &ir::Variable) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+        match var {
+            ir::Variable::FnCall(fn_call) => {
                 let fn_ = self.get_fn(&fn_call.fn_name);
                 let args = fn_call.args.iter().try_fold(vec![], |mut vec, arg| {
                     vec.push(self.atomic_epxr(arg)?.into());
@@ -123,16 +104,38 @@ impl<'ctx> CodeGen<'ctx> {
                     .unwrap_left();
                 Ok(val)
             }
+            ir::Variable::Variable(variable) => self.get_var(variable).load(&self.builder),
+            ir::Variable::Literal(literal, ty) => self.literal(literal, ty),
+            // ir::Value::Char(c) => {
+            //     // char -> u32
+            //     Ok(self.context.i32_type().const_int(*c as _, false).into())
+            // }
+            // ir::Value::String(s) => {
+            //     let u8 = self.context.i8_type();
+            //     let mut bytes = vec![];
+            //     for byte in s.bytes() {
+            //         bytes.push(u8.const_int(byte as _, false));
+            //     }
+            //     // &str -> &[u8]
+            //     Ok(u8.const_array(&bytes).into())
+            // }
+            // ir::Value::Integer(i) => Ok(self.context.i64_type().const_int(*i as _, false).into()),
+            // ir::Value::Float(f) => Ok(self.context.f64_type().const_float(*f).into()),
+            // ir::Value::Variable(v) => self.get_var(v).load(&self.builder),
+
+            // ir::Value::FnCall(fn_call) => {
+
+            // }
         }
     }
 
-    fn atomic_expr_with_ty(
+    fn literal(
         &self,
-        atomic: &ir::AtomicExpr,
+        literal: &ir::Literal,
         ty: &ir::PrimitiveType,
     ) -> Result<BasicValueEnum<'ctx>, BuilderError> {
-        let ret = match atomic {
-            ir::AtomicExpr::Integer(int) if ty.is_integer() => match ty.width() {
+        let ret = match literal {
+            ir::Literal::Integer(int) if ty.is_integer() => match ty.width() {
                 1 => self
                     .context
                     .bool_type()
@@ -165,18 +168,17 @@ impl<'ctx> CodeGen<'ctx> {
                     .into(),
                 _ => unreachable!(),
             },
-            ir::AtomicExpr::Float(float) if ty.is_float() => match ty.width() {
+            ir::Literal::Float(float) if ty.is_float() => match ty.width() {
                 32 => self.context.f32_type().const_float(*float).into(),
                 64 => self.context.f64_type().const_float(*float).into(),
                 _ => unreachable!(),
             },
-            ir::AtomicExpr::Char(char) if ty == &ir::PrimitiveType::U32 => self
+            ir::Literal::Char(char) if ty == &ir::PrimitiveType::U32 => self
                 .context
                 .i32_type()
                 .const_int(*char as _, ty.is_signed())
                 .into(),
-            ir::AtomicExpr::Variable(var) => self.get_var(var).load(&self.builder)?,
-            _ => panic!("not primitive, or passed a incorrect PrimitiveType"),
+            _ => panic!("incorrect PrimitiveType are passed in"),
         };
         Ok(ret)
     }
@@ -262,8 +264,8 @@ impl Compile for ir::Compute {
                 state.regist_var(self.name.to_owned(), ComputeResult { val })
             }
             ir::OperateExpr::Binary(op, l, r) => {
-                let l = state.atomic_expr_with_ty(l, &self.ty)?;
-                let r = state.atomic_expr_with_ty(r, &self.ty)?;
+                let l = state.atomic_epxr(l)?;
+                let r = state.atomic_epxr(r)?;
                 let val =
                     crate::primitive::binary_compute(builder, self.ty, *op, l, r, &self.name)?;
                 state.regist_var(self.name.to_owned(), ComputeResult { val })

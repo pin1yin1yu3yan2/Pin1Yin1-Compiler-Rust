@@ -21,7 +21,7 @@ fn get_ast(src: &str) -> Statements {
     let mut scope = ModScope::<DefaultMangler>::new_with_main();
     scope
         .load_fns(&pus)
-        .map_err(|e| parser.handle_error(e))
+        .map_err(|e| eprintln!("{}", parser.handle_error(e).unwrap()))
         .unwrap();
 
     match scope.finish() {
@@ -155,5 +155,43 @@ fn more_operations() {
 
         assert_eq!(cheng.call(57257.0), 114514.0);
         assert_eq!(yi.call(57257), 114514);
+    })
+}
+
+const OVERLOAD_TEST: &str = "
+zheng3 a can1 zheng3 a jie2
+han2
+    fan3 a jia1 1 fen1
+jie2
+
+fu2 a can1 fu2 a jie2
+han2
+    fan3 a jia1 1.0 fen1
+jie2
+
+zheng3 test can1 zheng3 fuck fen1 fu2 you jie2
+han2 
+    a can1 fuck jie2 fen1
+    a can1 you  jie2 fen1
+    fan3 114514 fen1
+jie2
+";
+
+#[test]
+fn overload_test() {
+    compile_tester(OVERLOAD_TEST, |tester| unsafe {
+        type A1 = unsafe extern "C" fn(i64) -> i64;
+        type A2 = unsafe extern "C" fn(f32) -> f32;
+        type Test = unsafe extern "C" fn(i64, f32) -> i64;
+
+        let a1: JitFunction<A1> = tester.execution_engine.get_function("a 参 i64 结").unwrap();
+        let a2: JitFunction<A2> = tester.execution_engine.get_function("a 参 f32 结").unwrap();
+        let test: JitFunction<Test> = tester
+            .execution_engine
+            .get_function("test 参 i64 f32 结")
+            .unwrap();
+        assert_eq!(a1.call(114513), 114514);
+        assert_eq!(a2.call(114513.0), 114514.0);
+        assert_eq!(test.call(114514, 114514.0), 114514);
     })
 }

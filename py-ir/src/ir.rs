@@ -67,29 +67,34 @@ mod from_impls {
 
 /// this kind of expr is the most general expression
 ///
-/// [`AtomicExpr::Char`], [`AtomicExpr::String`], [`AtomicExpr::Integer`] and [`AtomicExpr::Float`]
-/// mean literals
-///
 /// type of literals are needed to be declared in operators, because `1` can mean `i8`, `i32`, etc.
 ///
-/// [`AtomicExpr::Variable`] and [`AtomicExpr::FnCall`] are folded expression,for example,
+/// [`Variable::Variable`] and [`Variable::FnCall`] are folded expression,for example,
 /// [`OperateExpr::Binary`] and [`OperateExpr::Unary`] will be transformed into a [`VarDefine`],
-/// and its result(a variable) will be used as [`AtomicExpr::Variable`]
+/// and its result(a variable) will be used as [`Variable::Variable`]
 ///
 /// using this way to avoid expressions' tree, and make llvm-ir generation much easier
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub enum AtomicExpr {
-    Char(char),
-    String(String),
-    Integer(usize),
-    Float(f64),
+pub enum Variable {
     Variable(String),
     FnCall(FnCall),
     // #[deprecated = "unsupported now"]
     // Initialization(Vec<Expr>),
+    Literal(Literal, PrimitiveType),
 }
 
-pub type Variable = AtomicExpr;
+/// [`Literal::Char`], [`Literal::Integer`] and [`Literal::Float`]
+/// mean literals
+///
+/// althogn [`String`] is also [`Literal`], it will be replaced with [`VarDefine`] statement
+/// so that the type of [`Literal`] can be represented by [`PrimitiveType`]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub enum Literal {
+    Char(char),
+    Integer(usize),
+    Float(f64),
+}
+
 pub type Variables = Vec<Variable>;
 
 /// [`OperateExpr::Unary`] and [`OperateExpr::Binary`] are normal operations aroud primitives
@@ -97,16 +102,16 @@ pub type Variables = Vec<Variable>;
 /// computes around non-primitive types are turned into [FnCall]
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum OperateExpr {
-    Unary(Operators, AtomicExpr),
-    Binary(Operators, AtomicExpr, AtomicExpr),
+    Unary(Operators, Variable),
+    Binary(Operators, Variable, Variable),
 }
 
 impl OperateExpr {
-    pub fn binary(op: Operators, l: impl Into<AtomicExpr>, r: impl Into<AtomicExpr>) -> Self {
+    pub fn binary(op: Operators, l: impl Into<Variable>, r: impl Into<Variable>) -> Self {
         Self::Binary(op, l.into(), r.into())
     }
 
-    pub fn unary(op: Operators, v: impl Into<AtomicExpr>) -> Self {
+    pub fn unary(op: Operators, v: impl Into<Variable>) -> Self {
         Self::Unary(op, v.into())
     }
 }
@@ -186,6 +191,8 @@ pub struct Compute {
     /// computing is around same types
     ///
     /// this is [`OperateExpr::Binary`] or [`OperateExpr::Unary`]'s type
+    ///
+    /// although [`Variable::Literal`] own its type, [`Variable::FnCall`] and other are not
     #[serde(rename = "type")]
     pub ty: PrimitiveType,
     pub name: String,
@@ -207,8 +214,8 @@ pub enum TypeDecorators {
 pub struct ComplexType {
     /// use option to avoid memory allocation sometimes
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub decorators: Option<Vec<TypeDecorators>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub decorators: Vec<TypeDecorators>,
     #[serde(rename = "type")]
     pub ty: String,
 }
@@ -216,14 +223,14 @@ pub struct ComplexType {
 impl ComplexType {
     pub fn no_decorators(ty: String) -> Self {
         Self {
-            decorators: None,
+            decorators: Vec::new(),
             ty,
         }
     }
 
     pub fn string() -> Self {
         Self {
-            decorators: Some(vec![TypeDecorators::Array]),
+            decorators: vec![TypeDecorators::Array],
             ty: "u8".to_string(),
         }
     }
@@ -231,23 +238,20 @@ impl ComplexType {
 
 impl std::fmt::Display for ComplexType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(decorators) = &self.decorators {
-            for dec in decorators {
-                match dec {
-                    TypeDecorators::Const => write!(f, "const "),
-                    TypeDecorators::Array => write!(f, "[] "),
-                    TypeDecorators::Reference => write!(f, "& "),
-                    TypeDecorators::Pointer => write!(f, "* "),
-                    TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
-                }?;
-            }
+        for dec in &self.decorators {
+            match dec {
+                TypeDecorators::Const => write!(f, "const "),
+                TypeDecorators::Array => write!(f, "[] "),
+                TypeDecorators::Reference => write!(f, "& "),
+                TypeDecorators::Pointer => write!(f, "* "),
+                TypeDecorators::SizedArray(s) => write!(f, "[{s}] "),
+            }?;
         }
 
         write!(f, "{}", self.ty)
     }
 }
 
-/// TODO: use Rc to wrap this, to improve prefer
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum TypeDefine {
     Primitive(PrimitiveType),

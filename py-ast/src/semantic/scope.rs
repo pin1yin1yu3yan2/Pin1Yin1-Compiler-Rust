@@ -98,17 +98,17 @@ impl<M: Mangler> ModScope<M> {
     pub fn regist_var(&mut self, stmt: mir::VarDefine, def: defs::VarDef, stmt_span: terl::Span) {
         if let Some(ref init) = stmt.init {
             let init_group = init.ty;
-            self.assert_type_is(stmt_span, init_group, &stmt.ty);
+            self.decalre_group_as(stmt_span, init_group, &stmt.ty);
         }
 
-        self.current_fn_mut()
+        self.current_scope_mut()
             .this_scope()
             .vars
             .insert(stmt.name.clone(), def);
         self.push_stmt(stmt);
     }
 
-    pub fn assert_type_is(
+    pub fn decalre_group_as(
         &mut self,
         stmt_span: terl::Span,
         val_ty: GroupIdx,
@@ -121,8 +121,17 @@ impl<M: Mangler> ModScope<M> {
             .declare_type(stmt_span, val_ty, expect_ty)
     }
 
+    pub fn function_return_type_declare(&mut self, val: GroupIdx) {
+        let current_fn = self.defs.get_mangled(&self.current_scope().fn_name);
+        self.mir_fns.last_mut().unwrap().declare_map.declare_type(
+            current_fn.retty_span,
+            val,
+            &current_fn.ty,
+        )
+    }
+
     pub fn search_var(&self, name: &str) -> Option<defs::VarDef> {
-        let fn_scope = self.current_fn();
+        let fn_scope = self.current_scope();
 
         if let Some(ty) = fn_scope.parameters.get(name) {
             return Some(defs::VarDef {
@@ -140,11 +149,11 @@ impl<M: Mangler> ModScope<M> {
         None
     }
 
-    fn current_fn(&self) -> &FnScope {
+    fn current_scope(&self) -> &FnScope {
         self.mir_fns.last().unwrap()
     }
 
-    fn current_fn_mut(&mut self) -> &mut FnScope {
+    fn current_scope_mut(&mut self) -> &mut FnScope {
         self.mir_fns.last_mut().unwrap()
     }
 
@@ -155,9 +164,9 @@ impl<M: Mangler> ModScope<M> {
     {
         let scope = Default::default();
 
-        self.current_fn_mut().scope_stack.push(scope);
+        self.current_scope_mut().scope_stack.push(scope);
         let t = f(self)?;
-        let pool = self.current_fn_mut().scope_stack.pop().unwrap();
+        let pool = self.current_scope_mut().scope_stack.pop().unwrap();
 
         Result::Ok((pool.stmts, t))
     }
@@ -170,33 +179,36 @@ impl<M: Mangler> ModScope<M> {
             &mut self.mir_fns.last_mut().unwrap().declare_map,
             &self.defs,
         );
-        self.current_fn_mut().declare_map.new_group(builder)
+        self.current_scope_mut().declare_map.new_group(builder)
     }
 
     pub fn new_static_group<I>(&mut self, at: terl::Span, items: I) -> GroupIdx
     where
         I: IntoIterator<Item = Type>,
     {
-        self.current_fn_mut()
+        self.current_scope_mut()
             .declare_map
             .new_static_group(at, items)
     }
 
     pub fn merge_group(&mut self, stmt_span: terl::Span, to: GroupIdx, from: GroupIdx) {
-        self.current_fn_mut()
+        self.current_scope_mut()
             .declare_map
             .merge_group(stmt_span, to, from)
     }
 
     pub fn push_stmt(&mut self, stmt: impl Into<mir::Statement>) {
-        self.current_fn_mut().this_scope().stmts.push(stmt.into());
+        self.current_scope_mut()
+            .this_scope()
+            .stmts
+            .push(stmt.into());
     }
 
     pub fn push_compute(&mut self, eval: mir::OperateExpr) -> mir::Variable {
         let ty = match &eval {
             mir::OperateExpr::Unary(_, t) | mir::OperateExpr::Binary(_, _, t) => t.ty,
         };
-        let name = self.current_fn_mut().alloc_name();
+        let name = self.current_scope_mut().alloc_name();
 
         self.push_stmt(mir::Compute {
             ty,
@@ -210,7 +222,7 @@ impl<M: Mangler> ModScope<M> {
     }
 
     pub fn fn_call_stmt(&mut self, var: mir::Variable) {
-        let temp = self.current_fn_mut().alloc_name();
+        let temp = self.current_scope_mut().alloc_name();
         let called = var.ty;
         let mir::AtomicExpr::FnCall(fn_call) = var.val else {
             unreachable!()

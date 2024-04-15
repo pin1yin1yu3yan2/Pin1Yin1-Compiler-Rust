@@ -48,7 +48,7 @@ impl FnSigns {
         use py_ir::ir::PrimitiveType;
         let mut s = Self::default();
         let main_sign = defs::FnSign {
-            loc: Span::new(0, 0),
+            retty_span: Span::new(0, 0),
             ty: TypeDefine::Primitive(PrimitiveType::I32),
             params: vec![],
         };
@@ -111,25 +111,27 @@ pub struct FnSign {
     /// return type of the function must be cleared (will change in future versions)
     pub ty: TypeDefine,
     pub params: Vec<Param>,
-    pub loc: Span,
+    pub retty_span: Span,
 }
 
 impl std::fmt::Display for FnSignWithName {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        _f.write_str(&self.name)?;
-        _f.write_str("(")?;
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // NOTO: this may only work with default Chinese Mangler
+        let unmangled = self.name.split_ascii_whitespace().next().unwrap();
+        f.write_str(unmangled)?;
+        f.write_str("(")?;
         match self.params.len() {
-            0 => _f.write_str(")")?,
-            1 => _f.write_fmt(format_args!("{})", self.params[0].ty))?,
+            0 => f.write_str(")")?,
+            1 => f.write_fmt(format_args!("{})", self.params[0].ty))?,
             _ => {
-                _f.write_fmt(format_args!("{}", self.params[0].ty))?;
+                f.write_fmt(format_args!("{}", self.params[0].ty))?;
                 for param in &self.params[1..] {
-                    _f.write_fmt(format_args!(", {}", param.name))?;
+                    f.write_fmt(format_args!(", {}", param.name))?;
                 }
-                _f.write_str(")")?
+                f.write_str(")")?
             }
         }
-        _f.write_fmt(format_args!(" -> {}", self.ty))
+        f.write_fmt(format_args!(" -> {}", self.ty))
     }
 }
 
