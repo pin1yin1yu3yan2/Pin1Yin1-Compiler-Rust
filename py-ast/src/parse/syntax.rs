@@ -92,7 +92,7 @@ impl ParseUnit for Parameters {
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         p.match_(Symbol::Parameter)?;
         let Some(arg) = p.parse::<Parameter>().r#try()? else {
-            p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+            p.match_(Symbol::Jie2).apply(MustMatch)?;
 
             return p.finish(Parameters {
                 params: vec![],
@@ -108,7 +108,7 @@ impl ParseUnit for Parameters {
             params.push(p.parse::<Parameter>()?);
         }
 
-        p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+        p.match_(Symbol::Jie2).apply(MustMatch)?;
         p.finish(Parameters { params, semicolons })
     }
 }
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn variable_define_init() {
-        let src = "kuan1 32 zheng3 a deng3 114514 fen1";
+        let src = "kuan1 32 zheng3 a wei2 114514 fen1";
         parse_test(src, |p| assert!(p.parse::<VarDefine>().is_ok()));
         parse_test(src, |p| {
             assert!(p.parse::<Statement>().is_ok());
@@ -137,10 +137,10 @@ mod tests {
 
     #[test]
     fn variable_reassign() {
-        parse_test("a deng3 114514 fen1", |p| {
+        parse_test("a wei2 114514 fen1", |p| {
             assert!(p.parse::<Statement>().is_ok())
         });
-        parse_test("a deng3 114514 fen1", |p| {
+        parse_test("a wei2 114514 fen1", |p| {
             assert!(p.parse::<VarStore>().is_ok())
         });
     }

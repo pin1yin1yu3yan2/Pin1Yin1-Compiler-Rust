@@ -6,12 +6,19 @@ terl::keywords! {
         "jie2gou4" -> Struct,
     }
     keywords Symbol {
+        "ya1"    -> FnCallL,
+        "ru4"    -> FnCallR,
+
+        // "jie2"   -> BracketL,
+        "he2"    -> BracketR,
+
         "han2"   -> Block,
         "can1"   -> Parameter,
         "shi4"   -> Comment,
-        "jie2"   -> EndOfBracket,
+        "jie2"   -> Jie2,
+
         "fen1"   -> Semicolon,
-        "deng3"  -> Assign,
+        "wei2"   -> Assign,
         "de1"    -> GetElement,
         "biao1"  -> Label,
         "wen2"   -> Char,

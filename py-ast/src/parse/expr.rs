@@ -111,7 +111,7 @@ impl ParseUnit for Arguments {
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         p.match_(Symbol::Parameter)?;
         let Some(arg) = p.parse::<Expr>().r#try()? else {
-            p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+            p.match_(Symbol::Jie2).apply(MustMatch)?;
             return p.finish(Arguments {
                 args: vec![],
                 semicolons: vec![],
@@ -126,8 +126,40 @@ impl ParseUnit for Arguments {
             args.push(p.parse::<Expr>()?);
         }
 
-        p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+        p.match_(Symbol::Jie2).apply(MustMatch)?;
         p.finish(Arguments { args, semicolons })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FnCallArgs {
+    pub args: Vec<PU<Expr>>,
+    pub semicolons: Vec<Span>,
+}
+
+impl ParseUnit for FnCallArgs {
+    type Target = FnCallArgs;
+
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
+        p.match_(Symbol::FnCallL)?;
+        let Some(arg) = p.parse::<Expr>().r#try()? else {
+            p.match_(Symbol::FnCallR).apply(MustMatch)?;
+            return p.finish(FnCallArgs {
+                args: vec![],
+                semicolons: vec![],
+            });
+        };
+
+        let mut args = vec![arg];
+        let mut semicolons = vec![];
+
+        while let Some(semicolon) = p.match_(Symbol::Semicolon).r#try()? {
+            semicolons.push(semicolon.get_span());
+            args.push(p.parse::<Expr>()?);
+        }
+
+        p.match_(Symbol::FnCallR).apply(MustMatch)?;
+        p.finish(FnCallArgs { args, semicolons })
     }
 }
 
@@ -145,7 +177,7 @@ impl ParseUnit for Initialization {
         while let Some(expr) = p.parse::<AtomicExpr>().r#try()? {
             args.push(expr);
         }
-        p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+        p.match_(Symbol::Jie2).apply(MustMatch)?;
         p.finish(Initialization { args })
     }
 }
@@ -153,15 +185,15 @@ impl ParseUnit for Initialization {
 #[derive(Debug, Clone)]
 pub struct FnCall {
     pub fn_name: PU<Ident>,
-    pub args: PU<Arguments>,
+    pub args: PU<FnCallArgs>,
 }
 
 impl ParseUnit for FnCall {
     type Target = FnCall;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
+        let args = p.parse::<FnCallArgs>()?;
         let fn_name = p.parse::<Ident>()?;
-        let args = p.parse::<Arguments>()?;
 
         p.finish(FnCall { fn_name, args })
     }
@@ -198,9 +230,9 @@ impl ParseUnit for BracketExpr {
     type Target = BracketExpr;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        p.match_(Symbol::Parameter)?;
+        p.match_(Symbol::Jie2)?;
         let expr = Box::new(p.parse::<Expr>()?);
-        p.match_(Symbol::EndOfBracket).apply(MustMatch)?;
+        p.match_(Symbol::BracketR).apply(MustMatch)?;
 
         p.finish(BracketExpr { expr })
     }
@@ -333,7 +365,7 @@ mod tests {
 
     #[test]
     fn function_call() {
-        parse_test("han2shu41 can1 1919810 fen1 chuan4 acminoac jie2", |p| {
+        parse_test("ya1 1919810 fen1 chuan4 acminoac ru4 han2shu4", |p| {
             assert!(p.parse::<FnCall>().is_ok());
         })
     }
@@ -355,8 +387,8 @@ mod tests {
     #[test]
     fn bracket() {
         // unary + bracket
-        parse_test("fei1 can1 114514 jie2", |p| {
-            assert!(p.parse::<UnaryExpr>().is_ok());
+        parse_test("fei1 jie2 114514 he2", |p| {
+            p.parse::<UnaryExpr>().unwrap();
         })
     }
 

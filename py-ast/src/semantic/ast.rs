@@ -51,8 +51,10 @@ impl<M: Mangler> Ast<M> for parse::FnDefine {
                 Result::Ok(vec)
             })?;
 
+        let sign_span = fn_define.ty.get_span().merge(fn_define.params.get_span());
         let fn_sign = defs::FnSign {
             retty_span: fn_define.ty.get_span(),
+            sign_span,
             ty: ty.clone(),
             params,
         };

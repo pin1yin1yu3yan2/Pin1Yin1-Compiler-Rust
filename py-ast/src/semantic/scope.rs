@@ -76,6 +76,24 @@ impl<M: Mangler> ModScope<M> {
     {
         let mangled = self.mangle_fn(&name, &sign);
 
+        // check if there has been a previous overload
+        if let Some(previous) = self.defs.try_get_mangled(&mangled) {
+            let previous_define = previous
+                .sign_span
+                .make_message(format!("funcion {} has been definded here", name));
+            let mut err = sign
+                .sign_span
+                .make_error(format!("double define for function {}", name))
+                .append(previous_define);
+            if previous.ty == sign.ty {
+                err += format!("note: if you want to overload funcion {}, you can define them with different parameters",name)
+            } else {
+                err += "note: overload which only return type is differnet is not allowed";
+                err += format!("note: if you want to overload funcion {}, you can define them with different parameters",name);
+            }
+            return Err(err);
+        }
+
         let mir_fn = FnScope::new(
             mangled.clone(),
             raw.params

@@ -46,7 +46,7 @@ fn compile_tester(src: &str, tester: impl FnOnce(CodeGen)) {
 const TEST_SRC1: &str = "
 zheng3 jia can1 zheng3 x jie2
 han2
-    zheng3 jie2guo3 deng3 x jia1 1 fen1
+    zheng3 jie2guo3 wei2 x jia1 1 fen1
     fan3 jie2guo3 fen1
 jie2
 
@@ -94,14 +94,14 @@ fn serde_test() {
 const TEST_SRC2: &str = "
 zheng3 jia can1 zheng3 x jie2
 han2
-    zheng3 jie2guo3 deng3 x jia1 1 fen1
+    zheng3 jie2guo3 wei2 x jia1 1 fen1
     fan3 jie2guo3 fen1
 jie2
 
 zheng3 jia2 can1 zheng3 x jie2
 han2
-    zheng3 jie2guo3 deng3 
-        jia can1 x jia1 1 jie2 fen1
+    zheng3 jie2guo3 wei2
+        ya1 x jia1 1 ru4 jia fen1
     fan3 jie2guo3 fen1
 jie2   
 ";
@@ -128,7 +128,7 @@ fn fn_call() {
 const MORE_OPERATOES: &str = "
 fu2 cheng can1 fu2 x jie2
 han2
-    fu2 ret deng3 x cheng2 2.0 fen1
+    fu2 ret wei2 x cheng2 2.0 fen1
     fan3 ret fen1
 jie2
 
@@ -171,8 +171,8 @@ jie2
 
 zheng3 test can1 zheng3 fuck fen1 fu2 you jie2
 han2 
-    a can1 fuck jie2 fen1
-    a can1 you  jie2 fen1
+    ya1 fuck ru4 a fen1
+    ya1 you  ru4 a fen1
     fan3 114514 fen1
 jie2
 ";
@@ -180,6 +180,8 @@ jie2
 #[test]
 fn overload_test() {
     compile_tester(OVERLOAD_TEST, |tester| unsafe {
+        println!("{}", tester.llvm_ir());
+
         type A1 = unsafe extern "C" fn(i64) -> i64;
         type A2 = unsafe extern "C" fn(f32) -> f32;
         type Test = unsafe extern "C" fn(i64, f32) -> i64;

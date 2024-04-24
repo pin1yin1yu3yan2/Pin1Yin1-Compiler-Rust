@@ -30,6 +30,10 @@ impl Defs {
     pub fn get_unmangled(&self, name: &str) -> Option<&[Overload]> {
         self.fn_signs.get_unmangled(name)
     }
+
+    pub fn try_get_mangled(&self, name: &str) -> Option<Overload> {
+        self.fn_signs.try_get_mangled(name)
+    }
 }
 
 #[derive(Default)]
@@ -49,6 +53,8 @@ impl FnSigns {
         let mut s = Self::default();
         let main_sign = defs::FnSign {
             retty_span: Span::new(0, 0),
+            sign_span: Span::new(0, 0),
+
             ty: TypeDefine::Primitive(PrimitiveType::I32),
             params: vec![],
         };
@@ -83,6 +89,10 @@ impl FnSigns {
         self.mangled.get(name).cloned().unwrap()
     }
 
+    pub fn try_get_mangled(&self, name: &str) -> Option<Overload> {
+        self.mangled.get(name).cloned()
+    }
+
     // pub fn search_fns
 }
 
@@ -112,6 +122,7 @@ pub struct FnSign {
     pub ty: TypeDefine,
     pub params: Vec<Param>,
     pub retty_span: Span,
+    pub sign_span: Span,
 }
 
 impl std::fmt::Display for FnSignWithName {

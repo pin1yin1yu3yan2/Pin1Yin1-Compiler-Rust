@@ -65,7 +65,7 @@ impl ParseUnit for CodeBlock {
         while let Some(stmt) = p.parse().r#try()? {
             stmts.push(stmt)
         }
-        p.match_(Symbol::EndOfBracket)?;
+        p.match_(Symbol::Jie2)?;
         p.finish(Self { stmts })
     }
 }
@@ -96,14 +96,16 @@ mod tests {
         parse_test(
             "zheng3 zhu3 can1 zheng3 argc fen1 zhi3 zu3 zi4 argv jie2 
                     han2
-                        ruo4 can1 can1 1 da4 0 jie2 huo4 can1 2 xiao3 3 jie2 yu3 fei1 fou3 jie2
+                        ruo4 can1 jie2 1 da4 0 he2 huo4 jie2 2 xiao3 3 he2 yu3 fei1 fou3 jie2
                         han2 
                             shi4 if ((1>0)||(2<3)&&!false){} else{} jie2
                         jie2 ze2 han2 
 
                         jie2
                     jie2",
-            |p| assert!(p.parse::<FnDefine>().is_ok()),
+            |p| {
+                p.parse::<FnDefine>().unwrap();
+            },
         )
     }
 

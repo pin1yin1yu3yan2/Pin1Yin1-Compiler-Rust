@@ -120,7 +120,7 @@ impl<'ctx> Variable<'ctx> for ComputeResult<'ctx> {
         _builder: &Builder<'ctx>,
         _value: BasicValueEnum<'ctx>,
     ) -> Result<(), BuilderError> {
-        unreachable!("this invalid operation should be flited in ast")
+        unreachable!("this invalid operation should be filtered in ast")
     }
 
     fn get_type(&self) -> BasicTypeEnum<'ctx> {
