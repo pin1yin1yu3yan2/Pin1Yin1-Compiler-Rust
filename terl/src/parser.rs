@@ -210,14 +210,17 @@ impl<S> Parser<S> {
     }
 
     /// set [`Self::ParserState`] to set [`ParserState::idx`] if [`Self::start_idx`] is unset
+    #[inline]
     pub(crate) fn start_taking(&mut self) {
         self.state.start_idx = Some(self.state.start_idx.unwrap_or(self.state.idx));
     }
 
+    #[inline]
     pub(crate) fn select(&self, span: Span) -> &[S] {
         &self.src[span]
     }
 
+    #[inline]
     pub fn process<P, S1>(self, processer: P) -> Result<Parser<S1>>
     where
         P: FnOnce(Self) -> Result<Vec<S1>>,
@@ -235,16 +238,19 @@ impl<S> Parser<S> {
     /// # Panics
     ///
     /// this method should never panic
+    #[inline]
     pub(crate) fn start_idx(&self) -> usize {
         self.state.start_idx.unwrap()
     }
 
+    #[inline]
     #[cfg(feature = "parser_calling_tree")]
     pub fn get_calling_tree(&self) -> &calling_tree::CallingTree {
         &self.calling_tree
     }
 
     /// skip characters that that follow the given rule
+    #[inline]
     pub(crate) fn skip_while<Rule>(&mut self, rule: Rule) -> &mut Self
     where
         Rule: Fn(&S) -> bool,
@@ -256,6 +262,7 @@ impl<S> Parser<S> {
     }
 
     /// taking characters that follow the given rule
+    #[inline]
     pub(crate) fn take_while<Rule>(&mut self, rule: Rule) -> Span
     where
         Rule: Fn(&S) -> bool,
@@ -268,6 +275,7 @@ impl<S> Parser<S> {
 
 impl Parser<char> {
     /// skip whitespaces
+    #[inline]
     pub(crate) fn skip_whitespace(&mut self) -> &mut Self {
         self.skip_while(|c| c.is_ascii_whitespace());
         self
@@ -302,22 +310,13 @@ impl Parser<char> {
         self.finish(self.select(span))
     }
 
+    #[inline]
     pub fn handle_error(&self, error: Error) -> std::result::Result<String, std::fmt::Error> {
         self.src.handle_error(error)
     }
 }
 
 impl<S> Parser<S> {
-    /// start a [`Try`], allow you to try many times until you get a actually [`Error`]:
-    /// (not [`ErrorKind::Unmatch`]) or successfully parse a [`ParseUnit`]
-    pub fn r#try<F, P>(&mut self, p: F) -> Try<'_, P, S>
-    where
-        P: ParseUnit<S>,
-        F: FnOnce(&mut Parser<S>) -> ParseResult<P, S>,
-    {
-        Try::new(self).or_try(p)
-    }
-
     /// be different from directly call, this kind of parse will log
     /// (if parser_calling_tree feature enabled)
     pub fn once_no_try<P, F>(&mut self, parser: F) -> ParseResult<P, S>

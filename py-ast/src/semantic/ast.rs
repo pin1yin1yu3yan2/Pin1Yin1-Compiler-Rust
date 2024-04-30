@@ -203,7 +203,6 @@ impl<M: Mangler> Ast<M> for parse::VarDefine {
 
         let def = defs::VarDef {
             ty: scope.new_static_group(span, std::iter::once(ty.clone().into())),
-
             mutable: true,
         };
         let stmt = mir::VarDefine { ty, name, init };
@@ -281,7 +280,7 @@ impl<M: Mangler> Ast<M> for parse::Return {
         let val = match &return_.val {
             Some(val) => {
                 let val = scope.to_ast(val)?;
-                scope.function_return_type_declare(val.ty);
+                scope.match_function_return_type(val.ty);
                 Some(val)
             }
             None => None,
@@ -302,7 +301,7 @@ impl<M: Mangler> Ast<M> for parse::CodeBlock {
                 }
                 Ok(())
             })
-            .map(|(v, _)| v)
+            .map(|(stmts, _)| stmts)
     }
 }
 
@@ -344,9 +343,15 @@ impl<M: Mangler> Ast<M> for parse::Expr {
 
                 // now, we suppert primitive operators only, so they should be same type
                 scope.merge_group(span, l.ty, r.ty);
-
+                use py_ir::{ir::PrimitiveType, ops::OperatorTypes::CompareOperator};
+                // for compare operators(like == != < >), the result will be a boolean value
+                let result_ty = if o.op_ty() == CompareOperator {
+                    scope.new_static_group(span, [PrimitiveType::Bool.into()])
+                } else {
+                    l.ty
+                };
                 let op = mir::OperateExpr::binary(o.take(), l, r);
-                Result::Ok(scope.push_compute(op))
+                Result::Ok(scope.push_compute(result_ty, op))
             }
         }
     }
@@ -365,6 +370,7 @@ impl<M: Mangler> Ast<M> for parse::AtomicExpr {
             },
 
             parse::AtomicExpr::StringLiteral(_str) => {
+                // TODO: init for array
                 todo!("a VarDefine statement will be generate...")
             }
             parse::AtomicExpr::FnCall(fn_call) => {
@@ -382,11 +388,11 @@ impl<M: Mangler> Ast<M> for parse::AtomicExpr {
                 return Ok(variable);
             }
 
-            // here, this is incorrect because operators may be overloadn
-            // all operator overloadn must be casted into function calling here but primitives
+            // here, this is incorrect because operators may be overload
+            // all operator overload must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
                 let l = scope.to_ast(&unary.expr)?;
-                let expr = scope.push_compute(mir::OperateExpr::unary(*unary.operator, l));
+                let expr = scope.push_compute(l.ty, mir::OperateExpr::unary(*unary.operator, l));
                 return Ok(expr);
             }
             parse::AtomicExpr::BracketExpr(expr) => return scope.to_ast(&expr.expr),

@@ -99,7 +99,7 @@ macro_rules! operators {
         }
 
         impl Operators {
-            pub fn ty(&self) -> OperatorTypes {
+            pub fn op_ty(&self) -> OperatorTypes {
                 match *self {
                     $(
                         $(Self::$var => OperatorTypes::$sub_class,)*

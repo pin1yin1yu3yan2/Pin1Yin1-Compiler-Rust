@@ -21,6 +21,16 @@ pub struct ModScope<M: Mangler = DefaultMangler> {
 }
 
 impl<M: Mangler> ModScope<M> {
+    pub fn new() -> Self {
+        Self {
+            mir_fns: vec![],
+            ir_fns: vec![],
+            prefix: vec![],
+            defs: Defs::new(),
+            _p: PhantomData,
+        }
+    }
+
     pub fn new_with_main() -> Self {
         Self {
             prefix: vec![],
@@ -102,13 +112,20 @@ impl<M: Mangler> ModScope<M> {
                 .map(|(raw, param)| (raw.get_span(), param)),
         );
 
+        let sign_span = sign.sign_span;
+
         self.mir_fns.push(mir_fn);
         self.defs.new_fn(name.to_owned(), mangled, sign);
 
         fn_scope(self)?;
 
         let scope = self.mir_fns.pop().unwrap();
-        self.ir_fns.push(scope.into());
+        let scope = CompiledFnScope::from(scope);
+        if !scope.stmts.returned {
+            sign_span.make_error(format!("function {} is never return!", name));
+        }
+
+        self.ir_fns.push(scope);
 
         Ok(())
     }
@@ -139,7 +156,7 @@ impl<M: Mangler> ModScope<M> {
             .declare_type(stmt_span, val_ty, expect_ty)
     }
 
-    pub fn function_return_type_declare(&mut self, val: GroupIdx) {
+    pub fn match_function_return_type(&mut self, val: GroupIdx) {
         let current_fn = self.defs.get_mangled(&self.current_scope().fn_name);
         self.mir_fns.last_mut().unwrap().declare_map.declare_type(
             current_fn.retty_span,
@@ -184,9 +201,9 @@ impl<M: Mangler> ModScope<M> {
 
         self.current_scope_mut().scope_stack.push(scope);
         let t = f(self)?;
-        let pool = self.current_scope_mut().scope_stack.pop().unwrap();
+        let scope = self.current_scope_mut().scope_stack.pop().unwrap();
 
-        Result::Ok((pool.stmts, t))
+        Result::Ok((scope.stmts.into(), t))
     }
 
     pub fn new_declare_group<B>(&mut self, builder: B) -> GroupIdx
@@ -222,20 +239,21 @@ impl<M: Mangler> ModScope<M> {
             .push(stmt.into());
     }
 
-    pub fn push_compute(&mut self, eval: mir::OperateExpr) -> mir::Variable {
-        let ty = match &eval {
-            mir::OperateExpr::Unary(_, t) | mir::OperateExpr::Binary(_, _, t) => t.ty,
-        };
+    pub fn push_compute(&mut self, result_ty: GroupIdx, eval: mir::OperateExpr) -> mir::Variable {
         let name = self.current_scope_mut().alloc_name();
 
+        let arg_ty = match &eval {
+            mir::OperateExpr::Unary(_, r) | mir::OperateExpr::Binary(_, _, r) => r.ty,
+        };
+
         self.push_stmt(mir::Compute {
-            ty,
+            ty: arg_ty,
             name: name.clone(),
             eval,
         });
         mir::Variable {
             val: mir::AtomicExpr::Variable(name),
-            ty,
+            ty: result_ty,
         }
     }
 
@@ -317,6 +335,12 @@ impl<M: Mangler> ModScope<M> {
     }
 }
 
+impl<M: Mangler> Default for ModScope<M> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// a scope that represents a fn's local scope
 ///
 /// [`DeclareMap`] is used to picking overloads, declare var's types etc
@@ -380,7 +404,7 @@ pub struct BasicScope {
     // defines
     pub vars: HashMap<String, defs::VarDef>,
     // statements in scope
-    pub stmts: mir::Statements,
+    pub stmts: Vec<mir::Statement>,
 }
 
 pub struct CompiledFnScope {
@@ -397,9 +421,9 @@ impl From<FnScope> for CompiledFnScope {
         let stmts = if errors.is_empty() {
             assert!(scope.scope_stack.len() == 1, "unclosed parse!?");
             let basic_scope = scope.scope_stack.pop().unwrap();
-            basic_scope.stmts.into_ir(&scope.declare_map)
+            mir::Statements::from(basic_scope.stmts).into_ir(&scope.declare_map)
         } else {
-            vec![]
+            Default::default()
         };
         Self {
             fn_name,

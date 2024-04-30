@@ -10,19 +10,69 @@ pub trait IntoIR {
     fn into_ir(self, map: &DeclareMap) -> Self::Forward;
 }
 
-pub type Statements = Vec<Statement>;
+#[derive(Default, Debug, Clone)]
+pub struct Statements {
+    pub stmts: Vec<Statement>,
+    pub returned: bool,
+}
+
+impl Statements {
+    pub fn new(stmts: Vec<Statement>, returned: bool) -> Self {
+        Self { stmts, returned }
+    }
+}
+
+impl From<Vec<Statement>> for Statements {
+    fn from(stmts: Vec<Statement>) -> Self {
+        Self {
+            returned: stmts.iter().any(|stmt| stmt.returned()),
+            stmts,
+        }
+    }
+}
 
 impl IntoIR for Statements {
     type Forward = ir::Statements;
 
     fn into_ir(self, map: &DeclareMap) -> Self::Forward {
-        self.into_iter().map(|stmt| stmt.into_ir(map)).collect()
+        ir::Statements {
+            stmts: self
+                .stmts
+                .into_iter()
+                .map(|stmt| stmt.into_ir(map))
+                .collect(),
+            returned: self.returned,
+        }
+    }
+}
+
+pub trait ControlFlow {
+    fn returned(&self) -> bool;
+}
+
+impl ControlFlow for Statements {
+    fn returned(&self) -> bool {
+        self.returned
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Item {
+    FnDefine(FnDefine),
+}
+
+impl IntoIR for Item {
+    type Forward = ir::Item;
+
+    fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        match self {
+            Item::FnDefine(fn_def) => fn_def.into_ir(map).into(),
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    FnDefine(FnDefine),
     Compute(Compute),
     VarDefine(VarDefine),
     VarStore(VarStore),
@@ -33,12 +83,29 @@ pub enum Statement {
     Return(Return),
 }
 
+impl ControlFlow for Statement {
+    fn returned(&self) -> bool {
+        match self {
+            Statement::Block(s) => s.returned(),
+            Statement::If(s) => s.returned(),
+            Statement::While(s) => s.returned(),
+            Statement::Return(s) => s.returned(),
+
+            // Statement::Compute(s) => s.returned(),
+            // Statement::VarDefine(s) => s.returned(),
+            // Statement::VarStore(s) => s.returned(),
+            // Statement::FnCall(s) => s.returned(),
+            // Statement::FnDefine(s) => s.returned(),
+            _ => false,
+        }
+    }
+}
+
 impl IntoIR for Statement {
     type Forward = ir::Statement;
 
     fn into_ir(self, map: &DeclareMap) -> Self::Forward {
         match self {
-            Statement::FnDefine(item) => item.into_ir(map).into(),
             Statement::Compute(item) => item.into_ir(map).into(),
             Statement::VarDefine(item) => item.into_ir(map).into(),
             Statement::VarStore(item) => item.into_ir(map).into(),
@@ -53,7 +120,7 @@ impl IntoIR for Statement {
 
 mod from_impls {
     use super::*;
-    impl From<FnDefine> for Statement {
+    impl From<FnDefine> for Item {
         fn from(v: FnDefine) -> Self {
             Self::FnDefine(v)
         }
@@ -255,6 +322,12 @@ pub struct FnDefine {
     pub body: Statements,
 }
 
+impl ControlFlow for FnDefine {
+    fn returned(&self) -> bool {
+        self.body.returned()
+    }
+}
+
 impl IntoIR for FnDefine {
     type Forward = ir::FnDefine;
 
@@ -357,6 +430,12 @@ pub struct IfBranch {
     pub body: Statements,
 }
 
+impl ControlFlow for IfBranch {
+    fn returned(&self) -> bool {
+        self.body.returned()
+    }
+}
+
 impl IntoIR for IfBranch {
     type Forward = ir::IfBranch;
 
@@ -372,6 +451,13 @@ impl IntoIR for IfBranch {
 pub struct If {
     pub branches: Vec<IfBranch>,
     pub else_: Option<Statements>,
+}
+
+impl ControlFlow for If {
+    fn returned(&self) -> bool {
+        self.else_.as_ref().is_some_and(|else_| else_.returned())
+            && self.branches.iter().all(|branch| branch.returned())
+    }
 }
 
 impl IntoIR for If {
@@ -395,6 +481,12 @@ pub struct While {
     pub body: Statements,
 }
 
+impl ControlFlow for While {
+    fn returned(&self) -> bool {
+        false
+    }
+}
+
 impl IntoIR for While {
     type Forward = ir::While;
 
@@ -409,6 +501,12 @@ impl IntoIR for While {
 #[derive(Debug, Clone)]
 pub struct Return {
     pub val: Option<Variable>,
+}
+
+impl ControlFlow for Return {
+    fn returned(&self) -> bool {
+        true
+    }
 }
 
 impl IntoIR for Return {

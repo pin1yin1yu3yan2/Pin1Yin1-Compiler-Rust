@@ -77,9 +77,6 @@ impl Types for Overload {
 }
 
 /// directly represent to a val's type
-///
-/// alyhough its fro'm a function's overload( [`Type::FnRetty`]), it will only display
-/// function's return type nor function's full sign
 #[derive(Debug, Clone)]
 pub struct Directly(pub Rc<TypeDefine>);
 impl Types for Directly {

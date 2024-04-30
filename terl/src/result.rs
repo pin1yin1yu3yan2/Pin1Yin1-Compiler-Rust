@@ -7,9 +7,9 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub trait ResultExt<P> {
     type TryResult;
 
-    /// try to parse, mean that [`ErrorKind::Unmatch`] is allowed
+    /// try to parse, mean that [`ParseErrorKind::Semantic`] is allowed
     ///
-    /// in this case, [`ErrorKind::Unmatch`] will be transformed into [`None`]
+    /// in this case, [`ParseErrorKind::Semantic`] will be transformed into [`ParseErrorKind::Unmatch`]
     ///
     /// so that you can use `?` as usual after using match / if let ~
     fn r#try(self) -> Self::TryResult;

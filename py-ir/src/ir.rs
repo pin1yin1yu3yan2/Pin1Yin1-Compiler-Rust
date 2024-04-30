@@ -1,10 +1,37 @@
 use crate::ops::Operators;
 
-pub type Statements = Vec<Statement>;
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug, Clone, PartialEq)]
+pub struct Statements {
+    pub stmts: Vec<Statement>,
+    pub returned: bool,
+}
+
+/// just make code generation easier
+impl std::ops::Deref for Statements {
+    type Target = Vec<Statement>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.stmts
+    }
+}
+
+pub trait ControlFlow {
+    fn returned(&self) -> bool;
+}
+
+impl ControlFlow for Statements {
+    fn returned(&self) -> bool {
+        self.returned
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub enum Item {
+    FnDefine(FnDefine),
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum Statement {
-    FnDefine(FnDefine),
     Compute(Compute),
     VarDefine(VarDefine),
     VarStore(VarStore),
@@ -14,9 +41,21 @@ pub enum Statement {
     Return(Return),
 }
 
+impl ControlFlow for Statement {
+    fn returned(&self) -> bool {
+        match self {
+            Statement::Block(v) => v.returned(),
+            Statement::If(v) => v.returned(),
+            Statement::While(v) => v.returned(),
+            Statement::Return(v) => v.returned(),
+            _ => false,
+        }
+    }
+}
+
 mod from_impls {
     use super::*;
-    impl From<FnDefine> for Statement {
+    impl From<FnDefine> for Item {
         fn from(v: FnDefine) -> Self {
             Self::FnDefine(v)
         }
@@ -389,11 +428,24 @@ pub struct IfBranch {
     pub body: Statements,
 }
 
+impl ControlFlow for IfBranch {
+    fn returned(&self) -> bool {
+        self.body.returned()
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct If {
     pub branches: Vec<IfBranch>,
     #[serde(rename = "else")]
     pub else_: Option<Statements>,
+}
+
+impl ControlFlow for If {
+    fn returned(&self) -> bool {
+        self.else_.as_ref().is_some_and(|else_| else_.returned())
+            && self.branches.iter().all(|branch| branch.returned())
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
@@ -402,9 +454,21 @@ pub struct While {
     pub body: Statements,
 }
 
+impl ControlFlow for While {
+    fn returned(&self) -> bool {
+        false
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct Return {
     pub val: Option<Variable>,
+}
+
+impl ControlFlow for Return {
+    fn returned(&self) -> bool {
+        true
+    }
 }
 
 mod serde_ {

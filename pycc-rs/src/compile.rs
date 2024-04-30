@@ -7,45 +7,46 @@ use inkwell::{
     execution_engine::ExecutionEngine,
     module::Module,
     types::{BasicType, BasicTypeEnum},
-    values::{BasicValue, BasicValueEnum},
+    values::{BasicValue, BasicValueEnum, FunctionValue},
 };
 
-use py_ir::ir;
+use py_ir::ir::{self, ControlFlow};
 
 pub struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
+    current_fn: Option<FunctionValue<'ctx>>,
 
     pub execution_engine: ExecutionEngine<'ctx>,
     global: Global<'ctx>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
-    pub fn new(
+    pub fn new<C: Compile>(
         context: &'ctx Context,
         module: &str,
-        stmts: &[ir::Statement],
+        cus: &[C],
     ) -> Result<Self, Box<dyn Error>> {
         let module = context.create_module(module);
 
         let builder = context.create_builder();
 
-        let mut s = Self {
+        let mut cg = Self {
             execution_engine: module
                 .create_jit_execution_engine(inkwell::OptimizationLevel::None)?,
             context,
             module,
             builder,
-
             global: Default::default(),
+            current_fn: None,
         };
 
-        s.generate_stmts(stmts)?;
-        let zero = s.context.i32_type().const_int(0, false);
-        s.builder.build_return(Some(&zero as &dyn BasicValue))?;
+        for cu in cus {
+            cu.generate(&mut cg)?;
+        }
 
-        Ok(s)
+        Ok(cg)
     }
 
     pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: String, val: V) {
@@ -87,12 +88,12 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn atomic_epxr(&self, var: &ir::Variable) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+    fn eval_variable(&self, var: &ir::Variable) -> Result<BasicValueEnum<'ctx>, BuilderError> {
         match var {
             ir::Variable::FnCall(fn_call) => {
                 let fn_ = self.get_fn(&fn_call.fn_name);
                 let args = fn_call.args.iter().try_fold(vec![], |mut vec, arg| {
-                    vec.push(self.atomic_epxr(arg)?.into());
+                    vec.push(self.eval_variable(arg)?.into());
                     Ok(vec)
                 })?;
 
@@ -106,26 +107,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
             ir::Variable::Variable(variable) => self.get_var(variable).load(&self.builder),
             ir::Variable::Literal(literal, ty) => self.literal(literal, ty),
-            // ir::Value::Char(c) => {
-            //     // char -> u32
-            //     Ok(self.context.i32_type().const_int(*c as _, false).into())
-            // }
-            // ir::Value::String(s) => {
-            //     let u8 = self.context.i8_type();
-            //     let mut bytes = vec![];
-            //     for byte in s.bytes() {
-            //         bytes.push(u8.const_int(byte as _, false));
-            //     }
-            //     // &str -> &[u8]
-            //     Ok(u8.const_array(&bytes).into())
-            // }
-            // ir::Value::Integer(i) => Ok(self.context.i64_type().const_int(*i as _, false).into()),
-            // ir::Value::Float(f) => Ok(self.context.f64_type().const_float(*f).into()),
-            // ir::Value::Variable(v) => self.get_var(v).load(&self.builder),
-
-            // ir::Value::FnCall(fn_call) => {
-
-            // }
         }
     }
 
@@ -191,12 +172,17 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(self)
     }
 
-    fn scope<T, A>(&mut self, action: A) -> T
+    fn scope<T, A>(&mut self, fn_: FunctionValue<'ctx>, action: A) -> T
     where
         A: FnOnce(&mut Self) -> T,
     {
         self.global.scopes.push(Scope::default());
+        let mut fn_ = Some(fn_);
+
+        std::mem::swap(&mut self.current_fn, &mut fn_);
         let t = (action)(self);
+        std::mem::swap(&mut self.current_fn, &mut fn_);
+
         self.global.scopes.pop();
         t
     }
@@ -204,16 +190,28 @@ impl<'ctx> CodeGen<'ctx> {
     pub fn llvm_ir(&self) -> String {
         self.module.print_to_string().to_string()
     }
+
+    /// implements for [ir::Statement] will only be called in [Self::scope]
+    pub fn current_fn(&self) -> FunctionValue<'ctx> {
+        self.current_fn.unwrap()
+    }
 }
 
 pub trait Compile {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError>;
 }
 
+impl Compile for ir::Item {
+    fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
+        match self {
+            ir::Item::FnDefine(d) => d.generate(state),
+        }
+    }
+}
+
 impl Compile for ir::Statement {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         match self {
-            ir::Statement::FnDefine(f) => f.generate(state),
             ir::Statement::Compute(c) => c.generate(state),
             ir::Statement::VarDefine(v) => v.generate(state),
             ir::Statement::VarStore(v) => v.generate(state),
@@ -236,8 +234,7 @@ impl Compile for ir::FnDefine {
 
         let fn_ = state.module.add_function(&self.name, fn_ty, None);
         state.regist_fn(self.name.clone(), fn_);
-
-        state.scope(move |state| {
+        state.scope(fn_, move |state| {
             let params = self
                 .params
                 .iter()
@@ -259,13 +256,13 @@ impl Compile for ir::Compute {
         let builder = &state.builder;
         match &self.eval {
             ir::OperateExpr::Unary(op, val) => {
-                let val = state.atomic_epxr(val)?;
+                let val = state.eval_variable(val)?;
                 let val = crate::primitive::unary_compute(builder, self.ty, *op, val, &self.name)?;
                 state.regist_var(self.name.to_owned(), ComputeResult { val })
             }
             ir::OperateExpr::Binary(op, l, r) => {
-                let l = state.atomic_epxr(l)?;
-                let r = state.atomic_epxr(r)?;
+                let l = state.eval_variable(l)?;
+                let r = state.eval_variable(r)?;
                 let val =
                     crate::primitive::binary_compute(builder, self.ty, *op, l, r, &self.name)?;
                 state.regist_var(self.name.to_owned(), ComputeResult { val })
@@ -284,7 +281,7 @@ impl Compile for ir::VarDefine {
         let val = AllocVariable { ty, pointer };
 
         if let Some(init) = &self.init {
-            let init = state.atomic_epxr(init)?;
+            let init = state.eval_variable(init)?;
             val.store(&state.builder, init)?;
         }
         state.regist_var(self.name.clone(), val);
@@ -294,7 +291,7 @@ impl Compile for ir::VarDefine {
 // eval, store
 impl Compile for ir::VarStore {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
-        let val = state.atomic_epxr(&self.val)?;
+        let val = state.eval_variable(&self.val)?;
         let s = state.get_var(&self.name);
         s.store(&state.builder, val)?;
         Ok(())
@@ -305,7 +302,7 @@ impl Compile for ir::FnCall {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let fn_ = state.get_fn(&self.fn_name);
         let args = self.args.iter().try_fold(vec![], |mut vec, arg| {
-            vec.push(state.atomic_epxr(arg)?.into());
+            vec.push(state.eval_variable(arg)?.into());
             Ok(vec)
         })?;
 
@@ -316,18 +313,81 @@ impl Compile for ir::FnCall {
 }
 impl Compile for ir::If {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
-        todo!()
+        let after_exist = !self.returned();
+
+        // note: conds.last() is `else block`(if exist), and br into codes.last()
+        let conds = (0..self.branches.len() + 1)
+            .map(|_| state.context.append_basic_block(state.current_fn(), ""))
+            .collect::<Vec<_>>();
+        let codes = (0..self.branches.len() + after_exist as usize)
+            .map(|_| state.context.append_basic_block(state.current_fn(), ""))
+            .collect::<Vec<_>>();
+
+        // jump to eval first condition
+        state.builder.build_unconditional_branch(conds[0])?;
+
+        let else_block = conds.last().copied().unwrap();
+        let code_after = codes.last().copied().unwrap();
+
+        for idx in 0..self.branches.len() {
+            state.builder.position_at_end(conds[idx]);
+            let condition = &self.branches[idx].cond;
+            state.generate_stmts(&condition.compute)?;
+
+            let cond_val = state.eval_variable(&condition.val)?.into_int_value();
+            // br <cond> <code> <else>
+            state
+                .builder
+                .build_conditional_branch(cond_val, codes[idx], conds[idx + 1])?;
+
+            // generate if body
+            state.builder.position_at_end(codes[idx]);
+            state.generate_stmts(&self.branches[idx].body)?;
+
+            if after_exist && !self.branches[idx].returned() {
+                state.builder.build_unconditional_branch(code_after)?;
+            }
+        }
+
+        state.builder.position_at_end(else_block);
+        if let Some(else_) = &self.else_ {
+            state.generate_stmts(else_)?;
+        }
+
+        if after_exist {
+            state.builder.build_unconditional_branch(code_after)?;
+            state.builder.position_at_end(code_after);
+        }
+
+        Ok(())
     }
 }
 impl Compile for ir::While {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
-        todo!()
+        let cond = state.context.append_basic_block(state.current_fn(), "");
+        let code = state.context.append_basic_block(state.current_fn(), "");
+        let after = state.context.append_basic_block(state.current_fn(), "");
+
+        state.builder.position_at_end(cond);
+        state.generate_stmts(&self.cond.compute)?;
+        let cond_val = state.eval_variable(&self.cond.val)?.into_int_value();
+        state
+            .builder
+            .build_conditional_branch(cond_val, code, after)?;
+
+        state.builder.position_at_end(code);
+        state.generate_stmts(&self.body)?;
+        state.builder.build_unconditional_branch(cond)?;
+
+        state.builder.position_at_end(after);
+
+        Ok(())
     }
 }
 impl Compile for ir::Return {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let val = match &self.val {
-            Some(val) => Some(state.atomic_epxr(val)?),
+            Some(val) => Some(state.eval_variable(val)?),
             None => None,
         };
         state
