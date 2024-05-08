@@ -87,6 +87,15 @@ where
     }
 }
 
+impl<S, P: ParseUnit<S>> std::fmt::Display for PU<P, S>
+where
+    P::Target: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.item, f)
+    }
+}
+
 impl<S, P: ParseUnit<S>> Clone for PU<P, S>
 where
     P::Target: Clone,

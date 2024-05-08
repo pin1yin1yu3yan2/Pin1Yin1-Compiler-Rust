@@ -164,7 +164,10 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(ret)
     }
 
-    fn generate_stmts(&mut self, stmts: &[ir::Statement]) -> Result<&mut Self, BuilderError> {
+    fn generate_stmts(
+        &mut self,
+        stmts: &[ir::Statement<ir::Variable>],
+    ) -> Result<&mut Self, BuilderError> {
         for stmt in stmts {
             stmt.generate(self)?;
         }
@@ -201,7 +204,7 @@ pub trait Compile {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError>;
 }
 
-impl Compile for ir::Item {
+impl Compile for ir::Item<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         match self {
             ir::Item::FnDefine(d) => d.generate(state),
@@ -209,7 +212,7 @@ impl Compile for ir::Item {
     }
 }
 
-impl Compile for ir::Statement {
+impl Compile for ir::Statement<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         match self {
             ir::Statement::Compute(c) => c.generate(state),
@@ -222,7 +225,7 @@ impl Compile for ir::Statement {
         }
     }
 }
-impl Compile for ir::FnDefine {
+impl Compile for ir::FnDefine<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let retty = state.type_cast(&self.ty);
         let param_ty = self
@@ -251,7 +254,7 @@ impl Compile for ir::FnDefine {
         Ok(())
     }
 }
-impl Compile for ir::Compute {
+impl Compile for ir::Compute<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let builder = &state.builder;
         match &self.eval {
@@ -273,7 +276,7 @@ impl Compile for ir::Compute {
     }
 }
 /// alloca, eval, store
-impl Compile for ir::VarDefine {
+impl Compile for ir::VarDefine<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let ty = state.type_cast(&self.ty);
         let pointer = state.builder.build_alloca(ty, &self.name)?;
@@ -289,7 +292,7 @@ impl Compile for ir::VarDefine {
     }
 }
 // eval, store
-impl Compile for ir::VarStore {
+impl Compile for ir::VarStore<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let val = state.eval_variable(&self.val)?;
         let s = state.get_var(&self.name);
@@ -298,7 +301,7 @@ impl Compile for ir::VarStore {
     }
 }
 // call
-impl Compile for ir::FnCall {
+impl Compile for ir::FnCall<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let fn_ = state.get_fn(&self.fn_name);
         let args = self.args.iter().try_fold(vec![], |mut vec, arg| {
@@ -311,7 +314,7 @@ impl Compile for ir::FnCall {
         Ok(())
     }
 }
-impl Compile for ir::If {
+impl Compile for ir::If<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let after_exist = !self.returned();
 
@@ -362,7 +365,7 @@ impl Compile for ir::If {
         Ok(())
     }
 }
-impl Compile for ir::While {
+impl Compile for ir::While<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let cond = state.context.append_basic_block(state.current_fn(), "");
         let code = state.context.append_basic_block(state.current_fn(), "");
@@ -384,7 +387,7 @@ impl Compile for ir::While {
         Ok(())
     }
 }
-impl Compile for ir::Return {
+impl Compile for ir::Return<ir::Variable> {
     fn generate(&self, state: &mut CodeGen) -> Result<(), BuilderError> {
         let val = match &self.val {
             Some(val) => Some(state.eval_variable(val)?),

@@ -311,7 +311,7 @@ impl Parser<char> {
     }
 
     #[inline]
-    pub fn handle_error(&self, error: Error) -> std::result::Result<String, std::fmt::Error> {
+    pub fn handle_error(&self, error: Error) -> String {
         self.src.handle_error(error)
     }
 }

@@ -126,7 +126,7 @@ pub struct TypeDefine {
 }
 
 impl TypeDefine {
-    pub(crate) fn to_ast_ty(&self) -> terl::Result<crate::ir::TypeDefine> {
+    pub(crate) fn to_mir_ty(&self) -> terl::Result<crate::ir::TypeDefine> {
         self.clone().try_into()
     }
 }
@@ -191,12 +191,12 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
                 32
             };
 
-            let ty = match width{
+            let ty = match width {
                 32 => PrimitiveType::F32,
                 64 => PrimitiveType::F64,
-                _=>unreachable!()
+                _ => unreachable!(),
             };
-            return Ok(ty.into())
+            return Ok(ty.into());
         }
 
         if let Some(sign) = def.sign {
@@ -238,11 +238,7 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
             decorators.push(decorator);
         }
 
-        Ok(ComplexType {
-            decorators,
-            ty,
-        }
-        .into())
+        Ok(ComplexType { decorators, ty }.into())
     }
 }
 

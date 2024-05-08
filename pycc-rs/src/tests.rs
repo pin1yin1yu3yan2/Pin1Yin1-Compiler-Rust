@@ -2,43 +2,45 @@ use inkwell::{context::Context, execution_engine::JitFunction};
 
 use py_ast::{
     parse::do_parse,
-    semantic::{mangle::DefaultMangler, ModScope},
+    semantic::{Defines, Generator},
 };
-use py_ir::ir::Item;
+use py_ir::ir;
 use terl::{Parser, Source};
 
 use crate::compile::CodeGen;
 
-fn get_ast(src: &str) -> Vec<Item> {
+fn get_mir(src: &str) -> Vec<ir::Item<ir::Variable>> {
     let source = Source::from_iter("compiler_test.py1", src.chars());
     let mut parser = Parser::<char>::new(source);
 
     let pus = do_parse(&mut parser)
-        .map_err(|e| eprintln!("{}", parser.handle_error(e.error()).unwrap()))
-        .map_err(|_| println!("{}", parser.get_calling_tree()))
+        .map_err(|e| eprintln!("{}", parser.handle_error(e.error())))
+        .map_err(|_| eprintln!("{}", parser.get_calling_tree()))
         .unwrap();
 
-    let mut scope = ModScope::<DefaultMangler>::default();
-    scope
-        .load_fns(&pus)
-        .map_err(|e| eprintln!("{}", parser.handle_error(e).unwrap()))
-        .unwrap();
-
-    match scope.finish() {
-        Ok(fn_defs) => fn_defs.into_iter().map(Item::from).collect(),
-        Err(errors) => {
-            for err in errors {
-                eprintln!("{}", parser.handle_error(err).unwrap());
-            }
-            panic!()
+    let mut scope: Defines = Default::default();
+    let mut items = vec![];
+    for pu in pus {
+        let item = scope
+            .generate_pu(&pu)
+            .map_err(|e| match e {
+                either::Either::Left(e) => eprintln!("{}", parser.handle_error(e)),
+                either::Either::Right(es) => es
+                    .into_iter()
+                    .for_each(|e| eprintln!("{}", parser.handle_error(e))),
+            })
+            .unwrap();
+        if let Some(item) = item {
+            items.push(item)
         }
     }
+    items
 }
 
 fn compile_tester(src: &str, tester: impl FnOnce(CodeGen)) {
-    let ast = get_ast(src);
+    let mir = get_mir(src);
     let context = Context::create();
-    let compiler = CodeGen::new(&context, "test", &ast).unwrap();
+    let compiler = CodeGen::new(&context, "test", &mir).unwrap();
 
     tester(compiler);
 }
@@ -77,16 +79,16 @@ fn jia_jian_around_114514() {
 
 #[test]
 fn serde_test() {
-    let ast = get_ast(MORE_OPERATOES);
+    let mir = get_mir(MORE_OPERATOES);
 
-    let str1 = serde_json::to_string(&ast).unwrap();
-    let ast1: Vec<Item> = serde_json::from_str(&str1).unwrap();
+    let str1 = serde_json::to_string(&mir).unwrap();
+    let ast1: Vec<_> = serde_json::from_str(&str1).unwrap();
 
-    let str2 = serde_json::to_string(&ast).unwrap();
-    let ast2: Vec<Item> = serde_json::from_str(&str1).unwrap();
+    let str2 = serde_json::to_string(&mir).unwrap();
+    let ast2: Vec<_> = serde_json::from_str(&str1).unwrap();
 
-    assert_eq!(ast, ast1);
-    assert_eq!(ast, ast2);
+    assert_eq!(mir, ast1);
+    assert_eq!(mir, ast2);
     assert_eq!(str1, str2);
 }
 
@@ -221,9 +223,6 @@ jie2
 #[test]
 fn control_flow_test() {
     compile_tester(BASIC_CONTROL_FLOW, |tester| unsafe {
-        let ir_code = tester.llvm_ir();
-        println!("{}", ir_code);
-
         type Odd = unsafe extern "C" fn(i64) -> i64;
         type Fio = unsafe extern "C" fn(i64) -> i64;
 

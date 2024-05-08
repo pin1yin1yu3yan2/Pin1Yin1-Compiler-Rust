@@ -75,14 +75,10 @@ impl ParseUnit for Ident {
     }
 }
 
-pub fn do_parse(parser: &mut Parser) -> Result<Vec<PU<FnDefine>>> {
+pub fn do_parse(parser: &mut Parser) -> Result<Vec<PU<Item>>> {
     let mut stmts = vec![];
     while let Some(item) = parser.parse::<Item>().r#try()? {
-        let span = item.get_span();
-        match item.take() {
-            Item::FnDefine(fn_def) => stmts.push(PU::new(span, fn_def)),
-            Item::Comment(_) => {}
-        };
+        stmts.push(item);
     }
 
     Result::Ok(stmts)

@@ -4,12 +4,12 @@ use terl::{Span, WithSpan};
 
 /// used to represent a group of type, types in group may be declared
 /// or not
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct GroupIdx {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct UndeclaredTy {
     pub(crate) idx: usize,
 }
 
-impl GroupIdx {
+impl UndeclaredTy {
     pub fn new(idx: usize) -> Self {
         Self { idx }
     }

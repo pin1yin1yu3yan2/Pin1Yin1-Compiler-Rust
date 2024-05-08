@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+serde = { workspace = true }
 py-ir = { path = "../py-ir" }
 # TODO: rewrite, or use another parser
 terl = { path = "../terl" }

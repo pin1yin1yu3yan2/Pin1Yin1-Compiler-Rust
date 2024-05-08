@@ -114,13 +114,16 @@ impl Source<char> {
         Ok(())
     }
 
-    pub fn handle_error(&self, error: Error) -> Result<String, std::fmt::Error> {
-        let mut buffer = String::new();
-        self.message(&mut buffer, error.main_span, error.main_message)?;
-        for msg in error.messages {
-            self.handle_message(&mut buffer, msg)?;
-        }
+    pub fn handle_error(&self, error: Error) -> String {
+        (|| -> Result<String, std::fmt::Error> {
+            let mut buffer = String::new();
+            self.message(&mut buffer, error.main_span, error.main_message)?;
+            for msg in error.messages {
+                self.handle_message(&mut buffer, msg)?;
+            }
 
-        Ok(buffer)
+            Ok(buffer)
+        })()
+        .unwrap()
     }
 }

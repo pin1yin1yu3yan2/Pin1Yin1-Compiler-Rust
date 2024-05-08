@@ -4,13 +4,13 @@ use std::collections::HashSet;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bench {
     /// index of [ReflectDeclare] in [DeclareMap]
-    pub(crate) belong_to: GroupIdx,
+    pub(crate) belong_to: UndeclaredTy,
     /// index of possiable of [Declare]
     pub(crate) bench_idx: usize,
 }
 
 impl Bench {
-    pub fn new(belong_to: GroupIdx, bench_idx: usize) -> Self {
+    pub fn new(belong_to: UndeclaredTy, bench_idx: usize) -> Self {
         Self {
             belong_to,
             bench_idx,
@@ -20,7 +20,7 @@ impl Bench {
 
 pub struct BenchBuilder {
     pub(crate) main_state: Result<Type>,
-    pub(crate) used_groups: HashSet<GroupIdx>,
+    pub(crate) used_groups: HashSet<UndeclaredTy>,
     pub(crate) states: Vec<Result<HashSet<Bench>>>,
 }
 
@@ -53,7 +53,7 @@ impl BenchBuilder {
         }
     }
 
-    pub fn new_depend<T, B>(mut self, map: &mut DeclareMap, gidx: GroupIdx, filter: &B) -> Self
+    pub fn new_depend<T, B>(mut self, map: &mut DeclareMap, gidx: UndeclaredTy, filter: &B) -> Self
     where
         T: Types,
         B: BenchFilter<T>,
@@ -89,7 +89,7 @@ impl BenchBuilder {
 
 fn update_deps(
     at: terl::Span,
-    used_groups: &HashSet<GroupIdx>,
+    used_groups: &HashSet<UndeclaredTy>,
     new_deps: &[Bench],
     mut previous: HashSet<Bench>,
     map: &mut DeclareMap,

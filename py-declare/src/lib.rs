@@ -23,11 +23,11 @@ mod tests {
     use super::*;
 
     impl DeclareMap {
-        fn test_declare<I>(&mut self, iter: I) -> GroupIdx
+        fn test_declare<I>(&mut self, iter: I) -> UndeclaredTy
         where
             I: IntoIterator<Item = (Type, Vec<Bench>)>,
         {
-            let declare_idx = GroupIdx::new(self.groups.len());
+            let declare_idx = UndeclaredTy::new(self.groups.len());
 
             let mut possiables = std::collections::HashMap::default();
 
@@ -93,6 +93,6 @@ mod tests {
 
         map.make_sure(Bench::new(k, 0), DeclareError::Empty);
 
-        assert!(map.declare_all().is_empty());
+        assert!(map.declare_all().is_ok());
     }
 }

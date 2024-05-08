@@ -7,3 +7,4 @@ edition = "2021"
 terl = { path = "../terl" }
 py-ir = { path = "../py-ir", features = ["parser"] }
 py-declare = { path = "../py-declare" }
+either = { workspace = true }

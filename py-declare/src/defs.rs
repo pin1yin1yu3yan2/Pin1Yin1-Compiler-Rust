@@ -13,17 +13,11 @@ impl Defs {
         Self::default()
     }
 
-    pub fn new_with_main() -> Self {
-        Self {
-            fn_signs: FnSigns::new_with_main(),
-        }
-    }
-
     pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: defs::FnSign) -> Type {
         self.fn_signs.new_fn(unmangled, mangled, sign)
     }
 
-    pub fn get_mangled(&self, name: &str) -> Overload {
+    pub fn get_mangled(&self, name: &str) -> &Overload {
         self.fn_signs.get_mangled(name)
     }
 
@@ -31,7 +25,7 @@ impl Defs {
         self.fn_signs.get_unmangled(name)
     }
 
-    pub fn try_get_mangled(&self, name: &str) -> Option<Overload> {
+    pub fn try_get_mangled(&self, name: &str) -> Option<&Overload> {
         self.fn_signs.try_get_mangled(name)
     }
 }
@@ -85,12 +79,12 @@ impl FnSigns {
         self.unmangled.get(name).map(|v| &**v)
     }
 
-    pub fn get_mangled(&self, name: &str) -> Overload {
-        self.mangled.get(name).cloned().unwrap()
+    pub fn get_mangled(&self, name: &str) -> &Overload {
+        self.mangled.get(name).unwrap()
     }
 
-    pub fn try_get_mangled(&self, name: &str) -> Option<Overload> {
-        self.mangled.get(name).cloned()
+    pub fn try_get_mangled(&self, name: &str) -> Option<&Overload> {
+        self.mangled.get(name)
     }
 
     // pub fn search_fns
@@ -120,7 +114,7 @@ impl std::ops::DerefMut for FnSignWithName {
 pub struct FnSign {
     /// return type of the function must be cleared (will change in future versions)
     pub ty: TypeDefine,
-    pub params: Vec<Param>,
+    pub params: Vec<Parameter>,
     pub retty_span: Span,
     pub sign_span: Span,
 }
@@ -146,14 +140,10 @@ impl std::fmt::Display for FnSignWithName {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Param {
-    pub name: String,
-    pub ty: TypeDefine,
-}
+pub type Parameter = py_ir::ir::Parameter<TypeDefine>;
 
 #[derive(Debug, Clone)]
 pub struct VarDef {
-    pub ty: GroupIdx,
+    pub ty: UndeclaredTy,
     pub mutable: bool,
 }

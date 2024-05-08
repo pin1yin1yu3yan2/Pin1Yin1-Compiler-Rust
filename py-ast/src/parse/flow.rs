@@ -1,90 +1,117 @@
 use super::*;
-use crate::{
-    complex_pu,
-    lex::syntax::{ControlFlow, Symbol},
-};
+use crate::lex::syntax::{ControlFlow, Symbol};
 
 #[derive(Debug, Clone)]
-pub struct AtomicIf {
-    pub conds: PU<Arguments>,
-    pub block: PU<CodeBlock>,
+pub struct Conditions {
+    pub conds: Vec<PU<Expr>>,
+    pub semicolons: Vec<Span>,
 }
 
-impl ParseUnit for AtomicIf {
-    type Target = AtomicIf;
+impl std::ops::Deref for Conditions {
+    type Target = Vec<PU<Expr>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.conds
+    }
+}
+
+impl ParseUnit for Conditions {
+    type Target = Conditions;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        p.match_(ControlFlow::If)?;
-        let conds = p.parse::<Arguments>()?;
-        let block = p.parse::<CodeBlock>().apply(MustMatch)?;
-        p.finish(AtomicIf { conds, block })
+        p.match_(Symbol::Parameter)?;
+        let Some(arg) = p.parse::<Expr>().r#try()? else {
+            p.match_(Symbol::Jie2).apply(MustMatch)?;
+            return p.finish(Conditions {
+                conds: vec![],
+                semicolons: vec![],
+            });
+        };
+
+        let mut conds = vec![arg];
+        let mut semicolons = vec![];
+
+        while let Some(semicolon) = p.match_(Symbol::Semicolon).r#try()? {
+            semicolons.push(semicolon.get_span());
+            conds.push(p.parse::<Expr>()?);
+        }
+
+        p.match_(Symbol::Jie2).apply(MustMatch)?;
+        p.finish(Conditions { conds, semicolons })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct AtomicElse {
+pub struct IfBranch {
+    pub conds: PU<Conditions>,
+    pub body: PU<CodeBlock>,
+}
+
+impl ParseUnit for IfBranch {
+    type Target = IfBranch;
+
+    fn parse(p: &mut Parser) -> ParseResult<Self> {
+        p.match_(ControlFlow::If)?;
+        let conds = p.parse::<Conditions>()?;
+        let body = p.parse::<CodeBlock>().apply(MustMatch)?;
+        p.finish(IfBranch { conds, body })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ElseBranch {
     pub block: PU<CodeBlock>,
 }
 
-impl ParseUnit for AtomicElse {
-    type Target = AtomicElse;
+impl ParseUnit for ElseBranch {
+    type Target = ElseBranch;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         p.match_(ControlFlow::Else)?;
         let block = p.parse::<CodeBlock>().apply(MustMatch)?;
-        p.finish(AtomicElse { block })
+        p.finish(ElseBranch { block })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct AtomicElseIf {
-    pub ruo4: PU<AtomicIf>,
+pub struct ElseIfBranch {
+    pub block: PU<CodeBlock>,
 }
 
-impl ParseUnit for AtomicElseIf {
-    type Target = AtomicElseIf;
+impl ParseUnit for ElseIfBranch {
+    type Target = IfBranch;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
+        p.match_(ControlFlow::Else)?;
         p.match_(ControlFlow::If)?;
-        let ruo4 = p.parse::<AtomicIf>()?;
-        p.finish(AtomicElseIf { ruo4 })
-    }
-}
-
-complex_pu! {
-
-    cpu ChainIf {
-        AtomicElseIf,
-        AtomicElse
+        let conds = p.parse::<Conditions>()?;
+        let body = p.parse::<CodeBlock>().apply(MustMatch)?;
+        p.finish(IfBranch { conds, body })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct If {
-    pub ruo4: PU<AtomicIf>,
-    pub chains: Vec<PU<ChainIf>>,
+    pub branches: Vec<PU<IfBranch>>,
+    pub else_: Option<PU<ElseBranch>>,
 }
 
 impl ParseUnit for If {
     type Target = If;
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ruo4 = p.parse::<AtomicIf>()?;
-        let mut chains = vec![];
-        while let Some(chain) = p.parse::<ChainIf>().r#try()? {
-            let is_atomic_else = matches!(*chain, ChainIf::AtomicElse(..));
-            chains.push(chain);
-            if is_atomic_else {
-                break;
-            }
+        let mut branches = vec![p.parse::<IfBranch>()?];
+        while let Some(chain) = p.parse::<ElseIfBranch>().r#try()? {
+            branches.push(chain.map(|a| a));
         }
-        p.finish(If { ruo4, chains })
+        let else_ = p.parse::<ElseBranch>().r#try()?;
+        p.finish(If { branches, else_ })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct While {
-    pub conds: PU<Arguments>,
+    pub conds: PU<Conditions>,
     pub block: PU<CodeBlock>,
 }
 
@@ -93,7 +120,7 @@ impl ParseUnit for While {
 
     fn parse(p: &mut Parser) -> ParseResult<Self> {
         p.match_(ControlFlow::Repeat)?;
-        let conds = p.parse::<Arguments>().apply(MustMatch)?;
+        let conds = p.parse::<Conditions>().apply(MustMatch)?;
         let block = p.parse::<CodeBlock>().apply(MustMatch)?;
         p.finish(While { conds, block })
     }

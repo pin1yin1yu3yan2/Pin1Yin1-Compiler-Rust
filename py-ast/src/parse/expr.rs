@@ -100,41 +100,17 @@ impl ParseUnit for NumberLiteral {
 }
 
 #[derive(Debug, Clone)]
-pub struct Arguments {
-    pub args: Vec<PU<Expr>>,
-    pub semicolons: Vec<Span>,
-}
-
-impl ParseUnit for Arguments {
-    type Target = Arguments;
-
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        p.match_(Symbol::Parameter)?;
-        let Some(arg) = p.parse::<Expr>().r#try()? else {
-            p.match_(Symbol::Jie2).apply(MustMatch)?;
-            return p.finish(Arguments {
-                args: vec![],
-                semicolons: vec![],
-            });
-        };
-
-        let mut args = vec![arg];
-        let mut semicolons = vec![];
-
-        while let Some(semicolon) = p.match_(Symbol::Semicolon).r#try()? {
-            semicolons.push(semicolon.get_span());
-            args.push(p.parse::<Expr>()?);
-        }
-
-        p.match_(Symbol::Jie2).apply(MustMatch)?;
-        p.finish(Arguments { args, semicolons })
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct FnCallArgs {
     pub args: Vec<PU<Expr>>,
     pub semicolons: Vec<Span>,
+}
+
+impl std::ops::Deref for FnCallArgs {
+    type Target = Vec<PU<Expr>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.args
+    }
 }
 
 impl ParseUnit for FnCallArgs {

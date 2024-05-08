@@ -1,155 +1,238 @@
-use super::mangle::Mangler;
+use super::mangle::Mangle;
 use super::*;
 use crate::parse;
+use either::Either;
+use py_declare::mir::IntoIR;
 use py_declare::*;
+use py_ir::ir;
 use terl::*;
 
-pub trait Ast<M: Mangler>: ParseUnit {
+pub trait Generator<Item> {
     type Forward;
 
-    /// divided [`PU`] into [`ParseUnit::Target`] and [`Span`] becase
-    /// variants from [`crate::complex_pu`] isnot [`PU`], and the [`Span`]
-    /// was stored in the enum
-    fn to_ast(s: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward>;
-}
+    fn generate(&mut self, at: Span, item: &Item) -> Self::Forward;
 
-impl<M: Mangler> Ast<M> for parse::Item {
-    type Forward = ();
-
-    fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
-        match stmt {
-            parse::Item::FnDefine(fn_define) => {
-                scope.to_ast_inner::<parse::FnDefine>(fn_define, span)?;
-            }
-            parse::Item::Comment(_) => {}
-        }
-        Ok(())
+    fn generate_pu<S, P: ParseUnit<S, Target = Item>>(&mut self, pu: &PU<P, S>) -> Self::Forward {
+        self.generate(pu.get_span(), pu)
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::FnDefine {
-    type Forward = ();
+impl<M: Mangle> Generator<parse::Item> for Defines<M> {
+    type Forward = Result<Option<ir::Item<ir::Variable>>, Either<Error, Vec<Error>>>;
 
-    fn to_ast(
-        fn_define: &Self::Target,
-        _span: Span,
-        scope: &mut ModScope<M>,
-    ) -> Result<Self::Forward> {
+    fn generate(&mut self, at: Span, item: &parse::Item) -> Self::Forward {
+        match item {
+            parse::Item::FnDefine(fn_define) => {
+                self.generate(at, fn_define).map(Into::into).map(Some)
+            }
+            parse::Item::Comment(..) => Ok(None),
+        }
+    }
+}
+
+impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
+    type Forward = Result<ir::FnDefine<ir::Variable>, Either<Error, Vec<Error>>>;
+
+    fn generate(&mut self, _at: Span, fn_define: &parse::FnDefine) -> Self::Forward {
         let name = fn_define.name.to_string();
 
-        let ty: mir::TypeDefine = fn_define.ty.to_ast_ty()?;
+        let ty = fn_define.ty.to_mir_ty().map_err(Either::Left)?;
 
         let params = fn_define
             .params
             .params
             .iter()
             .try_fold(Vec::new(), |mut vec, pu| {
-                let ty = pu.ty.to_ast_ty()?;
+                let ty = pu.ty.to_mir_ty()?;
                 let name = pu.name.to_string();
-                let param = defs::Param { name, ty };
+                let param = defs::Parameter { name, ty };
                 vec.push(param);
                 Result::Ok(vec)
-            })?;
+            })
+            .map_err(Either::Left)?;
 
         let sign_span = fn_define.ty.get_span().merge(fn_define.params.get_span());
         let fn_sign = defs::FnSign {
             retty_span: fn_define.ty.get_span(),
             sign_span,
             ty: ty.clone(),
-            params,
+            params: params.clone(),
         };
 
-        // generate ast
-        scope.create_fn(name, fn_sign, &fn_define.params, |scope| {
-            // scope.regist_params(params_iter);
-            for stmt in &fn_define.codes.stmts {
-                scope.to_ast(stmt)?;
+        let mangled_fn_name = self.mangler.mangle_fn(&fn_define.name, &fn_sign);
+        if let Some(previous) = self.defs.try_get_mangled(&mangled_fn_name) {
+            let previous_define = previous
+                .sign_span
+                .make_message(format!("funcion {} has been definded here", name));
+            let mut err = fn_sign
+                .sign_span
+                .make_error(format!("double define for function {}", name))
+                .append(previous_define);
+            if previous.ty == fn_sign.ty {
+                err += format!("note: if you want to overload funcion {}, you can define them with different parameters",name)
+            } else {
+                err += "note: overload which only return type is differnet is not allowed";
+                err += format!("note: if you want to overload funcion {}, you can define them with different parameters",name);
             }
-            Ok(())
+            return Err(Either::Left(err));
+        }
+
+        let fn_scope = FnScope::new(
+            &mangled_fn_name,
+            fn_define
+                .params
+                .params
+                .iter()
+                .zip(fn_sign.params.iter())
+                .map(|(raw, param)| (raw.get_span(), param)),
+        );
+        let scopes = BasicScopes::default();
+
+        self.defs
+            .new_fn(name.clone(), mangled_fn_name.clone(), fn_sign);
+        let mut statement_transmuter = StatementTransmuter::new(&mut self.defs, fn_scope, scopes);
+
+        let body = statement_transmuter
+            .generate_pu(&fn_define.codes)
+            .map_err(Either::Left)?;
+        if !body.returned {
+            return Err(Either::Left(
+                sign_span.make_error(format!("function `{}` is never return", name)),
+            ));
+        }
+
+        statement_transmuter
+            .fn_scope
+            .declare_map
+            .declare_all()
+            .map_err(Either::Right)?;
+
+        let mir_fn = mir::FnDefine {
+            ty,
+            body,
+            params,
+            name: mangled_fn_name,
+        };
+        Ok(mir_fn.into_ir(&statement_transmuter.fn_scope.declare_map))
+    }
+}
+
+struct StatementTransmuter<'w> {
+    pub defs: &'w mut Defs,
+    pub fn_scope: FnScope,
+    pub scopes: BasicScopes,
+    stmts: mir::Statements,
+}
+
+impl<'w> StatementTransmuter<'w> {
+    pub fn new(defs: &mut Defs, fn_scope: FnScope, scopes: BasicScopes) -> StatementTransmuter<'_> {
+        StatementTransmuter {
+            defs,
+            fn_scope,
+            scopes,
+            stmts: Default::default(),
+        }
+    }
+
+    #[inline]
+    pub fn push_stmt(&mut self, stmt: impl Into<mir::Statement>) {
+        self.stmts.push(stmt.into());
+    }
+
+    #[inline]
+    pub fn take_stmts(&mut self) -> mir::Statements {
+        std::mem::take(&mut self.stmts)
+    }
+
+    #[inline]
+    pub fn replace_stmts(&mut self, new: mir::Statements) -> mir::Statements {
+        std::mem::replace(&mut self.stmts, new)
+    }
+
+    #[inline]
+    pub fn search_value(&mut self, name: &str) -> Option<defs::VarDef> {
+        self.fn_scope
+            .search_parameter(name)
+            .or_else(|| self.scopes.search_variable(name))
+    }
+
+    #[inline]
+    pub fn in_new_basic_scope<R>(&mut self, active: impl FnOnce(&mut Self) -> R) -> R {
+        self.scopes.push(Default::default());
+        let r = active(self);
+        self.scopes.pop();
+        r
+    }
+}
+
+impl Generator<parse::Statement> for StatementTransmuter<'_> {
+    type Forward = Result<Option<mir::Statement>>;
+
+    fn generate(&mut self, at: Span, stmt: &parse::Statement) -> Self::Forward {
+        match stmt {
+            parse::Statement::FnCallStmt(stmt) => {
+                let result = self.generate_pu(stmt)?;
+                let temp_name = self.fn_scope.temp_name();
+                let var_define = mir::VarDefine {
+                    ty: result.ty,
+                    name: temp_name,
+                    init: Some(result),
+                };
+                Ok(var_define.into())
+            }
+            parse::Statement::VarStoreStmt(stmt) => self.generate_pu(stmt).map(Into::into),
+            parse::Statement::VarDefineStmt(stmt) => self.generate_pu(stmt).map(Into::into),
+            parse::Statement::If(stmt) => self.generate(at, &**stmt).map(Into::into),
+            parse::Statement::While(stmt) => self.generate(at, &**stmt).map(Into::into),
+            parse::Statement::Return(stmt) => self.generate(at, &**stmt).map(Into::into),
+            parse::Statement::CodeBlock(stmt) => self.generate(at, &**stmt).map(Into::into),
+            parse::Statement::Comment(..) => return Ok(None),
+        }
+        .map(Some)
+    }
+}
+
+impl Generator<parse::FnCall> for StatementTransmuter<'_> {
+    type Forward = Result<mir::Variable>;
+
+    fn generate(&mut self, at: Span, fn_call: &parse::FnCall) -> Self::Forward {
+        let args = fn_call.args.iter().try_fold(vec![], |mut args, expr| {
+            args.push(self.generate_pu(expr)?);
+            Result::Ok(args)
         })?;
 
-        Ok(())
-    }
-}
+        let Some(overloads) = self.defs.get_unmangled(&fn_call.fn_name) else {
+            return Err(at.make_error(format!("call undefinded function {}", fn_call.fn_name)));
+        };
 
-impl<M: Mangler> Ast<M> for parse::Statement {
-    type Forward = ();
+        let overload_len_filter = filters::FnParamLen::new(Some(&fn_call.fn_name), args.len(), at);
 
-    fn to_ast(stmt: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
-        match stmt {
-            parse::Statement::FnCallStmt(fn_call) => {
-                let fn_call = scope.to_ast(fn_call)?;
-                // so that a meanless FnDefine Statement will be generate,
-                // avoiding implement IntoIR for FnCall
-                scope.fn_call_stmt(fn_call);
-            }
-            parse::Statement::VarStoreStmt(var_store) => {
-                scope.to_ast(var_store)?;
-            }
-            parse::Statement::VarDefineStmt(var_define) => {
-                scope.to_ast(var_define)?;
-            }
-            parse::Statement::If(if_) => {
-                scope.to_ast_inner::<parse::If>(if_, span)?;
-            }
-            parse::Statement::While(while_) => {
-                scope.to_ast_inner::<parse::While>(while_, span)?;
-            }
-            parse::Statement::Return(return_) => {
-                scope.to_ast_inner::<parse::Return>(return_, span)?;
-            }
-            parse::Statement::CodeBlock(block) => {
-                scope.to_ast_inner::<parse::CodeBlock>(block, span)?;
-            }
-            parse::Statement::Comment(_) => {}
-        }
-        Ok(())
-    }
-}
-
-impl<M: Mangler> Ast<M> for parse::FnCall {
-    type Forward = mir::Variable;
-
-    fn to_ast(
-        fn_call: &Self::Target,
-        span: Span,
-        scope: &mut ModScope<M>,
-    ) -> Result<Self::Forward> {
-        let args = fn_call
-            .args
+        let args_spans = fn_call
             .args
             .iter()
-            .try_fold(vec![], |mut args, expr| {
-                args.push(scope.to_ast(expr)?);
-                Result::Ok(args)
-            })?;
+            .map(|pu| pu.get_span())
+            .collect::<Vec<_>>();
+        let bench_builders = overloads
+            .iter()
+            .map(|overload| {
+                let mut bench_builder = BenchBuilder::new(Type::Overload(overload.clone()));
+                bench_builder.filter_self(self.defs, &overload_len_filter);
 
-        let overload = scope.new_declare_group(|map, defs| {
-            // TODO: call non-exist function error
-            let overloads = defs.get_unmangled(&fn_call.fn_name).unwrap();
-            let pre_filter = filters::FnParamLen::new(Some(&fn_call.fn_name), args.len(), span);
-            let bench_builders = overloads
-                .iter()
-                .map(|overload| {
-                    let mut bench_builder = BenchBuilder::new(Type::Overload(overload.clone()));
-                    bench_builder.filter_self(defs, &pre_filter);
-
-                    if bench_builder.is_ok() {
-                        let spans = fn_call.args.args.iter().map(|pu| pu.get_span());
-                        let args = args.iter();
-                        for ((param, arg), span) in overload.params.iter().zip(args).zip(spans) {
-                            let filter = filters::TypeEqual::new(&param.ty, span);
-                            bench_builder =
-                                bench_builder.new_depend::<Directly, _>(map, arg.ty, &filter);
-                        }
+                if bench_builder.is_ok() {
+                    for ((param, arg), span) in overload.params.iter().zip(&args).zip(&args_spans) {
+                        let filter = filters::TypeEqual::new(&param.ty, *span);
+                        let declare_map = &mut self.fn_scope.declare_map;
+                        bench_builder =
+                            bench_builder.new_depend::<Directly, _>(declare_map, arg.ty, &filter);
                     }
-
-                    bench_builder
-                })
-                .collect();
-
-            GroupBuilder::new(span, bench_builders)
-        });
+                }
+                bench_builder
+            })
+            .collect();
+        let overload = self
+            .fn_scope
+            .declare_map
+            .new_group(GroupBuilder::new(at, bench_builders));
 
         let val = mir::AtomicExpr::FnCall(mir::FnCall { args });
         let fn_call = mir::Variable::new(val, overload);
@@ -158,250 +241,249 @@ impl<M: Mangler> Ast<M> for parse::FnCall {
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::VarStore {
-    type Forward = ();
+impl Generator<parse::VarStore> for StatementTransmuter<'_> {
+    type Forward = Result<mir::VarStore>;
 
-    fn to_ast(
-        var_store: &Self::Target,
-        span: Span,
-        scope: &mut ModScope<M>,
-    ) -> Result<Self::Forward> {
+    fn generate(&mut self, at: Span, var_store: &parse::VarStore) -> Self::Forward {
         let name = var_store.name.to_string();
-        // function parameters are inmutable
+        let val = self.generate_pu(&var_store.assign.val)?;
 
-        let val = scope.to_ast(&var_store.assign.val)?;
-        let Some(var_def) = scope.search_var(&name) else {
-            return Err(span.make_error(format!("use of undefined variable {}", name)));
+        let val_at = var_store.assign.val.get_span();
+
+        let Some(var_def) = self.search_value(&name) else {
+            return Err(val_at.make_error(format!("use of undefined variable {}", name)));
         };
         if !var_def.mutable {
-            return Err(span.make_error(format!("cant assign to a immmutable variable {}", name)));
+            return Err(val_at.make_error(format!("cant assign to a immmutable variable {}", name)));
         }
 
-        scope.merge_group(span, var_def.ty, val.ty);
-        scope.push_stmt(mir::VarStore { name, val });
+        self.fn_scope
+            .declare_map
+            .merge_group(at, var_def.ty, val.ty);
 
-        Ok(())
+        Ok(mir::VarStore { name, val })
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::VarDefine {
-    type Forward = ();
+impl Generator<parse::VarDefine> for StatementTransmuter<'_> {
+    type Forward = Result<mir::VarDefine>;
 
-    fn to_ast(
-        var_define: &Self::Target,
-        span: Span,
-        scope: &mut ModScope<M>,
-    ) -> Result<Self::Forward> {
-        // TODO: testfor if  ty exist
-        let ty = var_define.ty.to_ast_ty()?;
+    fn generate(&mut self, at: Span, var_define: &parse::VarDefine) -> Self::Forward {
         let name = var_define.name.to_string();
-
+        let ty = var_define.ty.to_mir_ty()?;
+        let ty = self
+            .fn_scope
+            .declare_map
+            .new_static_group(var_define.ty.get_span(), std::iter::once(ty.into()));
         let init = match &var_define.init {
-            Some(init) => Some(scope.to_ast(&init.val)?),
+            Some(init) => {
+                let init = self.generate_pu(&init.val)?;
+                self.fn_scope.declare_map.merge_group(at, ty, init.ty);
+                Some(init)
+            }
             None => None,
         };
+        self.scopes
+            .regist_variable(&name, defs::VarDef { ty, mutable: true });
 
-        let def = defs::VarDef {
-            ty: scope.new_static_group(span, std::iter::once(ty.clone().into())),
-            mutable: true,
+        Ok(mir::VarDefine { ty, name, init })
+    }
+}
+
+impl Generator<parse::If> for StatementTransmuter<'_> {
+    type Forward = Result<mir::If>;
+
+    fn generate(&mut self, _at: Span, if_: &parse::If) -> Self::Forward {
+        let branches = if_
+            .branches
+            .iter()
+            .try_fold(vec![], |mut branches, branch| {
+                branches.push(self.generate_pu(branch)?);
+                Ok(branches)
+            })?;
+        let else_ = match &if_.else_ {
+            Some(else_) => Some(self.generate_pu(&else_.block)?),
+            None => None,
         };
-        let stmt = mir::VarDefine { ty, name, init };
-        scope.regist_var(stmt, def, span);
-
-        Ok(())
+        Ok(mir::If { branches, else_ })
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::If {
-    type Forward = ();
+impl Generator<parse::While> for StatementTransmuter<'_> {
+    type Forward = Result<mir::While>;
 
-    fn to_ast(if_: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
-        let mut branches = vec![scope.to_ast(&if_.ruo4)?];
-        for chain in &if_.chains {
-            match &**chain {
-                parse::ChainIf::AtomicElseIf(atomic) => {
-                    branches.push(scope.to_ast(&atomic.ruo4)?);
-                }
-                parse::ChainIf::AtomicElse(else_) => {
-                    let else_ = scope.to_ast(&else_.block)?;
-                    scope.push_stmt(mir::Statement::If(mir::If {
-                        branches,
-                        else_: Some(else_),
-                    }));
-                    return Ok(());
-                }
-            }
-        }
-        scope.push_stmt(mir::Statement::If(mir::If {
-            branches,
-            else_: None,
-        }));
-        Ok(())
+    fn generate(&mut self, _at: Span, while_: &parse::While) -> Self::Forward {
+        let cond = self.generate_pu(&while_.conds)?;
+        let body = self.generate_pu(&while_.block)?;
+        Ok(mir::While { cond, body })
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::While {
-    type Forward = ();
+impl Generator<parse::IfBranch> for StatementTransmuter<'_> {
+    type Forward = Result<mir::IfBranch>;
 
-    fn to_ast(
-        while_: &Self::Target,
-        _span: Span,
-        scope: &mut ModScope<M>,
-    ) -> Result<Self::Forward> {
-        let cond = scope.to_ast(&while_.conds)?;
-        let body = scope.to_ast(&while_.block)?;
-        scope.push_stmt(mir::Statement::While(mir::While { cond, body }));
-        Ok(())
+    fn generate(&mut self, _at: Span, branch: &parse::IfBranch) -> Self::Forward {
+        let cond = self.generate_pu(&branch.conds)?;
+        let body = self.generate_pu(&branch.body)?;
+        Ok(mir::IfBranch { cond, body })
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::AtomicIf {
-    type Forward = mir::IfBranch;
+impl Generator<parse::Return> for StatementTransmuter<'_> {
+    type Forward = Result<mir::Return>;
 
-    fn to_ast(
-        atomic: &Self::Target,
-        _span: Span,
-        scope: &mut ModScope<M>,
-    ) -> Result<Self::Forward> {
-        let cond = scope.to_ast(&atomic.conds)?;
-        let body = scope.to_ast(&atomic.block)?;
-        Result::Ok(mir::IfBranch { cond, body })
-    }
-}
-
-impl<M: Mangler> Ast<M> for parse::Return {
-    type Forward = ();
-
-    fn to_ast(
-        return_: &Self::Target,
-        _span: Span,
-        scope: &mut ModScope<M>,
-    ) -> Result<Self::Forward> {
-        let val = match &return_.val {
+    fn generate(&mut self, at: Span, ret: &parse::Return) -> Self::Forward {
+        let val = match &ret.val {
             Some(val) => {
-                let val = scope.to_ast(val)?;
-                scope.match_function_return_type(val.ty);
+                let val = self.generate_pu(val)?;
+                let mangled_fn = self.defs.get_mangled(&self.fn_scope.fn_name);
+                self.fn_scope
+                    .declare_map
+                    .declare_type(at, val.ty, &mangled_fn.ty);
                 Some(val)
             }
             None => None,
         };
-        scope.push_stmt(mir::Statement::Return(mir::Return { val }));
-        Ok(())
+        Ok(mir::Return { val })
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::CodeBlock {
-    type Forward = mir::Statements;
+impl Generator<parse::CodeBlock> for StatementTransmuter<'_> {
+    type Forward = Result<mir::Statements>;
 
-    fn to_ast(block: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
-        scope
-            .spoce(|scope| {
-                for stmt in &block.stmts {
-                    scope.to_ast(stmt)?;
+    fn generate(&mut self, _at: Span, item: &parse::CodeBlock) -> Self::Forward {
+        self.in_new_basic_scope(|g| {
+            let current_scope = g.take_stmts();
+            for stmt in &item.stmts {
+                if let Some(stmt) = g.generate_pu(stmt)? {
+                    g.push_stmt(stmt);
                 }
-                Ok(())
-            })
-            .map(|(stmts, _)| stmts)
-    }
-}
-
-impl<M: Mangler> Ast<M> for parse::Arguments {
-    type Forward = mir::Condition;
-
-    fn to_ast(cond: &Self::Target, _span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
-        let (compute, last_cond) = scope.spoce(|scope| {
-            let mut last_cond = scope.to_ast(&cond.args[0])?;
-            for arg in cond.args.iter().skip(1) {
-                last_cond = scope.to_ast(arg)?;
             }
-            Result::Ok(last_cond)
-        })?;
-
-        let span = cond.args.last().unwrap().get_span();
-        scope.decalre_group_as(span, last_cond.ty, &mir::PrimitiveType::Bool.into());
-
-        Result::Ok(mir::Condition {
-            val: last_cond,
-            compute,
+            Ok(g.replace_stmts(current_scope))
         })
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::Expr {
-    type Forward = mir::Variable;
+impl Generator<parse::Conditions> for StatementTransmuter<'_> {
+    type Forward = Result<mir::Condition>;
 
-    fn to_ast(expr: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
+    fn generate(&mut self, at: Span, conds: &parse::Conditions) -> Self::Forward {
+        let (compute, val) = self.in_new_basic_scope(|g| {
+            let mut last_condition = g.generate_pu(&conds[0])?;
+            for arg in conds.iter().skip(1) {
+                last_condition = g.generate_pu(arg)?;
+            }
+            Ok((g.take_stmts(), last_condition))
+        })?;
+
+        // type check
+        let bool = ir::PrimitiveType::Bool.into();
+        self.fn_scope.declare_map.declare_type(at, val.ty, &bool);
+        Ok(mir::Condition { val, compute })
+    }
+}
+
+impl Generator<parse::Expr> for StatementTransmuter<'_> {
+    type Forward = Result<mir::Variable>;
+
+    fn generate(&mut self, at: Span, expr: &parse::Expr) -> Self::Forward {
         match expr {
-            parse::Expr::Atomic(atomic) => parse::AtomicExpr::to_ast(atomic, span, scope),
+            parse::Expr::Atomic(atomic) => self.generate(at, atomic),
             parse::Expr::Binary(l, o, r) => {
-                let l = scope.to_ast(l)?;
-                let r = scope.to_ast(r)?;
+                let l = self.generate_pu(l)?;
+                let r = self.generate_pu(r)?;
 
                 // TODO: operator overload(type system)
                 // TODO: primitive operators
                 // TODO: operator -> function call
 
                 // now, we suppert primitive operators only, so they should be same type
-                scope.merge_group(span, l.ty, r.ty);
+                self.fn_scope.declare_map.merge_group(at, l.ty, r.ty);
                 use py_ir::{ir::PrimitiveType, ops::OperatorTypes::CompareOperator};
-                // for compare operators(like == != < >), the result will be a boolean value
+
+                // for compare operators(like == != < >), the result will be a boolean value,
+                // not parameters' type
+                let param_ty = l.ty;
                 let result_ty = if o.op_ty() == CompareOperator {
-                    scope.new_static_group(span, [PrimitiveType::Bool.into()])
+                    self.fn_scope
+                        .declare_map
+                        .new_static_group(at, [PrimitiveType::Bool.into()])
                 } else {
                     l.ty
                 };
-                let op = mir::OperateExpr::binary(o.take(), l, r);
-                Result::Ok(scope.push_compute(result_ty, op))
+
+                let eval = mir::OperateExpr::binary(o.take(), l, r);
+                let temp_name = self.fn_scope.temp_name();
+                self.push_stmt(mir::Compute {
+                    ty: param_ty,
+                    name: temp_name.clone(),
+                    eval,
+                });
+                Ok(mir::Variable {
+                    val: mir::AtomicExpr::Variable(temp_name),
+                    ty: result_ty,
+                })
             }
         }
     }
 }
 
-impl<M: Mangler> Ast<M> for parse::AtomicExpr {
-    type Forward = mir::Variable;
+impl Generator<parse::AtomicExpr> for StatementTransmuter<'_> {
+    type Forward = Result<mir::Variable>;
 
-    fn to_ast(atomic: &Self::Target, span: Span, scope: &mut ModScope<M>) -> Result<Self::Forward> {
-        let literal = match atomic {
+    fn generate(&mut self, at: Span, expr: &parse::AtomicExpr) -> Self::Forward {
+        let literal = match expr {
             // atomics
-            parse::AtomicExpr::CharLiteral(char) => mir::Literal::Char(char.parsed),
+            parse::AtomicExpr::CharLiteral(char) => ir::Literal::Char(char.parsed),
             parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float { number, .. } => mir::Literal::Float(*number),
-                parse::NumberLiteral::Digit { number, .. } => mir::Literal::Integer(*number),
+                parse::NumberLiteral::Float { number, .. } => ir::Literal::Float(*number),
+                parse::NumberLiteral::Digit { number, .. } => ir::Literal::Integer(*number),
             },
 
             parse::AtomicExpr::StringLiteral(_str) => {
                 // TODO: init for array
                 todo!("a VarDefine statement will be generate...")
             }
-            parse::AtomicExpr::FnCall(fn_call) => {
-                return parse::FnCall::to_ast(fn_call, span, scope)
-            }
-            parse::AtomicExpr::Variable(var) => {
-                let Some(def) = scope.search_var(var) else {
-                    return Err(span.make_error("use of undefined variable"));
+            parse::AtomicExpr::FnCall(fn_call) => return self.generate(at, fn_call),
+            parse::AtomicExpr::Variable(name) => {
+                let Some(def) = self.search_value(name) else {
+                    return Err(at.make_error("use of undefined variable"));
                 };
 
-                let variable = mir::Variable {
-                    val: mir::AtomicExpr::Variable(var.to_string()),
-                    ty: def.ty,
-                };
+                let variable =
+                    mir::Variable::new(mir::AtomicExpr::Variable(name.to_string()), def.ty);
                 return Ok(variable);
             }
 
             // here, this is incorrect because operators may be overload
             // all operator overload must be casted into function calling here but primitives
             parse::AtomicExpr::UnaryExpr(unary) => {
-                let l = scope.to_ast(&unary.expr)?;
-                let expr = scope.push_compute(l.ty, mir::OperateExpr::unary(*unary.operator, l));
-                return Ok(expr);
+                let l = self.generate_pu(&unary.expr)?;
+                let name = self.fn_scope.temp_name();
+
+                let ty = l.ty;
+                let compute = mir::Compute {
+                    ty,
+                    name: name.clone(),
+                    eval: mir::OperateExpr::unary(*unary.operator, l),
+                };
+                self.push_stmt(compute);
+
+                return Ok(mir::Variable {
+                    ty,
+                    val: mir::AtomicExpr::Variable(name),
+                });
             }
-            parse::AtomicExpr::BracketExpr(expr) => return scope.to_ast(&expr.expr),
+            parse::AtomicExpr::BracketExpr(expr) => {
+                let expr: &parse::Expr = &expr.expr;
+                return self.generate(at, expr);
+            }
             parse::AtomicExpr::Initialization(_) => todo!("how to do???"),
         };
 
-        let ty = scope.new_declare_group(|_, _| {
+        let ty = self.fn_scope.declare_map.new_group({
             let benches = mir::Variable::literal_benches(&literal);
-            GroupBuilder::new(span, benches)
+            GroupBuilder::new(at, benches)
         });
         Ok(mir::Variable::new(literal.into(), ty))
     }

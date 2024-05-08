@@ -20,7 +20,7 @@ impl DeclareMap {
         Self::default()
     }
 
-    pub fn new_static_group<I>(&mut self, at: terl::Span, items: I) -> GroupIdx
+    pub fn new_static_group<I>(&mut self, at: terl::Span, items: I) -> UndeclaredTy
     where
         I: IntoIterator<Item = Type>,
     {
@@ -29,13 +29,13 @@ impl DeclareMap {
             items.into_iter().enumerate().collect(),
             Default::default(),
         ));
-        GroupIdx {
+        UndeclaredTy {
             idx: self.groups.len() - 1,
         }
     }
 
-    pub fn new_group(&mut self, gb: GroupBuilder) -> GroupIdx {
-        let gidx = GroupIdx::new(self.groups.len());
+    pub fn new_group(&mut self, gb: GroupBuilder) -> UndeclaredTy {
+        let gidx = UndeclaredTy::new(self.groups.len());
 
         let mut alive = HashMap::new();
         let mut faild = HashMap::new();
@@ -73,7 +73,7 @@ impl DeclareMap {
         gidx
     }
 
-    pub fn apply_filter<T, B>(&mut self, gidx: GroupIdx, defs: &Defs, filter: B) -> Result<()>
+    pub fn apply_filter<T, B>(&mut self, gidx: UndeclaredTy, defs: &Defs, filter: B) -> Result<()>
     where
         T: Types,
         B: BenchFilter<T>,
@@ -97,7 +97,7 @@ impl DeclareMap {
         Ok(())
     }
 
-    pub fn merge_group(&mut self, stmt_span: terl::Span, to: GroupIdx, from: GroupIdx) {
+    pub fn merge_group(&mut self, stmt_span: terl::Span, to: UndeclaredTy, from: UndeclaredTy) {
         let froms = self[from]
             .alive
             .iter()
@@ -150,7 +150,7 @@ impl DeclareMap {
     pub fn declare_type(
         &mut self,
         stmt_span: terl::Span,
-        val_ty: GroupIdx,
+        val_ty: UndeclaredTy,
         expect_ty: &TypeDefine,
     ) {
         // TODO: unknown type support
@@ -252,7 +252,7 @@ impl DeclareMap {
         }
     }
 
-    pub fn declare_all(&mut self) -> Vec<terl::Error> {
+    pub fn declare_all(&mut self) -> Result<(), Vec<terl::Error>> {
         let mut errors = vec![];
         for group in &self.groups {
             // un-decalred group
@@ -273,24 +273,28 @@ impl DeclareMap {
                 errors.push(err);
             }
         }
-        errors
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 
-    pub fn get_type(&self, gidx: GroupIdx) -> &TypeDefine {
+    pub fn get_type(&self, gidx: UndeclaredTy) -> &TypeDefine {
         self[gidx].unique().unwrap().get_type()
     }
 }
 
-impl std::ops::Index<GroupIdx> for DeclareMap {
+impl std::ops::Index<UndeclaredTy> for DeclareMap {
     type Output = Group;
 
-    fn index(&self, index: GroupIdx) -> &Self::Output {
+    fn index(&self, index: UndeclaredTy) -> &Self::Output {
         &self.groups[index.idx]
     }
 }
 
-impl std::ops::IndexMut<GroupIdx> for DeclareMap {
-    fn index_mut(&mut self, index: GroupIdx) -> &mut Self::Output {
+impl std::ops::IndexMut<UndeclaredTy> for DeclareMap {
+    fn index_mut(&mut self, index: UndeclaredTy) -> &mut Self::Output {
         &mut self.groups[index.idx]
     }
 }
