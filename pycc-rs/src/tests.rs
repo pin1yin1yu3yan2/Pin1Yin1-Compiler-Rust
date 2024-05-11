@@ -1,33 +1,60 @@
 use inkwell::{context::Context, execution_engine::JitFunction};
 
 use py_ast::{
-    parse::do_parse,
+    parse,
     semantic::{Defines, Generator},
 };
-use py_ir::ir;
-use terl::{Parser, Source};
+use py_ir as ir;
+use terl::{Buffer, Parser, ResultMapperExt};
 
 use crate::compile::CodeGen;
 
 fn get_mir(src: &str) -> Vec<ir::Item<ir::Variable>> {
-    let source = Source::from_iter("compiler_test.py1", src.chars());
-    let mut parser = Parser::<char>::new(source);
+    let source = Buffer::new("compiler_test.py1".to_owned(), src.chars().collect());
+    let parser = Parser::<char>::new(source);
+    let (char_buffer, mut parser) = parser
+        .process(|p| {
+            let mut tokens = vec![];
 
-    let pus = do_parse(&mut parser)
-        .map_err(|e| eprintln!("{}", parser.handle_error(e.error())))
-        .map_err(|_| eprintln!("{}", parser.get_calling_tree()))
-        .unwrap();
+            while let Some(token) = p.parse::<py_lex::Token>().apply(terl::mapper::Try)? {
+                tokens.push(token);
+            }
+            Ok(tokens)
+        })
+        .unwrap_or_else(|_| unreachable!());
+
+    let parse_result = (|| -> Result<_, terl::ParseError> {
+        let mut items = vec![];
+        while parser.peek().is_some() {
+            items.push(
+                parser
+                    .parse::<parse::Item>()
+                    .apply(terl::mapper::MustMatch)?,
+            )
+        }
+        Ok(items)
+    })();
+
+    let pu_items = match parse_result {
+        Ok(items) => items,
+        Err(error) => {
+            eprintln!("{}", parser.calling_tree());
+            eprintln!("{}", char_buffer.handle_error(error.error()));
+
+            panic!()
+        }
+    };
 
     let mut scope: Defines = Default::default();
     let mut items = vec![];
-    for pu in pus {
+    for item in pu_items {
         let item = scope
-            .generate_pu(&pu)
+            .generate(&item)
             .map_err(|e| match e {
-                either::Either::Left(e) => eprintln!("{}", parser.handle_error(e)),
+                either::Either::Left(e) => eprintln!("{}", char_buffer.handle_error(e)),
                 either::Either::Right(es) => es
                     .into_iter()
-                    .for_each(|e| eprintln!("{}", parser.handle_error(e))),
+                    .for_each(|e| eprintln!("{}", char_buffer.handle_error(e))),
             })
             .unwrap();
         if let Some(item) = item {

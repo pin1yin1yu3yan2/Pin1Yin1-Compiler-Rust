@@ -10,7 +10,8 @@ use inkwell::{
     values::{BasicValue, BasicValueEnum, FunctionValue},
 };
 
-use py_ir::ir::{self, ControlFlow};
+use ir::ControlFlow;
+use py_ir as ir;
 
 pub struct CodeGen<'ctx> {
     context: &'ctx Context,

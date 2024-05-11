@@ -1,13 +1,18 @@
 mod error;
-mod lexer;
-mod macros;
-mod mapper;
+
 mod parse_unit;
 mod parser;
 mod result;
 mod source;
-mod tokens;
+mod span;
 
+pub mod mapper;
 pub use self::{
-    error::*, lexer::*, mapper::*, parse_unit::*, parser::*, result::*, source::*, tokens::*,
+    error::*,
+    mapper::{ExtendTuple, ParseMapper, ResultMapperExt},
+    parse_unit::*,
+    parser::*,
+    result::*,
+    source::*,
+    span::*,
 };

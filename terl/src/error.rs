@@ -178,16 +178,18 @@ impl<T> TryFrom<Result<T>> for Error {
 pub trait WithSpan {
     fn get_span(&self) -> Span;
 
-    fn make_parse_error(&self, reason: impl ToString, kind: ParseErrorKind) -> ParseError {
-        ParseError::new(self.get_span(), reason, kind)
-    }
-
     fn make_error(&self, reason: impl ToString) -> Error {
         Error::new(self.get_span(), reason)
     }
 
     fn make_message(&self, reason: impl ToString) -> Message {
         Message::Rich(reason.to_string(), self.get_span())
+    }
+}
+
+pub trait WithSpanExt: WithSpan {
+    fn make_parse_error(&self, reason: impl ToString, kind: ParseErrorKind) -> ParseError {
+        ParseError::new(self.get_span(), reason, kind)
     }
 
     fn unmatch<T>(&self, reason: impl ToString) -> Result<T, ParseError> {
@@ -197,8 +199,6 @@ pub trait WithSpan {
     fn throw<T>(&self, reason: impl ToString) -> Result<T, ParseError> {
         Err(self.make_parse_error(reason, ParseErrorKind::Semantic))
     }
-
-    fn make_pu<P: ParseUnit<S>, S>(&self, target: P::Target) -> PU<P, S> {
-        PU::new(self.get_span(), target)
-    }
 }
+
+impl<W: WithSpan> WithSpanExt for W {}

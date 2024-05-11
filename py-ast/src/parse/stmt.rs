@@ -13,33 +13,30 @@ macro_rules! statement_wrapper {
         $(
         #[derive(Debug, Clone)]
         $(#[$metas])*
-        pub struct $into {
-            inner: terl::PU<$from>,
-            pub fen1: terl::PU<$crate::lex::syntax::Symbol>
-        }
+        pub struct $into(py_lex::PU<$from>);
 
-        impl terl::ParseUnit for $into {
+        impl terl::ParseUnit<py_lex::Token> for $into {
             type Target = $into;
 
-            fn parse(p: &mut terl::Parser) -> terl::ParseResult<Self> {
+            fn parse(p: &mut terl::Parser<py_lex::Token>) -> terl::ParseResult<Self, py_lex::Token> {
 
-                let inner = p.parse::<$from>()?;
-                let fen1 = p.match_($crate::lex::syntax::Symbol::Semicolon)?;
-                p.finish($into { inner, fen1 })
+                let inner = p.parse::<py_lex::PU<$from>>()?;
+                p.match_(py_lex::syntax::Symbol::Semicolon).apply(terl::mapper::MustMatch)?;
+                Ok($into(inner))
             }
         }
 
         impl std::ops::Deref for $into {
-            type Target =  terl::PU<$from>;
+            type Target =  py_lex::PU<$from>;
 
             fn deref(&self) -> &Self::Target {
-                &self.inner
+                &self.0
             }
         }
 
         impl std::ops::DerefMut for $into {
             fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.inner
+                &mut self.0
             }
         }
 
@@ -80,16 +77,16 @@ macro_rules! statements {
         }
         )*
 
-        impl terl::ParseUnit for $enum_name {
+        impl terl::ParseUnit<py_lex::Token> for $enum_name {
             type Target = $enum_name;
 
-            fn parse(p: &mut terl::Parser) -> terl::ParseResult<Self>
+            fn parse(p: &mut terl::Parser<py_lex::Token>) -> terl::ParseResult<Self, py_lex::Token>
             {
-                terl::Try::new(p)
+                terl::Try::<$enum_name ,_>::new(p)
                 $(
                 .or_try::<Self, _>(|p| {
-                    p.once_no_try($variant::parse)
-                        .map(|pu| pu.map(|t |<$enum_name>::$variant(Box::new(t))))
+                    p.once_no_try::<$variant ,_>($variant::parse)
+                        .map(Box::new).map(<$enum_name>::$variant)
                 })
                 )*
                 .finish()

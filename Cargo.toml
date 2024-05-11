@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 
-members = ["terl", "py-ir", "py-ast", "pycc-rs", "py-declare"]
+members = ["terl", "py-ir", "py-ast", "pycc-rs", "py-declare", "py-lex"]
 
 
 [workspace.dependencies]

@@ -2,58 +2,82 @@ use std::ops::Index;
 
 use crate::{Error, Message, Span};
 
+pub trait Source: Sized {
+    type HandleErrorWith;
+    fn handle_error(with: &Self::HandleErrorWith, error: Error) -> String;
+}
+
+impl Source for char {
+    type HandleErrorWith = Buffer<char>;
+
+    fn handle_error(src_buffer: &Buffer<Self>, error: Error) -> String {
+        (|| {
+            let mut buffer = String::new();
+            src_buffer.message(&mut buffer, error.main_span, error.main_message)?;
+            for msg in error.messages {
+                src_buffer.handle_message(&mut buffer, msg)?;
+            }
+
+            Result::<_, std::fmt::Error>::Ok(buffer)
+        })()
+        .unwrap()
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct Source<S = char> {
-    file_name: String,
-    inner: Vec<S>,
+pub struct Buffer<S = char> {
+    name: String,
+    src: Vec<S>,
 }
 
-impl<S> Source<S> {
-    pub fn new(file_name: String, inner: Vec<S>) -> Self {
-        Self { file_name, inner }
+impl<S> Buffer<S> {
+    pub fn new(name: String, src: Vec<S>) -> Self {
+        Self { name, src }
     }
 
-    pub fn from_iter(file_name: impl ToString, iter: impl Iterator<Item = S>) -> Self {
-        Self {
-            file_name: file_name.to_string(),
-            inner: iter.collect(),
-        }
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
-    pub fn file_name(&self) -> &str {
-        &self.file_name
+    #[inline]
+    pub fn handle_error(&self, error: Error) -> String
+    where
+        S: Source<HandleErrorWith = Self>,
+    {
+        S::handle_error(self, error)
     }
 }
 
-impl<S> std::ops::Deref for Source<S> {
+impl<S> std::ops::Deref for Buffer<S> {
     type Target = [S];
 
     fn deref(&self) -> &Self::Target {
-        &self.inner[..]
+        &self.src[..]
     }
 }
 
-impl<S> std::ops::Index<Span> for Source<S> {
+impl<S> std::ops::Index<Span> for Buffer<S> {
     type Output = [S];
 
     fn index(&self, index: Span) -> &Self::Output {
-        &self.inner[index.start..index.end]
+        &self.src[index.start..index.end]
     }
 }
 
-impl<I, S> std::ops::Index<I> for Source<S>
+impl<I, S> std::ops::Index<I> for Buffer<S>
 where
     Vec<S>: Index<I>,
 {
     type Output = <Vec<S> as Index<I>>::Output;
 
     fn index(&self, index: I) -> &Self::Output {
-        &self.inner[index]
+        &self.src[index]
     }
 }
 
 use std::fmt::Write;
-impl Source<char> {
+
+impl Buffer<char> {
     fn message(
         &self,
         buffer: &mut impl Write,
@@ -70,7 +94,7 @@ impl Source<char> {
         let mut idx = start_line_start;
 
         let row_num = span.start - start_line_start;
-        let location = format!("[{}:{}:{}]", src.file_name(), line_num, row_num,);
+        let location = format!("[{}:{}:{}]", src.name(), line_num, row_num,);
 
         writeln!(buffer, "{location}: {}", reason)?;
 
@@ -112,18 +136,5 @@ impl Source<char> {
         }?;
 
         Ok(())
-    }
-
-    pub fn handle_error(&self, error: Error) -> String {
-        (|| -> Result<String, std::fmt::Error> {
-            let mut buffer = String::new();
-            self.message(&mut buffer, error.main_span, error.main_message)?;
-            for msg in error.messages {
-                self.handle_message(&mut buffer, msg)?;
-            }
-
-            Ok(buffer)
-        })()
-        .unwrap()
     }
 }

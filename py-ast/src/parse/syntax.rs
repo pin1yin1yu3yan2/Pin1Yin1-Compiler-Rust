@@ -1,53 +1,53 @@
 use super::*;
 
-use crate::lex::syntax::Symbol;
+use py_lex::syntax::Symbol;
 
 #[derive(Debug, Clone)]
 pub struct VarAssign {
-    pub val: PU<Expr>,
+    pub val: Expr,
 }
 
-impl ParseUnit for VarAssign {
+impl ParseUnit<Token> for VarAssign {
     type Target = VarAssign;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         p.match_(Symbol::Assign)?;
-        let val = p.parse()?;
-        p.finish(Self { val })
+        let val = p.parse::<Expr>()?;
+        Ok(Self { val })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct VarDefine {
     pub ty: PU<types::TypeDefine>,
-    pub name: PU<Ident>,
-    pub init: Option<PU<VarAssign>>,
+    pub name: Ident,
+    pub init: Option<VarAssign>,
 }
 
-impl ParseUnit for VarDefine {
+impl ParseUnit<Token> for VarDefine {
     type Target = VarDefine;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ty = p.parse()?;
-        let name = p.parse()?;
-        let init = p.parse().r#try()?;
-        p.finish(Self { ty, name, init })
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let ty = p.parse::<PU<types::TypeDefine>>()?;
+        let name = p.parse::<Ident>()?;
+        let init = p.parse::<VarAssign>().apply(mapper::Try)?;
+        Ok(Self { ty, name, init })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct VarStore {
-    pub name: PU<Ident>,
+    pub name: Ident,
     pub assign: PU<VarAssign>,
 }
 
-impl ParseUnit for VarStore {
+impl ParseUnit<Token> for VarStore {
     type Target = VarStore;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         let name = p.parse::<Ident>()?;
-        let assign = p.parse::<VarAssign>()?;
-        p.finish(VarStore { name, assign })
+        let assign = p.parse::<PU<VarAssign>>()?;
+        Ok(VarStore { name, assign })
     }
 }
 
@@ -65,51 +65,45 @@ impl std::ops::Deref for Parameter {
     }
 }
 
-impl ParseUnit for Parameter {
+impl ParseUnit<Token> for Parameter {
     type Target = Parameter;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ty = p.parse::<types::TypeDefine>()?;
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let ty = p.parse::<PU<types::TypeDefine>>()?;
         let name = p.parse::<Ident>()?;
         let inner = VarDefine {
             ty,
             name,
             init: None,
         };
-        p.finish(Parameter { inner })
+        Ok(Parameter { inner })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Parameters {
     pub params: Vec<PU<Parameter>>,
-    pub semicolons: Vec<Span>,
 }
 
-impl ParseUnit for Parameters {
+impl ParseUnit<Token> for Parameters {
     type Target = Parameters;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         p.match_(Symbol::Parameter)?;
-        let Some(arg) = p.parse::<Parameter>().r#try()? else {
-            p.match_(Symbol::Jie2).apply(MustMatch)?;
+        let Some(arg) = p.parse::<PU<Parameter>>().apply(mapper::Try)? else {
+            p.match_(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
 
-            return p.finish(Parameters {
-                params: vec![],
-                semicolons: vec![],
-            });
+            return Ok(Parameters { params: vec![] });
         };
 
         let mut params = vec![arg];
-        let mut semicolons = vec![];
 
-        while let Some(semicolon) = p.match_(Symbol::Semicolon).r#try()? {
-            semicolons.push(semicolon.get_span());
-            params.push(p.parse::<Parameter>()?);
+        while p.match_(Symbol::Semicolon).is_ok() {
+            params.push(p.parse::<PU<Parameter>>()?);
         }
 
-        p.match_(Symbol::Jie2).apply(MustMatch)?;
-        p.finish(Parameters { params, semicolons })
+        p.match_(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
+        Ok(Parameters { params })
     }
 }
 

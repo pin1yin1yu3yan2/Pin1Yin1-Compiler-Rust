@@ -1,66 +1,96 @@
+use std::ops::Deref;
+
+use py_lex::types::BasicExtenWord;
+
 use super::*;
-use crate::{complex_pu, lex::types::BasicExtenWord};
+use crate::complex_pu;
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
-pub struct TypeConstExtend {
-    pub keyword: BasicExtenWord,
-}
+pub struct TypeConstExtend;
 
-impl ParseUnit for TypeConstExtend {
+impl ParseUnit<Token> for TypeConstExtend {
     type Target = TypeConstExtend;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = p.match_(BasicExtenWord::Const)?.take();
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        p.match_(BasicExtenWord::Const)?;
 
-        p.finish(TypeConstExtend { keyword })
+        Ok(TypeConstExtend)
     }
 }
 
+#[derive(Debug,Clone, Copy)]
+pub struct Size{
+    size: PU<usize>
+}
+
+impl Deref for Size{
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.size
+    }
+}
+
+impl WithSpan for Size{
+    fn get_span(&self) -> Span {
+        self.size.get_span()
+    }
+}
+
+
+impl ParseUnit<Token> for Size{
+    type Target = Size;
+
+    fn parse(p: &mut Parser<Token>) -> terl::Result<Self::Target, ParseError> {
+        let token =p.parse::<Token>()?;
+        let size = match token.parse::<usize>(){
+                Ok(num) => PU::new(token.get_span(),num),
+                Err(pe) => return token.unmatch(format!("expect a number, but got `{}` while parsing",pe)),
+            };
+        Ok(Self { size })
+    }
+}
 /// Decorators
 #[derive(Debug, Clone, Copy)]
 pub struct TypeArrayExtend {
     pub keyword: PU<BasicExtenWord>,
-    pub size: Option<PU<usize>>,
+    pub size: Option<Size>,
 }
 
-impl ParseUnit for TypeArrayExtend {
+impl ParseUnit<Token> for TypeArrayExtend {
     type Target = TypeArrayExtend;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = p.match_(BasicExtenWord::Array)?;
-        let size = p.parse::<usize>().r#try()?;
-        p.finish(TypeArrayExtend { keyword, size })
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let keyword = p.match_(RPU(BasicExtenWord::Array))?;
+        let size = p.parse::<Size>().apply(mapper::Try)?;
+        Ok(TypeArrayExtend { keyword, size })
     }
 }
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
-pub struct TypeReferenceExtend {
-    pub keyword: BasicExtenWord,
-}
+pub struct TypeReferenceExtend;
 
-impl ParseUnit for TypeReferenceExtend {
+impl ParseUnit<Token> for TypeReferenceExtend {
     type Target = TypeReferenceExtend;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = p.match_(BasicExtenWord::Reference)?.take();
-        p.finish(TypeReferenceExtend { keyword })
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        p.match_(BasicExtenWord::Reference)?;
+        Ok(TypeReferenceExtend)
     }
 }
 
 /// Decorators
 #[derive(Debug, Clone, Copy)]
-pub struct TypePointerExtend {
-    pub keyword: BasicExtenWord,
-}
+pub struct TypePointerExtend;
 
-impl ParseUnit for TypePointerExtend {
+impl ParseUnit<Token> for TypePointerExtend {
     type Target = TypePointerExtend;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = p.match_(BasicExtenWord::Pointer)?.take();
-        p.finish(TypePointerExtend { keyword })
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        p.match_(BasicExtenWord::Pointer)?;
+        Ok(TypePointerExtend)
     }
 }
 
@@ -76,18 +106,18 @@ complex_pu! {
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeWidthExtend {
-    pub keyword: PU<BasicExtenWord>,
-    pub width: PU<usize>,
+    
+    pub width: Size,
 }
 
-impl ParseUnit for TypeWidthExtend {
+impl ParseUnit<Token> for TypeWidthExtend {
     type Target = TypeWidthExtend;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = p.match_(BasicExtenWord::Width)?;
-        let width = p.parse::<usize>()?;
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        p.match_(BasicExtenWord::Width)?;
+        let width = p.parse::<Size>().apply(mapper::MustMatch)?;
 
-        p.finish(TypeWidthExtend { keyword, width })
+        Ok(TypeWidthExtend {  width })
     }
 }
 
@@ -95,15 +125,14 @@ impl ParseUnit for TypeWidthExtend {
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeSignExtend {
-    pub keyword: PU<BasicExtenWord>,
     pub sign: bool,
 }
 
-impl ParseUnit for TypeSignExtend {
+impl ParseUnit<Token> for TypeSignExtend {
     type Target = TypeSignExtend;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let keyword = p.parse::<BasicExtenWord>()?;
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let keyword = p.parse::<PU<BasicExtenWord>>()?;
         let sign = match *keyword {
             BasicExtenWord::Signed => true,
             BasicExtenWord::Unsigned => false,
@@ -112,7 +141,7 @@ impl ParseUnit for TypeSignExtend {
             }
         };
 
-        p.finish(TypeSignExtend { keyword, sign })
+        Ok(TypeSignExtend { sign })
     }
 }
 
@@ -122,7 +151,7 @@ pub struct TypeDefine {
     pub decorators: Vec<PU<TypeDecorators>>,
     pub width: Option<PU<TypeWidthExtend>>,
     pub sign: Option<PU<TypeSignExtend>>,
-    pub ty: PU<Ident>,
+    pub ty: Ident,
 }
 
 impl TypeDefine {
@@ -141,7 +170,7 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
            float: width
         */
 
-        if &**def.ty == "zheng3" {
+        if &*def.ty == "zheng3" {
             // default to be i64
             let sign = def.sign.map(|pu| pu.sign).unwrap_or(true);
 
@@ -171,7 +200,7 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
                 _ => unreachable!(),
             };
             return Ok(ty.into());
-        } else if &**def.ty == "fu2" {
+        } else if &*def.ty == "fu2" {
             // default to be f32
             if let Some(sign) = def.sign {
                 return Err(
@@ -202,16 +231,16 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
         if let Some(sign) = def.sign {
             return Err(sign.make_error(format!(
                 "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                *def.ty
+                def.ty
             )));
         }
         if let Some(width) = def.width {
             return Err(width.make_error(format!(
                 "type `{}` with `you3fu2` or `wu2fu2` is not supperted now",
-                *def.ty
+                def.ty
             )));
         }
-        let ty = def.ty.take().0;
+        let ty = (*def.ty.0.string).clone();
 
         if def.const_.is_none() && def.decorators.is_empty() {
             return Ok(ComplexType::no_decorators(ty).into());
@@ -225,7 +254,7 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
         for decorator in def.decorators {
             let decorator = match decorator.take() {
                 crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
-                    Some(size) => crate::ir::TypeDecorators::SizedArray(size.take()),
+                    Some(size) => crate::ir::TypeDecorators::SizedArray(*size),
                     None => crate::ir::TypeDecorators::Array,
                 },
                 crate::parse::TypeDecorators::TypeReferenceExtend(_) => {
@@ -242,19 +271,19 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
     }
 }
 
-impl ParseUnit for TypeDefine {
+impl ParseUnit<Token> for TypeDefine {
     type Target = TypeDefine;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let const_ = p.parse::<TypeConstExtend>().r#try()?;
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let const_ = p.parse::<PU<TypeConstExtend>>().apply(mapper::Try)?;
         let mut decorators = vec![];
-        while let Some(decorator) = p.parse::<TypeDecorators>().r#try()? {
+        while let Some(decorator) = p.parse::<PU<TypeDecorators>>().apply(mapper::Try)? {
             decorators.push(decorator);
         }
-        let width = p.parse::<TypeWidthExtend>().r#try()?;
-        let sign = p.parse::<TypeSignExtend>().r#try()?;
+        let width = p.parse::<PU<TypeWidthExtend>>().apply(mapper::Try)?;
+        let sign = p.parse::<PU<TypeSignExtend>>().apply(mapper::Try)?;
         let ty = p.parse::<Ident>()?;
-        p.finish(TypeDefine {
+        Ok(TypeDefine {
             const_,
             decorators,
             width,

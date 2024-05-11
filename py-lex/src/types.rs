@@ -1,4 +1,4 @@
-terl::keywords! {
+crate::front_parse_keywords! {
     // keywords PrimitiveType {
     //     "zheng3" -> Integer,
     //     "fu2"    -> Float,

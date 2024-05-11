@@ -6,7 +6,7 @@ pub struct OverloadIndex(pub usize);
 
 use std::{any::Any, rc::Rc};
 
-use py_ir::ir::TypeDefine;
+use py_ir::TypeDefine;
 
 use crate::defs::FnSignWithName;
 

@@ -8,7 +8,21 @@ pub trait ExtendTuple {
 }
 
 pub trait ParseMapper<P> {
-    fn mapper(self, result: Result<P, ParseError>) -> Result<P, ParseError>;
+    type Result;
+    fn map(self, result: Result<P, ParseError>) -> Self::Result;
+}
+
+pub trait ResultMapperExt<P> {
+    type Result<Mapper: ParseMapper<P>>;
+    fn apply<M: ParseMapper<P>>(self, mapper: M) -> Self::Result<M>;
+}
+
+impl<P> ResultMapperExt<P> for Result<P, ParseError> {
+    type Result<Mapper: ParseMapper<P>> = Mapper::Result;
+
+    fn apply<M: ParseMapper<P>>(self, mapper: M) -> Self::Result<M> {
+        mapper.map(self)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -20,7 +34,9 @@ impl<P, M> ParseMapper<P> for MapError<M>
 where
     M: FnOnce(ParseError) -> ParseError,
 {
-    fn mapper(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
+    type Result = Result<P, ParseError>;
+
+    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         result.map_err(self.0)
     }
 }
@@ -38,7 +54,9 @@ where
 pub struct MustMatch;
 
 impl<P> ParseMapper<P> for MustMatch {
-    fn mapper(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
+    type Result = Result<P, ParseError>;
+
+    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         result.map_err(|e| {
             if e.kind() == ParseErrorKind::Unmatch {
                 e.to_error()
@@ -49,37 +67,37 @@ impl<P> ParseMapper<P> for MustMatch {
     }
 }
 
-pub struct MapMsg<S>(S)
+pub struct MapMsg<Msg>(pub Msg)
 where
-    S: ToString;
+    Msg: ToString;
 
-impl<P: ParseUnit<Src>, Src, S> ParseMapper<PU<P, Src>> for MapMsg<S>
+impl<P, Msg> ParseMapper<P> for MapMsg<Msg>
 where
-    S: ToString,
+    Msg: ToString,
 {
-    fn mapper(self, result: ParseResult<P, Src>) -> ParseResult<P, Src> {
+    type Result = Result<P, ParseError>;
+
+    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         result.map_err(|e| e.map(self.0))
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Equal<P: ParseUnit<S>, S, E>
-where
-    P::Target: PartialEq,
-    E: FnOnce(Span) -> ParseResult<P, S>,
-{
-    eq: P::Target,
+pub struct Equal<P, E> {
+    eq: P,
     or: E,
 }
 
-impl<P: ParseUnit<S>, S, E> ParseMapper<PU<P, S>> for Equal<P, S, E>
+impl<P, E> ParseMapper<P> for Equal<P, E>
 where
-    P::Target: PartialEq,
-    E: FnOnce(Span) -> ParseResult<P, S>,
+    P: PartialEq + WithSpan,
+    E: FnOnce(Span) -> Result<P, ParseError>,
 {
-    fn mapper(self, result: ParseResult<P, S>) -> ParseResult<P, S> {
+    type Result = Result<P, ParseError>;
+
+    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         let result = result?;
-        if *result == self.eq {
+        if result == self.eq {
             Ok(result)
         } else {
             (self.or)(result.get_span())
@@ -87,32 +105,35 @@ where
     }
 }
 
-impl<P: ParseUnit<S>, S, E> Equal<P, S, E>
+impl<P, E> Equal<P, E>
 where
-    P::Target: PartialEq,
-    E: FnOnce(Span) -> ParseResult<P, S>,
+    P: PartialEq + WithSpan,
+    E: FnOnce(Span) -> Result<P, ParseError>,
 {
-    pub fn new(eq: P::Target, or: E) -> Self {
+    pub fn new(eq: P, or: E) -> Self {
         Self { eq, or }
     }
 }
 
-pub struct Satisfy<P: ParseUnit<S>, S, C, E>
+pub struct Satisfy<P, C, E>
 where
-    C: FnOnce(&P::Target) -> bool,
-    E: FnOnce(Span) -> ParseResult<P, S>,
+    C: FnOnce(&P) -> bool,
+    E: FnOnce(Span) -> Result<P, ParseError>,
 {
     cond: C,
     or: E,
-    _p: PhantomData<(P, S)>,
+    _p: PhantomData<P>,
 }
 
-impl<P: ParseUnit<S>, S, C, E> ParseMapper<PU<P, S>> for Satisfy<P, S, C, E>
+impl<P, C, E> ParseMapper<P> for Satisfy<P, C, E>
 where
-    C: FnOnce(&P::Target) -> bool,
-    E: FnOnce(Span) -> ParseResult<P, S>,
+    P: WithSpan,
+    C: FnOnce(&P) -> bool,
+    E: FnOnce(Span) -> Result<P, ParseError>,
 {
-    fn mapper(self, result: ParseResult<P, S>) -> ParseResult<P, S> {
+    type Result = Result<P, ParseError>;
+
+    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         let result = result?;
         if (self.cond)(&result) {
             Ok(result)
@@ -122,16 +143,40 @@ where
     }
 }
 
-impl<P: ParseUnit<S>, S, C, E> Satisfy<P, S, C, E>
+impl<P, C, E> Satisfy<P, C, E>
 where
-    C: FnOnce(&P::Target) -> bool,
-    E: FnOnce(Span) -> ParseResult<P, S>,
+    C: FnOnce(&P) -> bool,
+    E: FnOnce(Span) -> Result<P, ParseError>,
 {
     pub fn new(cond: C, or: E) -> Self {
         Self {
             cond,
             or,
             _p: PhantomData,
+        }
+    }
+}
+
+/// try to parse
+///
+/// * [`ParseErrorKind::Unmatch`] will be transformed into [`None`],
+///
+/// * [`ParseErrorKind::Semantic`] will still be [`Err`]
+///
+/// * otherwith, [`Ok`] with [`Some`] in will be return
+///
+/// so that you can use `?` as usual after using match / if let ~
+pub struct Try;
+
+impl<P> ParseMapper<P> for Try {
+    type Result = Result<Option<P>, ParseError>;
+
+    #[inline]
+    fn map(self, result: Result<P, ParseError>) -> Result<Option<P>, ParseError> {
+        match result {
+            Ok(p) => Ok(Some(p)),
+            Err(e) if e.kind() == ParseErrorKind::Unmatch => Ok(None),
+            Err(e) => Err(e),
         }
     }
 }
@@ -149,7 +194,9 @@ impl<P, M> ParseMapper<P> for Custom<P, M>
 where
     M: FnOnce(Result<P, ParseError>) -> Result<P, ParseError>,
 {
-    fn mapper(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
+    type Result = Result<P, ParseError>;
+
+    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         (self.mapper)(result)
     }
 }

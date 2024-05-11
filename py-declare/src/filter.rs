@@ -64,7 +64,7 @@ pub mod filters {
 
     use std::any::TypeId;
 
-    use py_ir::ir::TypeDefine;
+    use py_ir::TypeDefine;
 
     use crate::{Directly, Overload};
 

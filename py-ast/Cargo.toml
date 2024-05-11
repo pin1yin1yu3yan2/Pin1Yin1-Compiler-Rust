@@ -5,6 +5,10 @@ edition = "2021"
 
 [dependencies]
 terl = { path = "../terl" }
-py-ir = { path = "../py-ir", features = ["parser"] }
+py-ir = { path = "../py-ir" }
+py-lex = { path = "../py-lex" }
 py-declare = { path = "../py-declare" }
 either = { workspace = true }
+
+[dev-dependencies]
+terl = { path = "../terl", features = ["parser_calling_tree"] }

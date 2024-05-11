@@ -1,34 +1,4 @@
 use crate::*;
 
-pub type ParseResult<P, S = char> = Result<PU<P, S>, ParseError>;
+pub type ParseResult<P, S> = Result<<P as ParseUnit<S>>::Target, ParseError>;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-/// we use this trait to make the [`Result`] type more convenient
-pub trait ResultExt<P> {
-    type TryResult;
-
-    /// try to parse, mean that [`ParseErrorKind::Semantic`] is allowed
-    ///
-    /// in this case, [`ParseErrorKind::Semantic`] will be transformed into [`ParseErrorKind::Unmatch`]
-    ///
-    /// so that you can use `?` as usual after using match / if let ~
-    fn r#try(self) -> Self::TryResult;
-
-    fn apply(self, mapper: impl ParseMapper<P>) -> Self;
-}
-
-impl<P: ParseUnit<S>, S> ResultExt<PU<P, S>> for ParseResult<P, S> {
-    type TryResult = Result<Option<PU<P, S>>, ParseError>;
-
-    fn r#try(self) -> Self::TryResult {
-        match self {
-            Ok(pu) => Ok(Some(pu)),
-            Err(e) if e.kind() == ParseErrorKind::Unmatch => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn apply(self, mapper: impl ParseMapper<PU<P, S>>) -> Self {
-        mapper.mapper(self)
-    }
-}

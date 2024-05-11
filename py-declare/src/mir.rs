@@ -5,7 +5,8 @@ pub trait IntoIR {
 
 pub mod mir_variable {
     use crate::{benches, BenchBuilder, DeclareMap, UndeclaredTy};
-    use py_ir::ir::{self, Literal};
+    use py_ir as ir;
+    use py_ir::Literal;
 
     use super::IntoIR;
 
@@ -35,7 +36,7 @@ pub mod mir_variable {
         pub ty: UndeclaredTy,
     }
 
-    impl ir::IRVariable for Variable {
+    impl py_ir::IRVariable for Variable {
         type ComputeType = UndeclaredTy;
         type VarDefineType = UndeclaredTy;
         type FnDefineType = ir::TypeDefine;
@@ -52,7 +53,7 @@ pub mod mir_variable {
         }
 
         pub fn literal_benches(var: &Literal) -> Vec<BenchBuilder> {
-            use py_ir::ir::PrimitiveType;
+            use py_ir::PrimitiveType;
             match var {
                 Literal::Char(_) => benches! {() =>  PrimitiveType::char()},
                 // String: greatly in processing...
@@ -110,7 +111,7 @@ mod into_ir_impls {
     use super::IntoIR;
     use super::Variable as MirVariable;
     use crate::DeclareMap;
-    use py_ir::ir::*;
+    use py_ir::*;
 
     impl IntoIR for Item<MirVariable> {
         type Forward = Item<Variable>;

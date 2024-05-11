@@ -1,4 +1,4 @@
-terl::keywords! {
+crate::reverse_parse_keywords! {
     keywords StructsDefinition {
         "lei4"     -> Classs,
         "mei2"     -> Enum,
@@ -9,13 +9,13 @@ terl::keywords! {
         "ya1"    -> FnCallL,
         "ru4"    -> FnCallR,
 
-        // "jie2"   -> BracketL,
+        "jie2"   -> BracketL,
         "he2"    -> BracketR,
 
         "han2"   -> Block,
         "can1"   -> Parameter,
         "shi4"   -> Comment,
-        "jie2"   -> Jie2,
+        "jie2"   -> EndOfBlock,
 
         "fen1"   -> Semicolon,
         "wei2"   -> Assign,

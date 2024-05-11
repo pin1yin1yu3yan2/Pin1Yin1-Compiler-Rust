@@ -1,67 +1,51 @@
-macro_rules! keywords {
-    ($(
-        $(#[$metas:meta])*
-        keywords $enum_name:ident
-        { $(
-            $string:literal -> $var:ident,
-        )*}
-    )*) => {
-        $(
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        $(#[$metas])*
-        pub enum $enum_name {
-            $(
-                $var,
-            )*
-        }
-
-        impl std::fmt::Display for $enum_name {
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-                match self {
-                    $(Self::$var => write!(f, "{}", $string),)*
-                }
-            }
-        }
-
-        #[cfg(feature= "parser")]
-        impl terl::ParseUnit for $enum_name {
+#[macro_export]
+macro_rules! parse_unit_impl {
+    ($enum_name:ident {
+        $($string:literal -> $var:ident,)*
+    }) => {
+        #[cfg(feature = "parse")]
+        impl terl::ParseUnit<$crate::Token> for $enum_name {
             type Target = $enum_name;
 
-            fn parse(p: &mut terl::Parser) -> terl::ParseResult<Self> {
+            fn parse(p: &mut terl::Parser<$crate::Token>) -> terl::ParseResult<Self, $crate::Token> {
                 use std::collections::HashMap;
-                use terl::WithSpan;
+                use terl::WithSpanExt;
 
                 thread_local! {
-                    static MAP: HashMap<Vec<char>, $enum_name> = {
-                        let mut _map = HashMap::new();
+                    static MAP: HashMap<&'static str, $enum_name> = {
+                        let mut map = HashMap::new();
                         $(
-                            _map.insert($string.chars().collect::<Vec<_>>(), $enum_name::$var);
+                            if let Some(previous) = map.get($string) {
+                                panic!("conflicting: both `{}` and `{}` are `{}`",
+                                    $enum_name::$var, previous, $string
+                                );
+                            }
+                            map.insert($string, $enum_name::$var);
                         )*
-                        _map
+                        map
                     };
                 }
 
+                // use peek here to avoid mutable borrow
+                let Some(next) = p.peek() else {
+                    let msg = format!("expect a `{}`, but there are no token left", stringify!($enum_name));
+                    return p.unmatch(msg)
+                };
 
-                let s = p.get_chars()?;
-                let s = &**s;
-                let opt = MAP.with(|map| map.get(s).copied()).map(|t| p.make_pu(t));
 
-                let error = || p.make_parse_error(format!("non of {} matched", stringify!($enum_name)),terl::ParseErrorKind::Unmatch);
-                opt.ok_or_else(error)
+                match MAP.with(|map| map.get(&**next).copied()) {
+                    Some(item) => {
+                        // and use next here to actually use a token
+                        p.next();
+                        Ok(item)
+                    },
+                    None => {
+                        p.unmatch(
+                            format!("{} matched non of {}", &**next , stringify!($enum_name)),
+                        )
+                    }
+                }
             }
-        }
-
-        )*
-
-
-        thread_local! {
-            pub static KEPPING_KEYWORDS: std::collections::HashSet<Vec<char>> = {
-                let mut set = std::collections::HashSet::<Vec<char>>::default();
-                $($(
-                    set.insert($string.chars().collect::<Vec<_>>());
-                )*)*
-                set
-            };
         }
     };
 }
@@ -89,11 +73,19 @@ macro_rules! operators {
             $($sub_class,)*
         }
 
-        keywords! {
+        $crate::reverse_parse_keywords! {
             $(#[$metas])*
             keywords Operators {
                 $(
                     $($string -> $var,)*
+                )*
+            }
+        }
+
+        parse_unit_impl!{
+            Operators {
+                $(
+                $($string -> $var,)*
                 )*
             }
         }
@@ -127,13 +119,15 @@ macro_rules! operators {
         pub mod sub_classes {
             use super::*;
 
-            keywords! {
+            $crate::reverse_parse_keywords! {
                 $(
                 keywords $sub_class {
                     $($string -> $var,)*
                 }
                 )*
             }
+
+
 
             $(
             impl From<$sub_class> for Operators {

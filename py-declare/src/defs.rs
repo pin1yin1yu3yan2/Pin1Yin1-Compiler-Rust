@@ -1,5 +1,5 @@
 use crate::*;
-use py_ir::ir::TypeDefine;
+use py_ir::TypeDefine;
 use std::collections::HashMap;
 use terl::Span;
 
@@ -43,7 +43,7 @@ impl FnSigns {
     }
 
     pub fn new_with_main() -> Self {
-        use py_ir::ir::PrimitiveType;
+        use py_ir::PrimitiveType;
         let mut s = Self::default();
         let main_sign = defs::FnSign {
             retty_span: Span::new(0, 0),
@@ -140,7 +140,7 @@ impl std::fmt::Display for FnSignWithName {
     }
 }
 
-pub type Parameter = py_ir::ir::Parameter<TypeDefine>;
+pub type Parameter = py_ir::Parameter<TypeDefine>;
 
 #[derive(Debug, Clone)]
 pub struct VarDef {

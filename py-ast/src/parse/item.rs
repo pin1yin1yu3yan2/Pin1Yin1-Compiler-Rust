@@ -1,25 +1,22 @@
 use super::*;
-use crate::lex::syntax::Symbol;
+use py_lex::syntax::Symbol;
 
 #[derive(Debug, Clone)]
 pub struct Comment;
 
-impl ParseUnit for Comment {
+impl ParseUnit<Token> for Comment {
     type Target = Comment;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         p.match_(Symbol::Comment)?;
 
         loop {
-            let str = p.get_chars()?;
+            let str = p
+                .parse::<Token>()
+                .apply(mapper::MapMsg("comment without end"))?;
 
-            if str.is_empty() {
-                return p.throw("comment without end");
-            }
-
-            const JIE2: &[char] = &['j', 'i', 'e', '2'];
-            if *str == JIE2 {
-                return p.finish(Comment {});
+            if &*str == "jie2" {
+                return Ok(Comment {});
             }
         }
     }
@@ -27,25 +24,29 @@ impl ParseUnit for Comment {
 
 #[derive(Debug, Clone)]
 pub struct FnDefine {
-    pub ty: PU<types::TypeDefine>,
-    pub name: PU<Ident>,
-    pub params: PU<Parameters>,
-    pub codes: PU<CodeBlock>,
+    pub ty: types::TypeDefine,
+    pub retty_span: Span,
+    pub sign_span: Span,
+    pub name: Ident,
+    pub params: Parameters,
+    pub codes: CodeBlock,
 }
 
-impl ParseUnit for FnDefine {
+impl ParseUnit<Token> for FnDefine {
     type Target = FnDefine;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ty = p.parse()?;
-        let name = p.parse()?;
-        let params = p.parse()?;
-        let codes = p.parse().apply(MustMatch)?;
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let ty = p.parse::<PU<types::TypeDefine>>()?;
+        let name = p.parse::<Ident>()?;
+        let params = p.parse::<PU<Parameters>>()?;
+        let codes = p.parse::<CodeBlock>().apply(mapper::MustMatch)?;
 
-        p.finish(Self {
-            ty,
+        Ok(Self {
+            retty_span: ty.get_span(),
+            sign_span: ty.get_span().merge(params.get_span()),
+            ty: ty.take(),
             name,
-            params,
+            params: params.take(),
             codes,
         })
     }
@@ -53,20 +54,20 @@ impl ParseUnit for FnDefine {
 
 #[derive(Debug, Clone)]
 pub struct CodeBlock {
-    pub stmts: Vec<PU<Statement>>,
+    pub stmts: Vec<Statement>,
 }
 
-impl ParseUnit for CodeBlock {
+impl ParseUnit<Token> for CodeBlock {
     type Target = CodeBlock;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         p.match_(Symbol::Block)?;
         let mut stmts = vec![];
-        while let Some(stmt) = p.parse().r#try()? {
+        while let Some(stmt) = p.parse::<Statement>().apply(mapper::Try)? {
             stmts.push(stmt)
         }
-        p.match_(Symbol::Jie2)?;
-        p.finish(Self { stmts })
+        p.match_(Symbol::EndOfBlock)?;
+        Ok(Self { stmts })
     }
 }
 

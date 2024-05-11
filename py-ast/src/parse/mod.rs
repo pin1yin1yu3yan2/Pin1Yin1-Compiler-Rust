@@ -1,3 +1,4 @@
+use py_lex::*;
 use terl::*;
 type Result<T> = terl::Result<T, terl::ParseError>;
 
@@ -16,7 +17,7 @@ pub use syntax::*;
 pub use types::*;
 
 #[derive(Debug, Clone)]
-pub struct Ident(pub String);
+pub struct Ident(Token);
 
 impl std::ops::Deref for Ident {
     type Target = str;
@@ -38,21 +39,19 @@ impl PartialEq<str> for Ident {
     }
 }
 
-impl ParseUnit for Ident {
+impl ParseUnit<Token> for Ident {
     type Target = Ident;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let ident = p.get_chars()?;
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let Some(token) = p.next() else {
+            return p.unmatch("expect a `Ident`, but no token left");
+        };
 
-        if ident.is_empty() {
-            return p.unmatch("empty ident!");
-        }
-        if ident[0].is_ascii_digit() {
-            return p.unmatch("bad ident!");
+        if token.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            return p.unmatch("bad ident! ident should not start with a digit");
         }
 
-        use crate::lex::*;
-        use py_ir::ops;
+        use py_lex::*;
 
         let keeps = &[
             ops::KEPPING_KEYWORDS,
@@ -63,25 +62,61 @@ impl ParseUnit for Ident {
         ];
 
         for keeps in keeps {
-            if keeps.with(|keeps| keeps.contains(*ident)) {
+            if keeps.with(|keeps| keeps.contains(&**token)) {
                 return p.unmatch("keeping keywords could not be ident");
             }
         }
 
         // keeping keywords cant be used as identifiers
-
-        let t = Ident(ident.iter().collect());
-        p.finish(t)
+        Ok(Ident(token.clone()))
     }
 }
 
-pub fn do_parse(parser: &mut Parser) -> Result<Vec<PU<Item>>> {
-    let mut stmts = vec![];
-    while let Some(item) = parser.parse::<Item>().r#try()? {
-        stmts.push(item);
-    }
+/// use to define a complex parse unit which could be one of its variants
+#[macro_export]
+macro_rules! complex_pu {
+    (
+        $(#[$metas:meta])*
+        cpu $enum_name:ident {
+        $(
+            $(#[$v_metas:meta])*
+            $variant:ident
+        ),*
+    }) => {
+        #[derive(Debug, Clone)]
+        $(#[$metas])*
+        pub enum $enum_name {
+            $(
+                $(#[$v_metas])*
+                $variant($variant),
+            )*
+        }
 
-    Result::Ok(stmts)
+        $(
+        impl From<$variant> for $enum_name {
+             fn from(v: $variant) -> $enum_name {
+                <$enum_name>::$variant(v)
+            }
+        }
+        )*
+
+
+        impl terl::ParseUnit<py_lex::Token> for $enum_name {
+            type Target = $enum_name;
+
+            fn parse(p: &mut terl::Parser<py_lex::Token>) -> terl::ParseResult<Self, py_lex::Token>
+            {
+                terl::Try::<$enum_name, _>::new(p)
+                $(
+                .or_try::<Self, _>(|p| {
+                    p.once_no_try::<$variant ,_>($variant::parse)
+                        .map(<$enum_name>::$variant)
+                })
+                )*
+                .finish()
+            }
+        }
+    };
 }
 
 #[cfg(test)]
@@ -93,7 +128,7 @@ mod tests {
     #[test]
     fn good_ident() {
         parse_test("*)(&%^&*a(*&^%", |p| {
-            assert!((p.parse::<Ident>()).is_ok());
+            assert!(p.parse::<Ident>().is_ok());
         })
     }
 
@@ -106,12 +141,8 @@ mod tests {
 
     #[test]
     fn e4chou4de1_ident() {
-        fn is_e4chou4de1<P: ParseUnit>(r: ParseResult<P>) -> bool {
-            r.is_err()
-        }
-
         parse_test("114514", |p| {
-            assert!(is_e4chou4de1(p.parse::<Ident>()));
+            assert!(p.parse::<Ident>().is_err());
         })
     }
 
@@ -120,11 +151,11 @@ mod tests {
         parse_test("a b", |p| {
             let a = p.parse::<Ident>();
             assert!(a.is_ok());
-            assert_eq!(a.unwrap().0, "a");
+            assert_eq!(&a.unwrap(), "a");
 
             let b = p.parse::<Ident>();
             assert!(b.is_ok());
-            assert_eq!(b.unwrap().0, "b");
+            assert_eq!(&b.unwrap(), "b");
         })
     }
 }

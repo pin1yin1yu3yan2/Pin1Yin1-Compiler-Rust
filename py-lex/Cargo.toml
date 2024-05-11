@@ -1,0 +1,17 @@
+[package]
+name = "py-lex"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+terl = { path = "../terl", optional = true }
+serde = { workspace = true }
+
+[features]
+default = ["parse", "ops", "preprocess", "syntax", "types"]
+
+parse = ["terl"]
+ops = []
+preprocess = []
+syntax = []
+types = []

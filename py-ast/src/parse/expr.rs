@@ -1,15 +1,17 @@
-use py_ir::ops::Operators;
+use py_lex::{
+    ops::{OperatorAssociativity, Operators},
+    syntax::*,
+};
 
 use super::*;
-use crate::{complex_pu, lex::syntax::Symbol, ops::OperatorAssociativity};
+use crate::complex_pu;
 
 #[derive(Debug, Clone)]
 pub struct CharLiteral {
-    pub unparsed: PU<String>,
     pub parsed: char,
 }
 
-fn escape(src: &PU<String>, c: char) -> Result<char> {
+fn escape(src: &Token, c: char) -> Result<char> {
     Result::Ok(match c {
         '_' => '_',
         't' => '\t',
@@ -19,14 +21,14 @@ fn escape(src: &PU<String>, c: char) -> Result<char> {
     })
 }
 
-impl ParseUnit for CharLiteral {
+impl ParseUnit<Token> for CharLiteral {
     type Target = CharLiteral;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         p.match_(Symbol::Char)?;
-        let unparsed = p.parse::<String>()?;
+        let unparsed = p.parse::<Token>()?;
         if !(unparsed.len() == 1 || unparsed.len() == 2 && unparsed.starts_with('_')) {
-            return unparsed.throw(format!("Invalid CharLiteral {}", *unparsed));
+            return unparsed.throw(format!("Invalid CharLiteral {}", unparsed));
         }
         let parsed = if unparsed.len() == 1 {
             unparsed.as_bytes()[0] as char
@@ -34,22 +36,21 @@ impl ParseUnit for CharLiteral {
             escape(&unparsed, unparsed.as_bytes()[1] as _)?
         };
 
-        p.finish(CharLiteral { unparsed, parsed })
+        Ok(CharLiteral { parsed })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct StringLiteral {
-    pub unparsed: PU<String>,
     pub parsed: String,
 }
 
-impl ParseUnit for StringLiteral {
+impl ParseUnit<Token> for StringLiteral {
     type Target = StringLiteral;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         p.match_(Symbol::String)?;
-        let unparsed = p.parse::<String>()?;
+        let unparsed = p.parse::<Token>()?;
 
         let mut next_escape = false;
         let mut parsed = String::new();
@@ -67,7 +68,7 @@ impl ParseUnit for StringLiteral {
             return unparsed.throw("Invalid escape! maybe you losted a character");
         }
 
-        p.finish(StringLiteral { unparsed, parsed })
+        Ok(StringLiteral { parsed })
     }
 }
 
@@ -77,65 +78,55 @@ pub enum NumberLiteral {
     Digit { number: usize },
 }
 
-impl ParseUnit for NumberLiteral {
+impl ParseUnit<Token> for NumberLiteral {
     type Target = NumberLiteral;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let number = *p.parse::<usize>()?; // digit
-        if p.once(|p| p.match_('.')).is_ok() {
-            let decimal = p.parse::<usize>().r#try()?.map(|t| *t).unwrap_or(0);
-            let decimal = if decimal == 0 {
-                0.0
-            } else {
-                let decimal = decimal as f64;
-                decimal / 10f64.powi(decimal.log10().ceil() as _)
-            };
-            p.finish(NumberLiteral::Float {
-                number: number as f64 + decimal,
-            })
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let number = p.parse::<Token>()?; // digit
+        if let Ok(number) = number.parse::<usize>() {
+            Ok(Self::Digit { number })
         } else {
-            p.finish(NumberLiteral::Digit { number })
+            match number.parse::<f64>() {
+                Ok(number) => Ok(Self::Float { number }),
+                Err(fe) => p.unmatch(fe),
+            }
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct FnCallArgs {
-    pub args: Vec<PU<Expr>>,
-    pub semicolons: Vec<Span>,
+    pub args: Vec<Expr>,
 }
 
 impl std::ops::Deref for FnCallArgs {
-    type Target = Vec<PU<Expr>>;
+    type Target = Vec<Expr>;
 
     fn deref(&self) -> &Self::Target {
         &self.args
     }
 }
 
-impl ParseUnit for FnCallArgs {
+impl ParseUnit<Token> for FnCallArgs {
     type Target = FnCallArgs;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         p.match_(Symbol::FnCallL)?;
-        let Some(arg) = p.parse::<Expr>().r#try()? else {
-            p.match_(Symbol::FnCallR).apply(MustMatch)?;
-            return p.finish(FnCallArgs {
-                args: vec![],
-                semicolons: vec![],
-            });
+        let Some(arg) = p.parse::<Expr>().apply(mapper::Try)? else {
+            p.match_(Symbol::FnCallR).apply(mapper::MustMatch)?;
+            return Ok(FnCallArgs { args: vec![] });
         };
 
         let mut args = vec![arg];
-        let mut semicolons = vec![];
 
-        while let Some(semicolon) = p.match_(Symbol::Semicolon).r#try()? {
-            semicolons.push(semicolon.get_span());
+        while p.match_(Symbol::Semicolon).is_ok() {
             args.push(p.parse::<Expr>()?);
         }
 
-        p.match_(Symbol::FnCallR).apply(MustMatch)?;
-        p.finish(FnCallArgs { args, semicolons })
+        dbg!(&args);
+        p.match_(Symbol::FnCallR).apply(mapper::MustMatch)?;
+
+        Ok(FnCallArgs { args })
     }
 }
 
@@ -144,34 +135,45 @@ pub struct Initialization {
     pub args: Vec<PU<AtomicExpr>>,
 }
 
-impl ParseUnit for Initialization {
+impl ParseUnit<Token> for Initialization {
     type Target = Initialization;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         p.match_(Symbol::Block)?;
         let mut args = vec![];
-        while let Some(expr) = p.parse::<AtomicExpr>().r#try()? {
+        while let Some(expr) = p.parse::<PU<AtomicExpr>>().apply(mapper::Try)? {
             args.push(expr);
         }
-        p.match_(Symbol::Jie2).apply(MustMatch)?;
-        p.finish(Initialization { args })
+        p.match_(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
+        Ok(Initialization { args })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct FnCall {
-    pub fn_name: PU<Ident>,
-    pub args: PU<FnCallArgs>,
+    span: Span,
+    pub fn_name: Ident,
+    pub args: FnCallArgs,
 }
 
-impl ParseUnit for FnCall {
+impl WithSpan for FnCall {
+    fn get_span(&self) -> Span {
+        self.span
+    }
+}
+
+impl ParseUnit<Token> for FnCall {
     type Target = FnCall;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         let args = p.parse::<FnCallArgs>()?;
         let fn_name = p.parse::<Ident>()?;
 
-        p.finish(FnCall { fn_name, args })
+        Ok(FnCall {
+            fn_name,
+            args,
+            span: p.get_span(),
+        })
     }
 }
 
@@ -184,33 +186,33 @@ pub struct UnaryExpr {
     pub expr: Box<PU<AtomicExpr>>,
 }
 
-impl ParseUnit for UnaryExpr {
+impl ParseUnit<Token> for UnaryExpr {
     type Target = UnaryExpr;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let operator = p.parse::<Operators>()?;
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let operator = p.parse::<PU<Operators>>()?;
         if operator.associativity() != OperatorAssociativity::Unary {
             return operator.throw("unary expr must start with an unary operator!");
         }
-        let expr = Box::new(p.parse::<AtomicExpr>().apply(MustMatch)?);
-        p.finish(UnaryExpr { operator, expr })
+        let expr = Box::new(p.parse::<PU<AtomicExpr>>().apply(mapper::MustMatch)?);
+        Ok(UnaryExpr { operator, expr })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct BracketExpr {
-    pub expr: Box<PU<Expr>>,
+    pub expr: Box<Expr>,
 }
 
-impl ParseUnit for BracketExpr {
+impl ParseUnit<Token> for BracketExpr {
     type Target = BracketExpr;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        p.match_(Symbol::Jie2)?;
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        p.match_(Symbol::BracketL)?;
         let expr = Box::new(p.parse::<Expr>()?);
-        p.match_(Symbol::BracketR).apply(MustMatch)?;
+        p.match_(Symbol::BracketR).apply(mapper::MustMatch)?;
 
-        p.finish(BracketExpr { expr })
+        Ok(BracketExpr { expr })
     }
 }
 
@@ -229,25 +231,47 @@ complex_pu! {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Atomic(AtomicExpr),
-    Binary(Box<PU<Expr>>, PU<Operators>, Box<PU<Expr>>),
+    Atomic(PU<AtomicExpr>),
+    Binary(Box<Expr>, PU<Operators>, Box<Expr>),
 }
 
-pub trait AsExpr {
-    fn as_expr(&self) -> Expr;
+impl Expr {
+    #[inline]
+    fn get_l_span(&self) -> Span {
+        match self {
+            Expr::Atomic(l) => l.get_span(),
+            Expr::Binary(l, _, _) => l.get_span(),
+        }
+    }
 
-    // fn ty(&self, state: &mut GLobalScope) -> usize;
+    #[inline]
+    fn get_r_span(&self) -> Span {
+        match self {
+            Expr::Atomic(r) => r.get_span(),
+            Expr::Binary(_, _, r) => r.get_span(),
+        }
+    }
 }
 
-impl ParseUnit for Expr {
+impl WithSpan for Expr {
+    #[inline]
+    fn get_span(&self) -> Span {
+        match self {
+            Expr::Atomic(atomic) => atomic.get_span(),
+            Expr::Binary(l, _, r) => l.get_l_span().merge(r.get_r_span()),
+        }
+    }
+}
+
+impl ParseUnit<Token> for Expr {
     type Target = Expr;
 
-    fn parse(p: &mut Parser) -> ParseResult<Self> {
-        let mut exprs = vec![p.parse::<AtomicExpr>()?.map::<Expr, _>(Expr::Atomic)];
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let mut exprs = vec![p.parse::<PU<AtomicExpr>>().map(Expr::Atomic)?];
         let mut ops = vec![];
 
-        let get_binary = |p: &mut Parser| {
-            let operator = p.parse::<Operators>()?;
+        let get_binary = |p: &mut Parser<Token>| {
+            let operator = p.parse::<PU<Operators>>()?;
             if operator.associativity() != OperatorAssociativity::Binary {
                 operator.throw("atomic exprs must be connected with binary operators!")
             } else {
@@ -255,10 +279,10 @@ impl ParseUnit for Expr {
             }
         };
 
-        while let Some(op) = p.once(get_binary).r#try()? {
-            let expr = p.parse::<AtomicExpr>()?.map(Expr::Atomic);
+        while let Some(op) = p.once::<PU<Operators>, _>(get_binary).apply(mapper::Try)? {
+            let expr = p.parse::<PU<AtomicExpr>>().map(Expr::Atomic)?;
 
-            if ops
+            while ops
                 .last()
                 .is_some_and(|p: &PU<Operators>| p.priority() <= op.priority())
             {
@@ -266,10 +290,7 @@ impl ParseUnit for Expr {
                 let op = ops.pop().unwrap();
                 let lhs = Box::new(exprs.pop().unwrap());
 
-                let span = lhs.get_span().merge(rhs.get_span());
-
-                let binary = Expr::Binary(lhs, op, rhs);
-                exprs.push(PU::new(span, binary));
+                exprs.push(Expr::Binary(lhs, op, rhs));
             }
 
             exprs.push(expr);
@@ -281,14 +302,10 @@ impl ParseUnit for Expr {
             let op = ops.pop().unwrap();
             let lhs = Box::new(exprs.pop().unwrap());
 
-            let span = lhs.get_span().merge(rhs.get_span());
-
-            let binary = Expr::Binary(lhs, op, rhs);
-            exprs.push(PU::new(span, binary));
+            exprs.push(Expr::Binary(lhs, op, rhs));
         }
 
-        // what jb
-        p.finish(exprs.pop().unwrap().take())
+        Ok(exprs.pop().unwrap())
     }
 }
 

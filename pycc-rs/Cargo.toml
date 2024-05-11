@@ -9,6 +9,7 @@ edition = "2021"
 serde_json = { workspace = true }
 either = { workspace = true }
 terl = { path = "../terl", features = ["parser_calling_tree"] }
+py-ir = { path = "../py-ir" }
+py-lex = { path = "../py-lex" }
 py-ast = { path = "../py-ast" }
-py-ir = { path = "../py-ir", features = ["parser"] }
 inkwell = { version = "0.4.0", features = ["llvm17-0-prefer-dynamic"] }
