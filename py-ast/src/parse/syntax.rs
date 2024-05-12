@@ -85,6 +85,14 @@ pub struct Parameters {
     pub params: Vec<PU<Parameter>>,
 }
 
+impl std::ops::Deref for Parameters {
+    type Target = Vec<PU<Parameter>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.params
+    }
+}
+
 impl ParseUnit<Token> for Parameters {
     type Target = Parameters;
 

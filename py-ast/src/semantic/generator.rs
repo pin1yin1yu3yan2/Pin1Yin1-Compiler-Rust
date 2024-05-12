@@ -5,7 +5,7 @@ use either::Either;
 use py_declare::mir::IntoIR;
 use py_declare::*;
 use py_ir as ir;
-use py_lex::PU;
+use py_lex::{SharedString, PU};
 use terl::*;
 
 pub trait Generator<Item> {
@@ -29,19 +29,17 @@ impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
     type Forward = Result<ir::FnDefine<ir::Variable>, Either<Error, Vec<Error>>>;
 
     fn generate(&mut self, fn_define: &parse::FnDefine) -> Self::Forward {
-        let name = fn_define.name.to_string();
-
-        let ty = fn_define.ty.to_mir_ty().map_err(Either::Left)?;
+        let unmangled_name = fn_define.name.shared();
+        let retty = fn_define.ty.to_mir_ty().map_err(Either::Left)?;
 
         let params = fn_define
             .params
-            .params
             .iter()
             .try_fold(Vec::new(), |mut vec, pu| {
-                let ty = pu.ty.to_mir_ty()?;
-                let name = pu.name.to_string();
-                let param = defs::Parameter { name, ty };
-                vec.push(param);
+                vec.push(defs::Parameter {
+                    name: pu.name.shared(),
+                    ty: pu.ty.to_mir_ty()?,
+                });
                 Result::Ok(vec)
             })
             .map_err(Either::Left)?;
@@ -49,65 +47,70 @@ impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
         let fn_sign = defs::FnSign {
             retty_span: fn_define.retty_span,
             sign_span: fn_define.sign_span,
-            ty: ty.clone(),
+            ty: retty.clone(),
             params: params.clone(),
         };
 
-        let mangled_fn_name = self.mangler.mangle_fn(&fn_define.name, &fn_sign);
-        if let Some(previous) = self.defs.try_get_mangled(&mangled_fn_name) {
-            let previous_define = previous
-                .sign_span
-                .make_message(format!("funcion {} has been definded here", name));
-            let mut err = fn_sign
-                .sign_span
-                .make_error(format!("double define for function {}", name))
-                .append(previous_define);
-            if previous.ty == fn_sign.ty {
-                err += format!("note: if you want to overload funcion {}, you can define them with different parameters",name)
-            } else {
-                err += "note: overload which only return type is differnet is not allowed";
-                err += format!("note: if you want to overload funcion {}, you can define them with different parameters",name);
-            }
-            return Err(Either::Left(err));
-        }
+        let mangled_name = {
+            let mangled_name =
+                SharedString::from(self.mangler.mangle_fn(&fn_define.name, &fn_sign));
 
-        let fn_scope = FnScope::new(
-            &mangled_fn_name,
-            fn_define
-                .params
-                .params
-                .iter()
-                .zip(fn_sign.params.iter())
-                .map(|(raw, param)| (raw.get_span(), param)),
-        );
-        let scopes = BasicScopes::default();
+            if let Some(previous) = self.defs.try_get_mangled(&mangled_name) {
+                let previous_define = previous
+                    .sign_span
+                    .make_message(format!("funcion {} has been definded here", unmangled_name));
+                let mut err = fn_sign
+                    .sign_span
+                    .make_error(format!("double define for function {}", unmangled_name))
+                    .append(previous_define);
+                if previous.ty == fn_sign.ty {
+                    err += format!("note: if you want to overload funcion {}, you can define them with different parameters",unmangled_name)
+                } else {
+                    err += "note: overload which only return type is differnet is not allowed";
+                    err += format!("note: if you want to overload funcion {}, you can define them with different parameters",unmangled_name);
+                }
+                return Err(Either::Left(err));
+            }
+            mangled_name
+        };
 
         self.defs
-            .new_fn(name.clone(), mangled_fn_name.clone(), fn_sign);
-        let mut statement_transmuter = StatementTransmuter::new(&mut self.defs, fn_scope, scopes);
+            .new_fn(unmangled_name.clone(), mangled_name.clone(), fn_sign);
 
-        let body = statement_transmuter
-            .generate(&fn_define.codes)
-            .map_err(Either::Left)?;
-        if !body.returned {
-            return Err(Either::Left(
-                fn_define
-                    .sign_span
-                    .make_error(format!("function `{}` is never return", name)),
-            ));
-        }
+        let mut statement_transmuter = {
+            let scopes = BasicScopes::default();
+            let fn_scope = FnScope::new(
+                &mangled_name,
+                params.iter(),
+                fn_define.params.iter().map(WithSpan::get_span),
+            );
+            StatementTransmuter::new(&mut self.defs, fn_scope, scopes)
+        };
 
-        statement_transmuter
-            .fn_scope
-            .declare_map
-            .declare_all()
-            .map_err(Either::Right)?;
+        let body = {
+            let body = statement_transmuter
+                .generate(&fn_define.codes)
+                .map_err(Either::Left)?;
+            if !body.returned {
+                return Err(Either::Left(fn_define.sign_span.make_error(format!(
+                    "function `{}` is never return",
+                    unmangled_name
+                ))));
+            }
+
+            statement_transmuter
+                .fn_scope
+                .declare_map
+                .declare_all()
+                .map_err(Either::Right)?;
+            body
+        };
 
         let mir_fn = mir::FnDefine {
-            ty,
+            ty: retty,
             body,
             params,
-            name: mangled_fn_name,
+            name: mangled_name,
         };
         Ok(mir_fn.into_ir(&statement_transmuter.fn_scope.declare_map))
     }
@@ -242,7 +245,7 @@ impl Generator<parse::VarStore> for StatementTransmuter<'_> {
     type Forward = Result<mir::VarStore>;
 
     fn generate(&mut self, var_store: &parse::VarStore) -> Self::Forward {
-        let name = var_store.name.to_string();
+        let name = var_store.name.shared();
         let val = self.generate(&var_store.assign.val)?;
 
         let val_at = var_store.assign.val.get_span();
@@ -266,7 +269,7 @@ impl Generator<parse::VarDefine> for StatementTransmuter<'_> {
     type Forward = Result<mir::VarDefine>;
 
     fn generate(&mut self, var_define: &parse::VarDefine) -> Self::Forward {
-        let name = var_define.name.to_string();
+        let name = var_define.name.shared();
         let ty = var_define.ty.to_mir_ty()?;
         let ty = self
             .fn_scope
@@ -454,8 +457,7 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
                     return Err(expr.make_error("use of undefined variable"));
                 };
 
-                let variable =
-                    mir::Variable::new(mir::AtomicExpr::Variable(name.to_string()), def.ty);
+                let variable = mir::Variable::new(mir::AtomicExpr::Variable(name.shared()), def.ty);
                 return Ok(variable);
             }
 

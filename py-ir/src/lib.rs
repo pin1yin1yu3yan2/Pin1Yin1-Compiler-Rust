@@ -1,4 +1,4 @@
-use py_lex::ops::Operators;
+use py_lex::{ops::Operators, SharedString};
 
 pub trait IRVariable {
     type ComputeType: serde::Serialize
@@ -188,7 +188,7 @@ pub struct Compute<Var: IRVariable> {
     /// although [`Variable::Literal`] own its type, [`Variable::FnCall`] and other are not
     #[serde(rename = "type")]
     pub ty: Var::ComputeType,
-    pub name: String,
+    pub name: SharedString,
     pub eval: OperateExpr<Var>,
 }
 
@@ -197,14 +197,14 @@ pub struct Parameter<Pty> {
     #[serde(rename = "type")]
     pub ty: Pty,
     /// using string because its the name of parameter, not a value
-    pub name: String,
+    pub name: SharedString,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct FnDefine<Var: IRVariable> {
     #[serde(rename = "type")]
     pub ty: Var::FnDefineType,
-    pub name: String,
+    pub name: SharedString,
     pub params: Vec<Parameter<Var::ParameterType>>,
     pub body: Statements<Var>,
 }
@@ -213,13 +213,13 @@ pub struct FnDefine<Var: IRVariable> {
 pub struct VarDefine<Var: IRVariable> {
     #[serde(rename = "type")]
     pub ty: Var::VarDefineType,
-    pub name: String,
+    pub name: SharedString,
     pub init: Option<Var>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct VarStore<Var> {
-    pub name: String,
+    pub name: SharedString,
     pub val: Var,
 }
 
@@ -279,7 +279,7 @@ impl<Var: IRVariable> ControlFlow for Return<Var> {
     }
 }
 
-mod serde_ {
+mod serde_type_decorators {
     use super::*;
     struct Visitor;
 
@@ -333,6 +333,8 @@ mod serde_ {
 }
 
 pub mod ir_variable {
+    use py_lex::SharedString;
+
     /// this kind of expr is the most general expression
     ///
     /// type of literals are needed to be declared in operators, because `1` can mean `i8`, `i32`, etc.
@@ -344,7 +346,7 @@ pub mod ir_variable {
     /// using this way to avoid expressions' tree, and make llvm-ir generation much easier
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
     pub enum Variable {
-        Variable(String),
+        Variable(SharedString),
         FnCall(FnCall<Self>),
         // #[deprecated = "unsupported now"]
         // Initialization(Vec<Expr>),
@@ -361,7 +363,7 @@ pub mod ir_variable {
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
     pub struct FnCall<Var> {
         #[serde(rename = "fn")]
-        pub fn_name: String,
+        pub fn_name: SharedString,
         pub args: Vec<Var>,
     }
 
@@ -381,6 +383,7 @@ pub mod ir_variable {
 pub use ir_variable::*;
 
 pub mod ir_types {
+    use py_lex::SharedString;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq)]
     pub enum PrimitiveType {
@@ -469,11 +472,11 @@ pub mod ir_types {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         pub decorators: Vec<TypeDecorators>,
         #[serde(rename = "type")]
-        pub ty: String,
+        pub ty: SharedString,
     }
 
     impl ComplexType {
-        pub fn no_decorators(ty: String) -> Self {
+        pub fn no_decorators(ty: SharedString) -> Self {
             Self {
                 decorators: Vec::new(),
                 ty,
@@ -483,7 +486,7 @@ pub mod ir_types {
         pub fn string() -> Self {
             Self {
                 decorators: vec![TypeDecorators::Array],
-                ty: "u8".to_string(),
+                ty: "u8".into(),
             }
         }
     }

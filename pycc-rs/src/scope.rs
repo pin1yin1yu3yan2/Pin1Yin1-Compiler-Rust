@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
+use py_lex::SharedString;
 
 /// this is not the most elegant way, but it works for now
 
 pub struct Global<'ctx> {
-    pub fns: HashMap<String, FunctionValue<'ctx>>,
+    pub fns: HashMap<SharedString, FunctionValue<'ctx>>,
     pub scopes: Vec<Scope<'ctx>>,
 }
 
@@ -39,17 +40,17 @@ impl<'ctx> Global<'ctx> {
         *self.fns.get(name).unwrap()
     }
 
-    pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: String, val: V) {
+    pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: SharedString, val: V) {
         self.this_scope().vars.insert(name, Box::new(val));
     }
 
-    pub fn regist_fn(&mut self, name: String, val: FunctionValue<'ctx>) {
+    pub fn regist_fn(&mut self, name: SharedString, val: FunctionValue<'ctx>) {
         self.fns.insert(name, val);
     }
 
     pub fn regist_params<I>(&mut self, iter: I)
     where
-        I: IntoIterator<Item = (String, ComputeResult<'ctx>)>,
+        I: IntoIterator<Item = (SharedString, ComputeResult<'ctx>)>,
     {
         assert!(self.this_scope().params.is_none());
         self.this_scope().params = Some(iter.into_iter().collect())
@@ -65,8 +66,8 @@ impl<'ctx> Default for Global<'ctx> {
 /// scope is still necessary bacause variable may be shadowed in scope
 #[derive(Default)]
 pub struct Scope<'ctx> {
-    vars: HashMap<String, Box<dyn Variable<'ctx> + 'ctx>>,
-    params: Option<HashMap<String, ComputeResult<'ctx>>>,
+    vars: HashMap<SharedString, Box<dyn Variable<'ctx> + 'ctx>>,
+    params: Option<HashMap<SharedString, ComputeResult<'ctx>>>,
 }
 
 pub trait Variable<'ctx> {

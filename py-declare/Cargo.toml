@@ -6,5 +6,6 @@ edition = "2021"
 [dependencies]
 serde = { workspace = true }
 py-ir = { path = "../py-ir" }
+py-lex = { path = "../py-lex", default-features = false }
 # TODO: rewrite, or use another parser
 terl = { path = "../terl" }

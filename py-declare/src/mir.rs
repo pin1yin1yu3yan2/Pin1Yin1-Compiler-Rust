@@ -7,13 +7,14 @@ pub mod mir_variable {
     use crate::{benches, BenchBuilder, DeclareMap, UndeclaredTy};
     use py_ir as ir;
     use py_ir::Literal;
+    use py_lex::SharedString;
 
     use super::IntoIR;
 
     #[derive(Debug, Clone)]
     pub enum AtomicExpr {
         Literal(Literal),
-        Variable(String),
+        Variable(SharedString),
         FnCall(FnCall),
         // #[deprecated = "unsupported now"]
         // Initialization(Vec<Expr>),

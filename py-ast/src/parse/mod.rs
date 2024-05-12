@@ -19,6 +19,13 @@ pub use types::*;
 #[derive(Debug, Clone)]
 pub struct Ident(Token);
 
+impl Ident {
+    #[inline]
+    pub fn shared(&self) -> SharedString {
+        self.0.string.clone()
+    }
+}
+
 impl std::ops::Deref for Ident {
     type Target = str;
 

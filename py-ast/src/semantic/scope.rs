@@ -1,5 +1,6 @@
 use super::mangle::*;
 use py_declare::*;
+use py_lex::SharedString;
 use std::collections::HashMap;
 use terl::*;
 
@@ -38,18 +39,20 @@ pub struct FnScope {
     pub fn_name: String,
     // a counter
     temps: usize,
-    parameters: HashMap<String, UndeclaredTy>,
+    parameters: HashMap<SharedString, UndeclaredTy>,
     pub declare_map: DeclareMap,
 }
 
 impl FnScope {
-    pub fn new<'p, I>(fn_name: impl ToString, params: I) -> Self
+    pub fn new<'p, PI, SI>(fn_name: impl ToString, params: PI, spans: SI) -> Self
     where
-        I: IntoIterator<Item = (Span, &'p defs::Parameter)>,
+        PI: IntoIterator<Item = &'p defs::Parameter>,
+        SI: IntoIterator<Item = Span>,
     {
         let mut declare_map = DeclareMap::default();
-        let parameters = params
+        let parameters = spans
             .into_iter()
+            .zip(params)
             .map(|(at, param)| {
                 (
                     param.name.clone(),
@@ -67,9 +70,9 @@ impl FnScope {
     }
 
     #[inline]
-    pub fn temp_name(&mut self) -> String {
+    pub fn temp_name(&mut self) -> SharedString {
         // whitespace to make temp name will not be accessed
-        (format!(" {}", self.temps), self.temps += 1).0
+        (format!(" {}", self.temps), self.temps += 1).0.into()
     }
 
     #[inline]

@@ -1,5 +1,5 @@
-mod ast;
+mod generator;
 mod scope;
-pub use ast::*;
+pub use generator::*;
 pub use scope::*;
 pub mod mangle;

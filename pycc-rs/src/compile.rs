@@ -12,6 +12,7 @@ use inkwell::{
 
 use ir::ControlFlow;
 use py_ir as ir;
+use py_lex::SharedString;
 
 pub struct CodeGen<'ctx> {
     context: &'ctx Context,
@@ -50,7 +51,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(cg)
     }
 
-    pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: String, val: V) {
+    pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: SharedString, val: V) {
         self.global.regist_var(name, val)
     }
 
@@ -62,7 +63,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.global.get_fn(name)
     }
 
-    pub fn regist_fn(&mut self, name: String, val: inkwell::values::FunctionValue<'ctx>) {
+    pub fn regist_fn(&mut self, name: SharedString, val: inkwell::values::FunctionValue<'ctx>) {
         self.global.regist_fn(name, val)
     }
 
@@ -262,14 +263,14 @@ impl Compile for ir::Compute<ir::Variable> {
             ir::OperateExpr::Unary(op, val) => {
                 let val = state.eval_variable(val)?;
                 let val = crate::primitive::unary_compute(builder, self.ty, *op, val, &self.name)?;
-                state.regist_var(self.name.to_owned(), ComputeResult { val })
+                state.regist_var(self.name.clone(), ComputeResult { val })
             }
             ir::OperateExpr::Binary(op, l, r) => {
                 let l = state.eval_variable(l)?;
                 let r = state.eval_variable(r)?;
                 let val =
                     crate::primitive::binary_compute(builder, self.ty, *op, l, r, &self.name)?;
-                state.regist_var(self.name.to_owned(), ComputeResult { val })
+                state.regist_var(self.name.clone(), ComputeResult { val })
             }
         };
 

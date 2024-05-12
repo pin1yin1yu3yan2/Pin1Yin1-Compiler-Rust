@@ -1,5 +1,6 @@
 use crate::*;
 use py_ir::TypeDefine;
+use py_lex::SharedString;
 use std::collections::HashMap;
 use terl::Span;
 
@@ -13,7 +14,12 @@ impl Defs {
         Self::default()
     }
 
-    pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: defs::FnSign) -> Type {
+    pub fn new_fn(
+        &mut self,
+        unmangled: SharedString,
+        mangled: SharedString,
+        sign: defs::FnSign,
+    ) -> Type {
         self.fn_signs.new_fn(unmangled, mangled, sign)
     }
 
@@ -21,20 +27,20 @@ impl Defs {
         self.fn_signs.get_mangled(name)
     }
 
-    pub fn get_unmangled(&self, name: &str) -> Option<&[Overload]> {
-        self.fn_signs.get_unmangled(name)
-    }
-
     pub fn try_get_mangled(&self, name: &str) -> Option<&Overload> {
         self.fn_signs.try_get_mangled(name)
+    }
+
+    pub fn get_unmangled(&self, name: &str) -> Option<&[Overload]> {
+        self.fn_signs.get_unmangled(name)
     }
 }
 
 #[derive(Default)]
 pub struct FnSigns {
     fn_signs: Vec<Overload>,
-    unmangled: HashMap<String, Vec<Overload>>,
-    mangled: HashMap<String, Overload>,
+    unmangled: HashMap<SharedString, Vec<Overload>>,
+    mangled: HashMap<SharedString, Overload>,
 }
 
 impl FnSigns {
@@ -42,23 +48,12 @@ impl FnSigns {
         Self::default()
     }
 
-    pub fn new_with_main() -> Self {
-        use py_ir::PrimitiveType;
-        let mut s = Self::default();
-        let main_sign = defs::FnSign {
-            retty_span: Span::new(0, 0),
-            sign_span: Span::new(0, 0),
-
-            ty: TypeDefine::Primitive(PrimitiveType::I32),
-            params: vec![],
-        };
-
-        s.new_fn("main".to_owned(), "main".to_owned(), main_sign);
-
-        s
-    }
-
-    pub fn new_fn(&mut self, unmangled: String, mangled: String, sign: defs::FnSign) -> Type {
+    pub fn new_fn(
+        &mut self,
+        unmangled: SharedString,
+        mangled: SharedString,
+        sign: defs::FnSign,
+    ) -> Type {
         let value = defs::FnSignWithName {
             sign,
             name: mangled.clone(),
@@ -93,7 +88,7 @@ impl FnSigns {
 #[derive(Debug, Clone)]
 pub struct FnSignWithName {
     pub sign: FnSign,
-    pub name: String,
+    pub name: SharedString,
 }
 
 impl std::ops::Deref for FnSignWithName {

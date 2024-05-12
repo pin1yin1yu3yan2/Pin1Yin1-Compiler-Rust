@@ -240,7 +240,7 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
                 def.ty
             )));
         }
-        let ty = (*def.ty.0.string).clone();
+        let ty = def.ty.shared();
 
         if def.const_.is_none() && def.decorators.is_empty() {
             return Ok(ComplexType::no_decorators(ty).into());
