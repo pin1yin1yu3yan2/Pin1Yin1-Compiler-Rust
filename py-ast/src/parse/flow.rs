@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn r#if() {
         let src = "
-        ruo4 can1 jie2 1 da4 0 he2 huo4 jie2 2 xiao3 3 he2 yu3 fei1 fo3 jie2 han2
+        ruo4 can1 jie2 1 da4 0 he2 huo4 jie2 2 xiao3 3 he2 yu3 fei1 fou3 jie2 han2
         
         jie2 ze2 han2
         

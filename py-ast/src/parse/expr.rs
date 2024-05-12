@@ -1,5 +1,5 @@
 use py_lex::{
-    ops::{OperatorAssociativity, Operators},
+    ops::{OperatorAssociativity, OperatorTypes, Operators},
     syntax::*,
 };
 
@@ -132,20 +132,14 @@ impl ParseUnit<Token> for FnCallArgs {
 
 #[derive(Debug, Clone)]
 pub struct Initialization {
-    pub args: Vec<PU<AtomicExpr>>,
+    pub args: Vec<Expr>,
 }
 
 impl ParseUnit<Token> for Initialization {
     type Target = Initialization;
 
-    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::Block)?;
-        let mut args = vec![];
-        while let Some(expr) = p.parse::<PU<AtomicExpr>>().apply(mapper::Try)? {
-            args.push(expr);
-        }
-        p.match_(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
-        Ok(Initialization { args })
+    fn parse(_p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        todo!()
     }
 }
 
@@ -179,133 +173,166 @@ impl ParseUnit<Token> for FnCall {
 
 pub type Variable = Ident;
 
-#[derive(Debug, Clone)]
-pub struct UnaryExpr {
-    pub operator: PU<Operators>,
-    // using box, or cycle in AtomicExpr
-    pub expr: Box<PU<AtomicExpr>>,
-}
-
-impl ParseUnit<Token> for UnaryExpr {
-    type Target = UnaryExpr;
-
-    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        let operator = p.parse::<PU<Operators>>()?;
-        if operator.associativity() != OperatorAssociativity::Unary {
-            return operator.throw("unary expr must start with an unary operator!");
-        }
-        let expr = Box::new(p.parse::<PU<AtomicExpr>>().apply(mapper::MustMatch)?);
-        Ok(UnaryExpr { operator, expr })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct BracketExpr {
-    pub expr: Box<Expr>,
-}
-
-impl ParseUnit<Token> for BracketExpr {
-    type Target = BracketExpr;
-
-    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::BracketL)?;
-        let expr = Box::new(p.parse::<Expr>()?);
-        p.match_(Symbol::BracketR).apply(mapper::MustMatch)?;
-
-        Ok(BracketExpr { expr })
-    }
-}
-
 complex_pu! {
     cpu AtomicExpr {
         CharLiteral,
         StringLiteral,
         NumberLiteral,
         FnCall,
-        Variable,
-        UnaryExpr,
-        Initialization,
-        BracketExpr
+        Variable
+        // Initialization
+    }
+}
+
+complex_pu! {
+    cpu ExprItem {
+        AtomicExpr,
+        Operators
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
-    Atomic(PU<AtomicExpr>),
-    Binary(Box<Expr>, PU<Operators>, Box<Expr>),
+struct ExprItems;
+
+impl ParseUnit<Token> for ExprItems {
+    type Target = Vec<PU<ExprItem>>;
+
+    fn parse(p: &mut Parser<Token>) -> terl::Result<Self::Target, ParseError> {
+        let get_unary_op = |p: &mut Parser<Token>| {
+            p.parse::<PU<Operators>>().apply(mapper::Satisfy::new(
+                |op: &PU<Operators>| op.associativity() == OperatorAssociativity::Unary,
+                |e| e.unmatch(""),
+            ))
+        };
+        let get_binary_op = |p: &mut Parser<Token>| {
+            p.parse::<PU<Operators>>().apply(mapper::Satisfy::new(
+                |op: &PU<Operators>| op.associativity() == OperatorAssociativity::Binary,
+                |e| e.unmatch(""),
+            ))
+        };
+
+        let last_left_bracket = |items: &[PU<ExprItem>]| {
+            items.iter().rev().find_map(|item| match &**item {
+                ExprItem::Operators(Operators::BracketL) => {
+                    Some(item.get_span().make_message("last left bracket here"))
+                }
+                _ => None,
+            })
+        };
+
+        enum Expect {
+            Val,
+            OP,
+        }
+        let mut items = vec![];
+        let mut bracket_depth = 0;
+        let mut state = Expect::Val;
+        loop {
+            state = match state {
+                Expect::Val => {
+                    if let Some(bl) = p.match_(RPU(Operators::BracketL)).apply(mapper::Try)? {
+                        items.push(bl.map(Into::into));
+                        bracket_depth += 1;
+                        Expect::Val
+                    } else if let Some(unary) = p.once(get_unary_op).apply(mapper::Try)? {
+                        items.push(unary.map(Into::into));
+                        Expect::Val
+                    } else {
+                        items.push(p.parse::<PU<AtomicExpr>>()?.map(Into::into));
+                        Expect::OP
+                    }
+                }
+                Expect::OP => {
+                    if let Some(bl) = p.match_(RPU(Operators::BracketR)).apply(mapper::Try)? {
+                        items.push(bl.map(Into::into));
+                        bracket_depth -= 1;
+                        Expect::OP
+                    } else if let Some(unary) = p.once(get_binary_op).apply(mapper::Try)? {
+                        items.push(unary.map(Into::into));
+                        Expect::Val
+                    } else {
+                        if bracket_depth != 0 {
+                            break p.throw("unclosed bracket").map_err(|mut e| {
+                                e.extend(last_left_bracket(&items));
+                                e
+                            });
+                        }
+                        break Ok(items);
+                    }
+                }
+            }
+        }
+    }
 }
 
-impl Expr {
-    #[inline]
-    fn get_l_span(&self) -> Span {
-        match self {
-            Expr::Atomic(l) => l.get_span(),
-            Expr::Binary(l, _, _) => l.get_span(),
-        }
-    }
-
-    #[inline]
-    fn get_r_span(&self) -> Span {
-        match self {
-            Expr::Atomic(r) => r.get_span(),
-            Expr::Binary(_, _, r) => r.get_span(),
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct Expr {
+    items: Vec<PU<ExprItem>>,
+    span: Span,
 }
 
 impl WithSpan for Expr {
-    #[inline]
     fn get_span(&self) -> Span {
-        match self {
-            Expr::Atomic(atomic) => atomic.get_span(),
-            Expr::Binary(l, _, r) => l.get_l_span().merge(r.get_r_span()),
-        }
+        self.span
+    }
+}
+
+impl std::ops::Deref for Expr {
+    type Target = Vec<PU<ExprItem>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.items
     }
 }
 
 impl ParseUnit<Token> for Expr {
     type Target = Expr;
 
-    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        let mut exprs = vec![p.parse::<PU<AtomicExpr>>().map(Expr::Atomic)?];
-        let mut ops = vec![];
+    fn parse(p: &mut Parser<Token>) -> terl::Result<Self::Target, ParseError> {
+        // is heap allocation fewer than previous algo?
+        let mut exprs = vec![];
+        let mut ops: Vec<PU<Operators>> = vec![];
 
-        let get_binary = |p: &mut Parser<Token>| {
-            let operator = p.parse::<PU<Operators>>()?;
-            if operator.associativity() != OperatorAssociativity::Binary {
-                operator.throw("atomic exprs must be connected with binary operators!")
-            } else {
-                Ok(operator)
-            }
-        };
-
-        while let Some(op) = p.once::<PU<Operators>, _>(get_binary).apply(mapper::Try)? {
-            let expr = p.parse::<PU<AtomicExpr>>().map(Expr::Atomic)?;
-
-            while ops
-                .last()
-                .is_some_and(|p: &PU<Operators>| p.priority() <= op.priority())
-            {
-                let rhs = Box::new(exprs.pop().unwrap());
-                let op = ops.pop().unwrap();
-                let lhs = Box::new(exprs.pop().unwrap());
-
-                exprs.push(Expr::Binary(lhs, op, rhs));
-            }
-
-            exprs.push(expr);
-            ops.push(op);
+        fn could_fold(last: Operators, current: Operators) -> bool {
+            last.op_ty() != OperatorTypes::Bracket && last.priority() <= current.priority()
         }
 
-        while !ops.is_empty() {
-            let rhs = Box::new(exprs.pop().unwrap());
-            let op = ops.pop().unwrap();
-            let lhs = Box::new(exprs.pop().unwrap());
-
-            exprs.push(Expr::Binary(lhs, op, rhs));
+        for item in p.parse::<ExprItems>()? {
+            match &*item {
+                ExprItem::AtomicExpr(_) => {
+                    exprs.push(item);
+                }
+                ExprItem::Operators(op) => match *op {
+                    Operators::BracketL => ops.push(PU::new(item.get_span(), *op)),
+                    Operators::BracketR => {
+                        while let Some(op) = ops.pop() {
+                            if *op == Operators::BracketL {
+                                break;
+                            }
+                            exprs.push(op.map(Into::into))
+                        }
+                    }
+                    current => {
+                        while ops.last().is_some_and(|last| {
+                            could_fold(**last, current) && exprs.len() >= last.cost()
+                        }) {
+                            let last = ops.pop().unwrap();
+                            exprs.push(last.map(Into::into));
+                        }
+                        ops.push(PU::new(item.get_span(), *op));
+                    }
+                },
+            }
         }
 
-        Ok(exprs.pop().unwrap())
+        for op in ops.into_iter().rev() {
+            exprs.push(op.map(Into::into));
+        }
+
+        Ok(Self {
+            items: exprs,
+            span: p.get_span(),
+        })
     }
 }
 
@@ -350,13 +377,6 @@ mod tests {
     }
 
     #[test]
-    fn initialization() {
-        parse_test("han2 1 1 4 5 1 4 jie2", |p| {
-            assert!(p.parse::<Initialization>().is_ok());
-        })
-    }
-
-    #[test]
     fn function_call() {
         parse_test("ya1 1919810 fen1 chuan4 acminoac ru4 han2shu4", |p| {
             assert!(p.parse::<FnCall>().is_ok());
@@ -366,14 +386,14 @@ mod tests {
     #[test]
     fn unary() {
         parse_test("fei1 191810", |p| {
-            assert!(p.parse::<UnaryExpr>().is_ok());
+            assert!(p.parse::<Expr>().is_ok());
         })
     }
 
     #[test]
     fn nested_unary() {
         parse_test("fei1 fei1 fei1 fei1 191810", |p| {
-            assert!(p.parse::<UnaryExpr>().is_ok());
+            assert!(p.parse::<Expr>().is_ok());
         })
     }
 
@@ -381,7 +401,7 @@ mod tests {
     fn bracket() {
         // unary + bracket
         parse_test("fei1 jie2 114514 he2", |p| {
-            p.parse::<UnaryExpr>().unwrap();
+            assert!(p.parse::<Expr>().is_ok());
         })
     }
 

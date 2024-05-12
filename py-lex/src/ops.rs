@@ -65,6 +65,17 @@ macro_rules! operators {
         pub enum OperatorAssociativity {
             Binary,
             Unary,
+            None,
+        }
+
+        impl OperatorAssociativity {
+            pub fn cost(&self) -> usize {
+                match self {
+                    Self::Binary => 2,
+                    Self::Unary => 1,
+                    Self::None => 0
+                }
+            }
         }
 
         $(#[$metas])*
@@ -107,6 +118,13 @@ macro_rules! operators {
                 }
             }
 
+            pub fn cost(&self) -> usize {
+                self.associativity().cost()
+            }
+
+            /// return the priority of the symbol
+            ///
+            /// samller number means higher priority
             pub fn priority(&self) -> usize {
                 match *self {
                     $(
@@ -206,5 +224,9 @@ operators! {
         "fang3su4"  -> GetElement : Binary 2,
         "zhuan3"    -> Cast       : Unary  2,
         "chang2du4" -> SizeOf     : Unary  3
+    }
+    symbols Bracket {
+        "jie2"      -> BracketL   : None 0,
+        "he2"       -> BracketR   : None 0
     }
 }

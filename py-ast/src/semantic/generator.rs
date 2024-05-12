@@ -5,7 +5,7 @@ use either::Either;
 use py_declare::mir::IntoIR;
 use py_declare::*;
 use py_ir as ir;
-use py_lex::{SharedString, PU};
+use py_lex::SharedString;
 use terl::*;
 
 pub trait Generator<Item> {
@@ -391,55 +391,78 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
     type Forward = Result<mir::Variable>;
 
     fn generate(&mut self, expr: &parse::Expr) -> Self::Forward {
-        match expr {
-            parse::Expr::Atomic(atomic) => self.generate(atomic),
-            parse::Expr::Binary(l, o, r) => {
-                let l = self.generate(&**l)?;
-                let r = self.generate(&**r)?;
+        let mut vals = Vec::new();
+        for item in expr.iter() {
+            match &**item {
+                parse::ExprItem::AtomicExpr(atomic) => {
+                    vals.push(self.generate(&(item.get_span(), atomic))?)
+                }
+                parse::ExprItem::Operators(op) => match op.associativity() {
+                    py_lex::ops::OperatorAssociativity::Binary => {
+                        if vals.len() < 2 {
+                            todo!()
+                        }
+                        let r = vals.pop().unwrap();
+                        let l = vals.pop().unwrap();
+                        self.fn_scope
+                            .declare_map
+                            .merge_group(expr.get_span(), l.ty, r.ty);
+                        use py_ir::PrimitiveType;
+                        use py_lex::ops::OperatorTypes::CompareOperator;
 
-                // TODO: operator overload(type system)
-                // TODO: primitive operators
-                // TODO: operator -> function call
+                        // for compare operators(like == != < >), the result will be a boolean value,
+                        // not parameters' type
+                        let param_ty = l.ty;
+                        let result_ty = if op.op_ty() == CompareOperator {
+                            self.fn_scope
+                                .declare_map
+                                .new_static_group(expr.get_span(), [PrimitiveType::Bool.into()])
+                        } else {
+                            l.ty
+                        };
 
-                // now, we suppert primitive operators only, so they should be same type
-                self.fn_scope
-                    .declare_map
-                    .merge_group(expr.get_span(), l.ty, r.ty);
-                use py_ir::PrimitiveType;
-                use py_lex::ops::OperatorTypes::CompareOperator;
+                        let eval = mir::OperateExpr::binary(*op, l, r);
+                        let temp_name = self.fn_scope.temp_name();
+                        self.push_stmt(mir::Compute {
+                            ty: param_ty,
+                            name: temp_name.clone(),
+                            eval,
+                        });
+                        vals.push(mir::Variable {
+                            val: mir::AtomicExpr::Variable(temp_name),
+                            ty: result_ty,
+                        });
+                    }
+                    py_lex::ops::OperatorAssociativity::Unary => {
+                        let l = vals.pop().unwrap();
+                        let name = self.fn_scope.temp_name();
 
-                // for compare operators(like == != < >), the result will be a boolean value,
-                // not parameters' type
-                let param_ty = l.ty;
-                let result_ty = if o.op_ty() == CompareOperator {
-                    self.fn_scope
-                        .declare_map
-                        .new_static_group(expr.get_span(), [PrimitiveType::Bool.into()])
-                } else {
-                    l.ty
-                };
+                        let ty = l.ty;
+                        let compute = mir::Compute {
+                            ty,
+                            name: name.clone(),
+                            eval: mir::OperateExpr::unary(*op, l),
+                        };
+                        self.push_stmt(compute);
+                        vals.push(mir::Variable {
+                            ty,
+                            val: mir::AtomicExpr::Variable(name),
+                        });
+                    }
 
-                let eval = mir::OperateExpr::binary(o.take(), l, r);
-                let temp_name = self.fn_scope.temp_name();
-                self.push_stmt(mir::Compute {
-                    ty: param_ty,
-                    name: temp_name.clone(),
-                    eval,
-                });
-                Ok(mir::Variable {
-                    val: mir::AtomicExpr::Variable(temp_name),
-                    ty: result_ty,
-                })
+                    py_lex::ops::OperatorAssociativity::None => unreachable!(),
+                },
             }
         }
+        vals.pop().ok_or_else(|| unreachable!())
     }
 }
 
-impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
+impl Generator<(Span, &parse::AtomicExpr)> for StatementTransmuter<'_> {
     type Forward = Result<mir::Variable>;
 
-    fn generate(&mut self, expr: &PU<parse::AtomicExpr>) -> Self::Forward {
-        let literal = match &**expr {
+    fn generate(&mut self, (at, atomic): &(Span, &parse::AtomicExpr)) -> Self::Forward {
+        let literal = match atomic {
             // atomics
             parse::AtomicExpr::CharLiteral(char) => ir::Literal::Char(char.parsed),
             parse::AtomicExpr::NumberLiteral(n) => match n {
@@ -454,42 +477,21 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
             parse::AtomicExpr::FnCall(fn_call) => return self.generate(fn_call),
             parse::AtomicExpr::Variable(name) => {
                 let Some(def) = self.search_value(name) else {
-                    return Err(expr.make_error("use of undefined variable"));
+                    return Err(at.make_error("use of undefined variable"));
                 };
 
                 let variable = mir::Variable::new(mir::AtomicExpr::Variable(name.shared()), def.ty);
                 return Ok(variable);
-            }
+            } // // here, this is incorrect because operators may be overload
+              // // all operator overload must be casted into function calling here but primitives
+              // parse::AtomicExpr::UnaryExpr(unary) => {
 
-            // here, this is incorrect because operators may be overload
-            // all operator overload must be casted into function calling here but primitives
-            parse::AtomicExpr::UnaryExpr(unary) => {
-                let l = self.generate(&*unary.expr)?;
-                let name = self.fn_scope.temp_name();
-
-                let ty = l.ty;
-                let compute = mir::Compute {
-                    ty,
-                    name: name.clone(),
-                    eval: mir::OperateExpr::unary(*unary.operator, l),
-                };
-                self.push_stmt(compute);
-
-                return Ok(mir::Variable {
-                    ty,
-                    val: mir::AtomicExpr::Variable(name),
-                });
-            }
-            parse::AtomicExpr::BracketExpr(expr) => {
-                let expr: &parse::Expr = &expr.expr;
-                return self.generate(expr);
-            }
-            parse::AtomicExpr::Initialization(_) => todo!("how to do???"),
+              // }
         };
 
         let ty = self.fn_scope.declare_map.new_group({
             let benches = mir::Variable::literal_benches(&literal);
-            GroupBuilder::new(expr.get_span(), benches)
+            GroupBuilder::new(at.get_span(), benches)
         });
         Ok(mir::Variable::new(literal.into(), ty))
     }

@@ -22,12 +22,36 @@ impl Span {
         Span::new(start, end)
     }
 
+    pub fn sub_set(self, rhs: Span) -> Self {
+        let start = self.start.max(rhs.start);
+        let end = self.end.min(rhs.end);
+        assert!(start < end, "those two span have no subset");
+
+        Span::new(start, end)
+    }
+
     pub const fn len(&self) -> usize {
         self.end - self.start
     }
 
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl std::ops::Add for Span {
+    type Output = Span;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        self.merge(rhs)
+    }
+}
+
+impl std::ops::Mul for Span {
+    type Output = Span;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        self.sub_set(rhs)
     }
 }
 

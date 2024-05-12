@@ -17,12 +17,12 @@ pub use syntax::*;
 pub use types::*;
 
 #[derive(Debug, Clone)]
-pub struct Ident(Token);
+pub struct Ident(SharedString);
 
 impl Ident {
     #[inline]
     pub fn shared(&self) -> SharedString {
-        self.0.string.clone()
+        self.0.clone()
     }
 }
 
@@ -42,7 +42,7 @@ impl std::fmt::Display for Ident {
 
 impl PartialEq<str> for Ident {
     fn eq(&self, other: &str) -> bool {
-        self.0.eq(other)
+        &*self.0 == other
     }
 }
 
@@ -75,7 +75,7 @@ impl ParseUnit<Token> for Ident {
         }
 
         // keeping keywords cant be used as identifiers
-        Ok(Ident(token.clone()))
+        Ok(Ident(token.string.clone()))
     }
 }
 
