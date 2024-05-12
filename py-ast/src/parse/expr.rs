@@ -211,13 +211,16 @@ impl ParseUnit<Token> for ExprItems {
             ))
         };
 
-        let last_left_bracket = |items: &[PU<ExprItem>]| {
-            items.iter().rev().find_map(|item| match &**item {
-                ExprItem::Operators(Operators::BracketL) => {
-                    Some(item.get_span().make_message("last left bracket here"))
-                }
-                _ => None,
-            })
+        let left_bracket = |items: &[PU<ExprItem>], nth: usize| {
+            items
+                .iter()
+                .rev()
+                .filter_map(|item| match &**item {
+                    ExprItem::Operators(Operators::BracketL) => Some(item.get_span()),
+                    _ => None,
+                })
+                .nth(nth)
+                .map(|span| span.make_message("left bracket here"))
         };
 
         enum Expect {
@@ -230,8 +233,8 @@ impl ParseUnit<Token> for ExprItems {
         loop {
             state = match state {
                 Expect::Val => {
-                    if let Some(bl) = p.match_(RPU(Operators::BracketL)).apply(mapper::Try)? {
-                        items.push(bl.map(Into::into));
+                    if let Some(lb) = p.match_(RPU(Operators::BracketL)).apply(mapper::Try)? {
+                        items.push(lb.map(Into::into));
                         bracket_depth += 1;
                         Expect::Val
                     } else if let Some(unary) = p.once(get_unary_op).apply(mapper::Try)? {
@@ -243,20 +246,32 @@ impl ParseUnit<Token> for ExprItems {
                     }
                 }
                 Expect::OP => {
-                    if let Some(bl) = p.match_(RPU(Operators::BracketR)).apply(mapper::Try)? {
-                        items.push(bl.map(Into::into));
+                    if let Some(rb) = p.match_(RPU(Operators::BracketR)).apply(mapper::Try)? {
+                        items.push(rb.map(Into::into));
+                        if bracket_depth == 0 {
+                            break p.throw("unmatched right bracket").map_err(|mut e| {
+                                e.extend(left_bracket(&items, bracket_depth));
+                                e.append(rb.make_message("right bracket here"))
+                            });
+                        }
                         bracket_depth -= 1;
                         Expect::OP
                     } else if let Some(unary) = p.once(get_binary_op).apply(mapper::Try)? {
                         items.push(unary.map(Into::into));
                         Expect::Val
+                    } else if bracket_depth != 0 {
+                        let left_bracket = left_bracket(&items, bracket_depth);
+                        let current_span = p.get_span();
+                        let expect_next = format!("expect this to be `{}`", Operators::BracketR);
+                        let expect_next = p
+                            .parse::<PU<Token>>()
+                            .map(|tk| tk.make_message(expect_next));
+                        break current_span.throw("unclosed bracket").map_err(|mut e| {
+                            e.extend(left_bracket);
+                            e.extend(expect_next.ok());
+                            e
+                        });
                     } else {
-                        if bracket_depth != 0 {
-                            break p.throw("unclosed bracket").map_err(|mut e| {
-                                e.extend(last_left_bracket(&items));
-                                e
-                            });
-                        }
                         break Ok(items);
                     }
                 }

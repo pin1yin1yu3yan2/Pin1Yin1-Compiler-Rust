@@ -1,3 +1,5 @@
+#![feature(test)]
+
 pub mod compile;
 pub mod primitive;
 pub mod scope;

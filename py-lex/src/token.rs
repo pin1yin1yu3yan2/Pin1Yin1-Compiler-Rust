@@ -143,11 +143,21 @@ impl ParseUnit<Token> for Token {
 
 #[cfg(feature = "parse")]
 impl Source for Token {
-    type HandleErrorWith = Buffer<char>;
+    type HandleErrorWith<'b> = (&'b Buffer<char>, &'b Buffer<Token>);
 
     #[inline]
-    fn handle_error(with: &Self::HandleErrorWith, error: Error) -> String {
-        char::handle_error(with, error)
+    fn handle_location<S>(
+        with: &Self::HandleErrorWith<'_>,
+        buffer: &mut S,
+        loc: Span,
+        msg: &str,
+    ) -> std::fmt::Result
+    where
+        S: std::fmt::Write,
+    {
+        let (chars, tokens) = with;
+        let loc = tokens[loc.start].get_span() + tokens[loc.end - 1].get_span();
+        char::handle_location(chars, buffer, loc, msg)
     }
 }
 

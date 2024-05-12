@@ -5,7 +5,8 @@ use py_ast::{
     semantic::{Defines, Generator},
 };
 use py_ir as ir;
-use terl::{Buffer, Parser, ResultMapperExt};
+use py_lex::Token;
+use terl::{Buffer, Parser, ResultMapperExt, Source};
 
 use crate::compile::CodeGen;
 
@@ -35,11 +36,13 @@ fn get_mir(src: &str) -> Vec<ir::Item<ir::Variable>> {
         Ok(items)
     })();
 
+    let error_handler = (&char_buffer, parser.buffer());
+
     let pu_items = match parse_result {
         Ok(items) => items,
         Err(error) => {
             eprintln!("{}", parser.calling_tree());
-            eprintln!("{}", char_buffer.handle_error(error.error()));
+            eprintln!("{}", Token::handle_error(&error_handler, error.error()));
 
             panic!()
         }
@@ -51,10 +54,10 @@ fn get_mir(src: &str) -> Vec<ir::Item<ir::Variable>> {
         let item = scope
             .generate(&item)
             .map_err(|e| match e {
-                either::Either::Left(e) => eprintln!("{}", char_buffer.handle_error(e)),
+                either::Either::Left(e) => eprintln!("{}", Token::handle_error(&error_handler, e)),
                 either::Either::Right(es) => es
                     .into_iter()
-                    .for_each(|e| eprintln!("{}", char_buffer.handle_error(e))),
+                    .for_each(|e| eprintln!("{}", Token::handle_error(&error_handler, e))),
             })
             .unwrap();
         if let Some(item) = item {

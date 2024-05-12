@@ -258,6 +258,10 @@ impl<S: Source> Parser<S> {
         &self.calling_tree
     }
 
+    pub fn buffer(&self) -> &Buffer<S> {
+        &self.src
+    }
+
     /// be different from directly call, this kind of parse will log
     /// (if parser_calling_tree feature enabled)
     ///
@@ -315,7 +319,7 @@ impl<S: Source> Parser<S> {
     #[inline]
     pub fn handle_error(&self, error: Error) -> String
     where
-        S: Source<HandleErrorWith = Buffer<S>>,
+        S: for<'b> Source<HandleErrorWith<'b> = Buffer<S>>,
     {
         S::handle_error(&self.src, error)
     }

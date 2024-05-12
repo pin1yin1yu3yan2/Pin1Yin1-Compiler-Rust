@@ -1,90 +1,62 @@
-use std::ops::Index;
+use std::{fmt::Write, ops::Index};
 
 use crate::{Error, Message, Span};
 
 pub trait Source: Sized {
-    type HandleErrorWith;
-    fn handle_error(with: &Self::HandleErrorWith, error: Error) -> String;
-}
-
-impl Source for char {
-    type HandleErrorWith = Buffer<char>;
-
-    fn handle_error(src_buffer: &Buffer<Self>, error: Error) -> String {
+    type HandleErrorWith<'b>;
+    fn handle_error(with: &Self::HandleErrorWith<'_>, error: Error) -> String {
         (|| {
             let mut buffer = String::new();
-            src_buffer.message(&mut buffer, error.main_span, error.main_message)?;
+            Self::handle_location(with, &mut buffer, error.main_span, &error.main_message)?;
+
             for msg in error.messages {
-                src_buffer.handle_message(&mut buffer, msg)?;
+                Self::handle_message(with, &mut buffer, msg)?;
             }
 
             Result::<_, std::fmt::Error>::Ok(buffer)
         })()
         .unwrap()
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct Buffer<S = char> {
-    name: String,
-    src: Vec<S>,
-}
-
-impl<S> Buffer<S> {
-    pub fn new(name: String, src: Vec<S>) -> Self {
-        Self { name, src }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    #[inline]
-    pub fn handle_error(&self, error: Error) -> String
+    fn handle_message<S>(
+        with: &Self::HandleErrorWith<'_>,
+        buffer: &mut S,
+        message: Message,
+    ) -> std::fmt::Result
     where
-        S: Source<HandleErrorWith = Self>,
+        S: Write,
     {
-        S::handle_error(self, error)
+        match message {
+            Message::Location(span) => Self::handle_location(with, buffer, span, ""),
+            Message::Text(reason) => writeln!(buffer, "{reason}"),
+            Message::Rich(reason, span) => Self::handle_location(with, buffer, span, &reason),
+        }?;
+        Ok(())
     }
+
+    fn handle_location<S>(
+        with: &Self::HandleErrorWith<'_>,
+        buffer: &mut S,
+        loc: Span,
+        msg: &str,
+    ) -> std::fmt::Result
+    where
+        S: Write;
 }
 
-impl<S> std::ops::Deref for Buffer<S> {
-    type Target = [S];
+impl Source for char {
+    type HandleErrorWith<'b> = Buffer<char>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.src[..]
-    }
-}
-
-impl<S> std::ops::Index<Span> for Buffer<S> {
-    type Output = [S];
-
-    fn index(&self, index: Span) -> &Self::Output {
-        &self.src[index.start..index.end]
-    }
-}
-
-impl<I, S> std::ops::Index<I> for Buffer<S>
-where
-    Vec<S>: Index<I>,
-{
-    type Output = <Vec<S> as Index<I>>::Output;
-
-    fn index(&self, index: I) -> &Self::Output {
-        &self.src[index]
-    }
-}
-
-use std::fmt::Write;
-
-impl Buffer<char> {
-    fn message(
-        &self,
-        buffer: &mut impl Write,
+    fn handle_location<S>(
+        with: &Buffer<char>,
+        buffer: &mut S,
         span: Span,
-        reason: String,
-    ) -> Result<(), std::fmt::Error> {
-        let src = self;
+        msg: &str,
+    ) -> std::fmt::Result
+    where
+        S: Write,
+    {
+        let src = with;
         let start_line_start = (0..span.start)
             .rev()
             .find(|idx| src[*idx] == '\n')
@@ -96,7 +68,7 @@ impl Buffer<char> {
         let row_num = span.start - start_line_start;
         let location = format!("[{}:{}:{}]", src.name(), line_num, row_num,);
 
-        writeln!(buffer, "{location}: {}", reason)?;
+        writeln!(buffer, "{location}: {}", msg)?;
 
         while idx < span.end && idx < src.len() {
             let line_start = idx;
@@ -127,14 +99,55 @@ impl Buffer<char> {
         }
         Ok(())
     }
+}
 
-    fn handle_message(&self, buffer: &mut impl Write, msg: Message) -> Result<(), std::fmt::Error> {
-        match msg {
-            Message::Location(span) => self.message(buffer, span, String::new()),
-            Message::Text(reason) => writeln!(buffer, "{reason}"),
-            Message::Rich(reason, span) => self.message(buffer, span, reason),
-        }?;
+#[derive(Debug, Clone)]
+pub struct Buffer<S = char> {
+    name: String,
+    src: Vec<S>,
+}
 
-        Ok(())
+impl<S> Buffer<S> {
+    pub fn new(name: String, src: Vec<S>) -> Self {
+        Self { name, src }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[inline]
+    pub fn handle_error(&self, error: Error) -> String
+    where
+        S: for<'b> Source<HandleErrorWith<'b> = Self>,
+    {
+        S::handle_error(self, error)
+    }
+}
+
+impl<S> std::ops::Deref for Buffer<S> {
+    type Target = [S];
+
+    fn deref(&self) -> &Self::Target {
+        &self.src[..]
+    }
+}
+
+impl<S> std::ops::Index<Span> for Buffer<S> {
+    type Output = [S];
+
+    fn index(&self, index: Span) -> &Self::Output {
+        &self.src[index.start..index.end]
+    }
+}
+
+impl<I, S> std::ops::Index<I> for Buffer<S>
+where
+    Vec<S>: Index<I>,
+{
+    type Output = <Vec<S> as Index<I>>::Output;
+
+    fn index(&self, index: I) -> &Self::Output {
+        &self.src[index]
     }
 }
