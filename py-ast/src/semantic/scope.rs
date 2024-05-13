@@ -39,7 +39,7 @@ pub struct FnScope {
     pub fn_name: String,
     // a counter
     temps: usize,
-    parameters: HashMap<SharedString, UndeclaredTy>,
+    parameters: HashMap<SharedString, GroupIdx>,
     pub declare_map: DeclareMap,
 }
 

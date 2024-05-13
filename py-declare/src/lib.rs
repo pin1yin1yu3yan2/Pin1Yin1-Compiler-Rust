@@ -1,10 +1,10 @@
-mod bench;
+mod branch;
 mod error;
 mod filter;
 mod group;
 mod map;
 mod res;
-pub use bench::*;
+pub use branch::*;
 pub use error::*;
 pub use filter::*;
 pub use group::*;
@@ -22,47 +22,8 @@ mod tests {
 
     use super::*;
 
-    impl DeclareMap {
-        fn test_declare<I>(&mut self, iter: I) -> UndeclaredTy
-        where
-            I: IntoIterator<Item = (Type, Vec<Bench>)>,
-        {
-            let declare_idx = UndeclaredTy::new(self.groups.len());
-
-            let mut possiables = std::collections::HashMap::default();
-
-            for (idx, (res, deps)) in iter.into_iter().enumerate() {
-                possiables.insert(idx, res);
-                let this_node = Bench::new(declare_idx, idx);
-
-                self.deps.insert(this_node, deps.iter().copied().collect());
-                self.rdeps.insert(this_node, Default::default());
-
-                for dep in deps {
-                    self.rdeps.get_mut(&dep).unwrap().insert(this_node);
-                }
-            }
-
-            self.groups.push(Group::new(
-                terl::Span::new(0, 0),
-                possiables,
-                Default::default(),
-            ));
-
-            declare_idx
-        }
-    }
-
     #[test]
     fn feature() {
-        let mut map = DeclareMap::new();
-
-        macro_rules! ty {
-            ($idx:literal) => {
-                Type::Number($idx)
-            };
-        }
-
         // ty!(1-5) is used to emulate the type A-E
         //
         // m() -> A | B | C
@@ -71,27 +32,109 @@ mod tests {
         // p(B, C) -> D
         // p(C, D) -> E
 
-        let m1 = map.test_declare([(ty!(1), vec![]), (ty!(2), vec![]), (ty!(3), vec![])]);
-        let n1 = map.test_declare([(ty!(2), vec![]), (ty!(3), vec![]), (ty!(4), vec![])]);
+        let no_span = terl::Span::new(0, 0);
 
-        let i = map.test_declare([
-            (ty!(3), vec![Bench::new(m1, 0), Bench::new(n1, 0)]),
-            (ty!(4), vec![Bench::new(m1, 1), Bench::new(n1, 1)]),
-            (ty!(5), vec![Bench::new(m1, 2), Bench::new(n1, 2)]),
-        ]);
+        use py_ir::{ComplexType, TypeDefine};
+        use py_lex::SharedString;
 
-        let m2 = map.test_declare([(ty!(1), vec![]), (ty!(2), vec![]), (ty!(3), vec![])]);
-        let n2 = map.test_declare([(ty!(2), vec![]), (ty!(3), vec![]), (ty!(4), vec![])]);
+        let raw_types = (0..6)
+            .map(|idx| {
+                TypeDefine::from(ComplexType::no_decorators(SharedString::from(format!(
+                    "t{idx}"
+                ))))
+            })
+            .collect::<Vec<_>>();
+        let types = raw_types
+            .iter()
+            .map(|raw| Type::from(raw.clone()))
+            .collect::<Vec<_>>();
+        let filters = raw_types
+            .iter()
+            .map(|raw| filters::TypeEqual::new(raw, no_span))
+            .collect::<Vec<_>>();
 
-        let j = map.test_declare([
-            (ty!(3), vec![Bench::new(m2, 0), Bench::new(n2, 0)]),
-            (ty!(4), vec![Bench::new(m2, 1), Bench::new(n2, 1)]),
-            (ty!(5), vec![Bench::new(m2, 2), Bench::new(n2, 2)]),
-        ]);
+        let mut map = DeclareMap::new();
 
-        let k = map.test_declare([(ty!(5), vec![Bench::new(i, 0), Bench::new(j, 1)])]);
+        let m1 = map.build_group(GroupBuilder::new(
+            no_span,
+            vec![
+                types[1].clone().into(),
+                types[2].clone().into(),
+                types[3].clone().into(),
+            ],
+        ));
+        let n1 = map.build_group(GroupBuilder::new(
+            no_span,
+            vec![
+                types[2].clone().into(),
+                types[3].clone().into(),
+                types[4].clone().into(),
+            ],
+        ));
 
-        map.make_sure(Bench::new(k, 0), DeclareError::Empty);
+        let i = {
+            let gb = GroupBuilder::new(
+                no_span,
+                vec![
+                    BranchBuilder::new(types[3].clone())
+                        .new_depend::<Directly, _>(&mut map, m1, &filters[1])
+                        .new_depend::<Directly, _>(&mut map, n1, &filters[2]),
+                    BranchBuilder::new(types[4].clone())
+                        .new_depend::<Directly, _>(&mut map, m1, &filters[2])
+                        .new_depend::<Directly, _>(&mut map, n1, &filters[3]),
+                    BranchBuilder::new(types[5].clone())
+                        .new_depend::<Directly, _>(&mut map, m1, &filters[3])
+                        .new_depend::<Directly, _>(&mut map, n1, &filters[4]),
+                ],
+            );
+            map.build_group(gb)
+        };
+
+        let m2 = map.build_group(GroupBuilder::new(
+            no_span,
+            vec![
+                types[1].clone().into(),
+                types[2].clone().into(),
+                types[3].clone().into(),
+            ],
+        ));
+        let n2 = map.build_group(GroupBuilder::new(
+            no_span,
+            vec![
+                types[2].clone().into(),
+                types[3].clone().into(),
+                types[4].clone().into(),
+            ],
+        ));
+        let j = {
+            let gb = GroupBuilder::new(
+                no_span,
+                vec![
+                    BranchBuilder::new(types[3].clone())
+                        .new_depend::<Directly, _>(&mut map, m2, &filters[1])
+                        .new_depend::<Directly, _>(&mut map, n2, &filters[2]),
+                    BranchBuilder::new(types[4].clone())
+                        .new_depend::<Directly, _>(&mut map, m2, &filters[2])
+                        .new_depend::<Directly, _>(&mut map, n2, &filters[3]),
+                    BranchBuilder::new(types[5].clone())
+                        .new_depend::<Directly, _>(&mut map, m2, &filters[3])
+                        .new_depend::<Directly, _>(&mut map, n2, &filters[4]),
+                ],
+            );
+            map.build_group(gb)
+        };
+
+        let _k = {
+            let gb = GroupBuilder::new(
+                no_span,
+                vec![BranchBuilder::new(types[5].clone())
+                    .new_depend::<Directly, _>(&mut map, i, &filters[4])
+                    .new_depend::<Directly, _>(&mut map, j, &filters[5])],
+            );
+            map.build_group(gb)
+        };
+
+        // map.make_sure(Branch::new(k, 0), DeclareError::Empty);
 
         assert!(map.declare_all().is_ok());
     }

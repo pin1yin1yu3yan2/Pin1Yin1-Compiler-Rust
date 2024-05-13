@@ -14,8 +14,6 @@ use crate::defs::FnSignWithName;
 pub enum Type {
     Overload(Overload),
     Directly(Directly),
-    #[cfg(test)]
-    Number(usize),
 }
 
 impl Type {
@@ -38,11 +36,10 @@ impl Type {
 
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Display;
         match self {
-            Type::Overload(ol) => std::fmt::Display::fmt(ol, f),
-            Type::Directly(ty) => std::fmt::Display::fmt(&ty.0, f),
-            #[cfg(test)]
-            Type::Number(_) => unreachable!(),
+            Type::Overload(ol) => Display::fmt(ol, f),
+            Type::Directly(ty) => Display::fmt(&ty.0, f),
         }
     }
 }
@@ -52,8 +49,6 @@ impl Types for Type {
         match self {
             Type::Overload(item) => item.get_type(),
             Type::Directly(item) => item.get_type(),
-            #[cfg(test)]
-            Type::Number(_) => unreachable!(),
         }
     }
 }
@@ -64,7 +59,6 @@ impl<T: Into<TypeDefine>> From<T> for Type {
     }
 }
 
-/// only difference between DeclareKinds are how they are printed
 pub trait Types: Any + Sized {
     fn get_type(&self) -> &TypeDefine;
 }

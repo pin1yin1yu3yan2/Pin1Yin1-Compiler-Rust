@@ -212,27 +212,27 @@ impl Generator<parse::FnCall> for StatementTransmuter<'_> {
             .iter()
             .map(|pu| pu.get_span())
             .collect::<Vec<_>>();
-        let bench_builders = overloads
+        let branch_builders = overloads
             .iter()
             .map(|overload| {
-                let mut bench_builder = BenchBuilder::new(Type::Overload(overload.clone()));
-                bench_builder.filter_self(self.defs, &overload_len_filter);
+                let mut branch_builder = BranchBuilder::new(Type::Overload(overload.clone()));
+                branch_builder.filter_self(self.defs, &overload_len_filter);
 
-                if bench_builder.is_ok() {
+                if branch_builder.is_ok() {
                     for ((param, arg), span) in overload.params.iter().zip(&args).zip(&args_spans) {
                         let filter = filters::TypeEqual::new(&param.ty, *span);
                         let declare_map = &mut self.fn_scope.declare_map;
-                        bench_builder =
-                            bench_builder.new_depend::<Directly, _>(declare_map, arg.ty, &filter);
+                        branch_builder =
+                            branch_builder.new_depend::<Directly, _>(declare_map, arg.ty, &filter);
                     }
                 }
-                bench_builder
+                branch_builder
             })
             .collect();
         let overload = self
             .fn_scope
             .declare_map
-            .new_group(GroupBuilder::new(fn_call.get_span(), bench_builders));
+            .build_group(GroupBuilder::new(fn_call.get_span(), branch_builders));
 
         let val = mir::AtomicExpr::FnCall(mir::FnCall { args });
         let fn_call = mir::Variable::new(val, overload);
@@ -487,9 +487,9 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
               // }
         };
 
-        let ty = self.fn_scope.declare_map.new_group({
-            let benches = mir::Variable::literal_benches(&literal);
-            GroupBuilder::new(atomic.get_span(), benches)
+        let ty = self.fn_scope.declare_map.build_group({
+            let branches = mir::Variable::literal_branches(&literal);
+            GroupBuilder::new(atomic.get_span(), branches)
         });
         Ok(mir::Variable::new(literal.into(), ty))
     }

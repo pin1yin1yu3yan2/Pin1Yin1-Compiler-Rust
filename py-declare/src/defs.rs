@@ -139,6 +139,6 @@ pub type Parameter = py_ir::Parameter<TypeDefine>;
 
 #[derive(Debug, Clone)]
 pub struct VarDef {
-    pub ty: UndeclaredTy,
+    pub ty: GroupIdx,
     pub mutable: bool,
 }

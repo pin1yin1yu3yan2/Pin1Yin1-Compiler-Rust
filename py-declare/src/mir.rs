@@ -4,7 +4,7 @@ pub trait IntoIR {
 }
 
 pub mod mir_variable {
-    use crate::{benches, BenchBuilder, DeclareMap, UndeclaredTy};
+    use crate::{branches, BranchBuilder, DeclareMap, GroupIdx};
     use py_ir as ir;
     use py_ir::Literal;
     use py_lex::SharedString;
@@ -34,18 +34,18 @@ pub mod mir_variable {
     #[derive(Debug, Clone)]
     pub struct Variable {
         pub val: AtomicExpr,
-        pub ty: UndeclaredTy,
+        pub ty: GroupIdx,
     }
 
     impl py_ir::IRVariable for Variable {
-        type ComputeType = UndeclaredTy;
-        type VarDefineType = UndeclaredTy;
+        type ComputeType = GroupIdx;
+        type VarDefineType = GroupIdx;
         type FnDefineType = ir::TypeDefine;
         type ParameterType = ir::TypeDefine;
     }
 
     impl Variable {
-        pub fn new(val: AtomicExpr, ty: UndeclaredTy) -> Self {
+        pub fn new(val: AtomicExpr, ty: GroupIdx) -> Self {
             Variable { val, ty }
         }
 
@@ -53,12 +53,12 @@ pub mod mir_variable {
             !matches!(self.val, AtomicExpr::FnCall(..) | AtomicExpr::Variable(..))
         }
 
-        pub fn literal_benches(var: &Literal) -> Vec<BenchBuilder> {
+        pub fn literal_branches(var: &Literal) -> Vec<BranchBuilder> {
             use py_ir::PrimitiveType;
             match var {
-                Literal::Char(_) => benches! {() =>  PrimitiveType::char()},
+                Literal::Char(_) => branches! {() =>  PrimitiveType::char()},
                 // String: greatly in processing...
-                Literal::Integer(_) => benches! {
+                Literal::Integer(_) => branches! {
                     () =>  PrimitiveType::U8, () =>  PrimitiveType::U16,
                     () =>  PrimitiveType::U32,() =>  PrimitiveType::U64,
                     () =>  PrimitiveType::U128,() =>  PrimitiveType::Usize,
@@ -67,7 +67,7 @@ pub mod mir_variable {
                     () =>  PrimitiveType::I128,() =>  PrimitiveType::Isize
 
                 },
-                Literal::Float(_) => benches! {
+                Literal::Float(_) => branches! {
                     () =>  PrimitiveType::F32,
                     () =>  PrimitiveType::F64
                 },
@@ -87,7 +87,7 @@ pub mod mir_variable {
                 }
                 AtomicExpr::Variable(item) => Variable::Variable(item),
                 AtomicExpr::FnCall(item) => {
-                    let unique = &map[self.ty].unique().unwrap();
+                    let unique = &map[self.ty].result();
                     let fn_name = unique.overload().name.clone();
                     let args = item.args.into_ir(map);
                     Variable::FnCall(FnCall::<Variable> { fn_name, args })
@@ -253,7 +253,7 @@ mod into_ir_impls {
                 branches: self
                     .branches
                     .into_iter()
-                    .map(|bench| bench.into_ir(map))
+                    .map(|branch| branch.into_ir(map))
                     .collect(),
                 else_: self.else_.map(|else_| else_.into_ir(map)),
             }

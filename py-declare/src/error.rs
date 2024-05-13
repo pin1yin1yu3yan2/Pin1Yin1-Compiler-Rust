@@ -7,14 +7,17 @@ pub enum DeclareError {
     UniqueDeleted {
         reason: Box<DeclareError>,
     },
-    NonBenchSelected {
+    NonBranchSelected {
         expect: String,
     },
     ConflictSelected {
         conflict_with: Type,
         this: Type,
     },
-
+    Align {
+        left: Span,
+        right: Span,
+    },
     WithLocation {
         location: Span,
         error: Box<DeclareError>,
@@ -36,7 +39,6 @@ pub enum DeclareError {
     },
 
     Filtered,
-
     Empty,
 }
 
@@ -67,7 +69,7 @@ impl DeclareError {
                 ));
                 reason.generate_inner(msgs)
             }
-            DeclareError::NonBenchSelected { expect } => {
+            DeclareError::NonBranchSelected { expect } => {
                 msgs.push(Message::Text(format!("this should be `{expect}`")))
             }
             DeclareError::ConflictSelected {
@@ -77,7 +79,11 @@ impl DeclareError {
                 "this is required to been decalred as {} and {} together, but its impossiable",
                 this, conflict_with
             ))),
-
+            Self::Align { left, right } => {
+                msgs.push("those two has been decalred to have same type".into());
+                msgs.push((*left).into());
+                msgs.push((*right).into());
+            }
             DeclareError::Declared { declare_as } => msgs.push(Message::Text(format!(
                 "this has been declared as {declare_as}"
             ))),

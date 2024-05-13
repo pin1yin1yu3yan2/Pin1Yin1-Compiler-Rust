@@ -4,7 +4,7 @@ use terl::{Span, WithSpan};
 
 use crate::{Defs, Type, Types};
 
-pub trait BenchFilter<T: Types>: WithSpan {
+pub trait BranchFilter<T: Types>: WithSpan {
     fn satisfy(&self, ty: &Type) -> bool;
 
     fn expect(&self, defs: &Defs) -> String;
@@ -46,7 +46,7 @@ where
     }
 }
 
-impl<T: Types, Fs, Fe> BenchFilter<T> for CustomFilter<T, Fs, Fe>
+impl<T: Types, Fs, Fe> BranchFilter<T> for CustomFilter<T, Fs, Fe>
 where
     Fs: Fn(&Type) -> bool,
     Fe: Fn(&Defs) -> String,
@@ -87,7 +87,7 @@ pub mod filters {
         }
     }
 
-    impl<T: Types> BenchFilter<T> for TypeEqual<'_> {
+    impl<T: Types> BranchFilter<T> for TypeEqual<'_> {
         fn satisfy(&self, ty: &Type) -> bool {
             ty.get_type() == self.expect
         }
@@ -121,7 +121,7 @@ pub mod filters {
         }
     }
 
-    impl BenchFilter<Overload> for FnParamLen<'_> {
+    impl BranchFilter<Overload> for FnParamLen<'_> {
         fn satisfy(&self, ty: &Type) -> bool {
             ty.overload().params.len() == self.expect
         }
@@ -167,7 +167,7 @@ pub mod filters {
         }
     }
 
-    impl<'t> BenchFilter<Overload> for NthParamTyEqual<'t> {
+    impl<'t> BranchFilter<Overload> for NthParamTyEqual<'t> {
         fn satisfy(&self, ty: &Type) -> bool {
             ty.overload()
                 .params

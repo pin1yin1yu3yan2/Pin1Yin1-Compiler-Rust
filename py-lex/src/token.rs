@@ -1,7 +1,5 @@
 use std::rc::Rc;
 
-use terl::*;
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SharedString(Rc<String>);
 
@@ -61,39 +59,40 @@ impl std::borrow::Borrow<String> for SharedString {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Token {
-    pub string: SharedString,
-    /// note: span here are span in [`Buffer<char>`]
-    span: Span,
-}
-
-impl Token {
-    pub fn new(string: impl Into<SharedString>, span: Span) -> Self {
-        Self {
-            string: string.into(),
-            span,
-        }
-    }
-}
-
-impl std::ops::Deref for Token {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.string
-    }
-}
-
-impl std::fmt::Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.string.fmt(f)
-    }
-}
-
 #[cfg(feature = "parse")]
 mod token_source {
     use super::*;
+    use terl::*;
+    #[derive(Debug, Clone)]
+    pub struct Token {
+        pub string: SharedString,
+        /// note: span here are span in [`Buffer<char>`]
+        span: Span,
+    }
+
+    impl Token {
+        pub fn new(string: impl Into<SharedString>, span: Span) -> Self {
+            Self {
+                string: string.into(),
+                span,
+            }
+        }
+    }
+
+    impl std::ops::Deref for Token {
+        type Target = str;
+
+        fn deref(&self) -> &Self::Target {
+            &self.string
+        }
+    }
+
+    impl std::fmt::Display for Token {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            self.string.fmt(f)
+        }
+    }
+
     impl WithSpan for Token {
         #[inline]
         fn get_span(&self) -> Span {
@@ -163,7 +162,7 @@ mod token_source {
 
 #[cfg(feature = "parse")]
 mod pus {
-    use super::*;
+    use terl::*;
     /// a type which implemented [`ParseUnit<S>`] with source code it selected
     pub struct PU<P> {
         pub(crate) span: Span,
@@ -277,7 +276,7 @@ mod pus {
 }
 
 #[cfg(feature = "parse")]
-pub use pus::*;
+pub use {pus::*, token_source::Token};
 
 #[cfg(test)]
 mod tests {
@@ -287,6 +286,7 @@ mod tests {
     #[test]
     #[cfg(feature = "parse")]
     fn token() {
+        use terl::*;
         let file_name = std::any::type_name_of_val(&token).to_owned();
         let src = "123456 abcde \n 114514abc [] ()";
         let buffer = Buffer::new(file_name, src.chars().collect());
