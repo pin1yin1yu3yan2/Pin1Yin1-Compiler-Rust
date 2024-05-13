@@ -37,7 +37,7 @@ impl<'de> serde::Deserialize<'de> for SharedString {
 
 impl std::fmt::Display for SharedString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        self.0.fmt(f)
     }
 }
 
@@ -64,7 +64,7 @@ impl std::borrow::Borrow<String> for SharedString {
 #[derive(Debug, Clone)]
 pub struct Token {
     pub string: SharedString,
-    /// note: span here are span in Buffer<char>
+    /// note: span here are span in [`Buffer<char>`]
     span: Span,
 }
 
@@ -87,77 +87,77 @@ impl std::ops::Deref for Token {
 
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.string)
+        self.string.fmt(f)
     }
 }
 
 #[cfg(feature = "parse")]
-impl WithSpan for Token {
-    #[inline]
-    fn get_span(&self) -> Span {
-        self.span
-    }
-}
-
-#[cfg(feature = "parse")]
-impl ParseUnit<char> for Token {
-    type Target = Self;
-
-    fn parse(p: &mut Parser<char>) -> ParseResult<Self, char> {
-        // skip whitespace
-        while p.peek().is_some_and(|c| c.is_whitespace()) {
-            p.next();
-        }
-
-        // get string until whitespace
-        let mut string = String::new();
-        p.start_taking();
-        while p.peek().is_some_and(|n| !n.is_whitespace()) {
-            string.extend(p.next());
-        }
-
-        // return unmatch if string is empty
-        if string.is_empty() {
-            return p.unmatch("empty string");
-        }
-
-        Ok(Token {
-            string: string.into(),
-            span: p.get_span(),
-        })
-    }
-}
-
-#[cfg(feature = "parse")]
-impl ParseUnit<Token> for Token {
-    type Target = Token;
-
-    #[inline]
-    fn parse(p: &mut Parser<Token>) -> Result<Self::Target, ParseError> {
-        match p.next().cloned() {
-            Some(token) => Ok(token),
-            None => p.unmatch("no token left"),
+mod token_source {
+    use super::*;
+    impl WithSpan for Token {
+        #[inline]
+        fn get_span(&self) -> Span {
+            self.span
         }
     }
-}
 
-#[cfg(feature = "parse")]
-impl Source for Token {
-    type HandleErrorWith<'b> = (&'b Buffer<char>, &'b Buffer<Token>);
+    impl ParseUnit<char> for Token {
+        type Target = Self;
 
-    #[inline]
-    fn handle_location<S>(
-        with: &Self::HandleErrorWith<'_>,
-        buffer: &mut S,
-        loc: Span,
-        msg: &str,
-    ) -> std::fmt::Result
-    where
-        S: std::fmt::Write,
-    {
-        let (chars, tokens) = with;
-        let loc = tokens[loc.start].get_span() + tokens[loc.end - 1].get_span();
-        char::handle_location(chars, buffer, loc, msg)
+        fn parse(p: &mut Parser<char>) -> ParseResult<Self, char> {
+            // skip whitespace
+            while p.peek().is_some_and(|c| c.is_whitespace()) {
+                p.next();
+            }
+
+            // get string until whitespace
+            let mut string = String::new();
+            p.start_taking();
+            while p.peek().is_some_and(|n| !n.is_whitespace()) {
+                string.extend(p.next());
+            }
+
+            // return unmatch if string is empty
+            if string.is_empty() {
+                return p.unmatch("empty string");
+            }
+
+            Ok(Token {
+                string: string.into(),
+                span: p.get_span(),
+            })
+        }
+    }
+
+    impl ParseUnit<Token> for Token {
+        type Target = Token;
+
+        #[inline]
+        fn parse(p: &mut Parser<Token>) -> Result<Self::Target, ParseError> {
+            match p.next().cloned() {
+                Some(token) => Ok(token),
+                None => p.unmatch("no token left"),
+            }
+        }
+    }
+
+    impl Source for Token {
+        type HandleErrorWith<'b> = (&'b Buffer<char>, &'b Buffer<Token>);
+
+        #[inline]
+        fn handle_location<S>(
+            with: &Self::HandleErrorWith<'_>,
+            buffer: &mut S,
+            loc: Span,
+            msg: &str,
+        ) -> std::fmt::Result
+        where
+            S: std::fmt::Write,
+        {
+            let (chars, tokens) = with;
+            let loc = tokens[loc.start].get_span() + tokens[loc.end - 1].get_span();
+            char::handle_location(chars, buffer, loc, msg)
+        }
     }
 }
 

@@ -40,12 +40,6 @@ impl std::fmt::Display for Ident {
     }
 }
 
-impl PartialEq<str> for Ident {
-    fn eq(&self, other: &str) -> bool {
-        &*self.0 == other
-    }
-}
-
 impl ParseUnit<Token> for Ident {
     type Target = Ident;
 
@@ -147,22 +141,10 @@ mod tests {
     }
 
     #[test]
-    fn e4chou4de1_ident() {
-        parse_test("114514", |p| {
-            assert!(p.parse::<Ident>().is_err());
-        })
-    }
-
-    #[test]
-    fn double_idnet() {
-        parse_test("a b", |p| {
-            let a = p.parse::<Ident>();
-            assert!(a.is_ok());
-            assert_eq!(&a.unwrap(), "a");
-
-            let b = p.parse::<Ident>();
-            assert!(b.is_ok());
-            assert_eq!(&b.unwrap(), "b");
+    fn utf8_ident() {
+        parse_test("中文 😅", |p| {
+            assert!(p.parse::<Ident>().is_ok_and(|ident| &*ident == "中文"));
+            assert!(p.parse::<Ident>().is_ok_and(|ident| &*ident == "😅"));
         })
     }
 }

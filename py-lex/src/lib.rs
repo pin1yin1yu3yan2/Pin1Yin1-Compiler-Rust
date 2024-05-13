@@ -1,7 +1,5 @@
 mod macros;
-#[cfg(feature = "parse")]
 mod token;
-#[cfg(feature = "parse")]
 pub use token::*;
 
 #[cfg(feature = "ops")]

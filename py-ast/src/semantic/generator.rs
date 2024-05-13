@@ -5,7 +5,7 @@ use either::Either;
 use py_declare::mir::IntoIR;
 use py_declare::*;
 use py_ir as ir;
-use py_lex::SharedString;
+use py_lex::{SharedString, PU};
 use terl::*;
 
 pub trait Generator<Item> {
@@ -393,10 +393,8 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
     fn generate(&mut self, expr: &parse::Expr) -> Self::Forward {
         let mut vals = Vec::new();
         for item in expr.iter() {
-            match &**item {
-                parse::ExprItem::AtomicExpr(atomic) => {
-                    vals.push(self.generate(&(item.get_span(), atomic))?)
-                }
+            match item {
+                parse::ExprItem::AtomicExpr(atomic) => vals.push(self.generate(atomic)?),
                 parse::ExprItem::Operators(op) => match op.associativity() {
                     py_lex::ops::OperatorAssociativity::Binary => {
                         if vals.len() < 2 {
@@ -421,7 +419,7 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
                             l.ty
                         };
 
-                        let eval = mir::OperateExpr::binary(*op, l, r);
+                        let eval = mir::OperateExpr::binary(**op, l, r);
                         let temp_name = self.fn_scope.temp_name();
                         self.push_stmt(mir::Compute {
                             ty: param_ty,
@@ -441,7 +439,7 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
                         let compute = mir::Compute {
                             ty,
                             name: name.clone(),
-                            eval: mir::OperateExpr::unary(*op, l),
+                            eval: mir::OperateExpr::unary(**op, l),
                         };
                         self.push_stmt(compute);
                         vals.push(mir::Variable {
@@ -458,11 +456,11 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<(Span, &parse::AtomicExpr)> for StatementTransmuter<'_> {
+impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
     type Forward = Result<mir::Variable>;
 
-    fn generate(&mut self, (at, atomic): &(Span, &parse::AtomicExpr)) -> Self::Forward {
-        let literal = match atomic {
+    fn generate(&mut self, atomic: &PU<parse::AtomicExpr>) -> Self::Forward {
+        let literal = match &**atomic {
             // atomics
             parse::AtomicExpr::CharLiteral(char) => ir::Literal::Char(char.parsed),
             parse::AtomicExpr::NumberLiteral(n) => match n {
@@ -477,7 +475,7 @@ impl Generator<(Span, &parse::AtomicExpr)> for StatementTransmuter<'_> {
             parse::AtomicExpr::FnCall(fn_call) => return self.generate(fn_call),
             parse::AtomicExpr::Variable(name) => {
                 let Some(def) = self.search_value(name) else {
-                    return Err(at.make_error("use of undefined variable"));
+                    return Err(atomic.make_error("use of undefined variable"));
                 };
 
                 let variable = mir::Variable::new(mir::AtomicExpr::Variable(name.shared()), def.ty);
@@ -491,7 +489,7 @@ impl Generator<(Span, &parse::AtomicExpr)> for StatementTransmuter<'_> {
 
         let ty = self.fn_scope.declare_map.new_group({
             let benches = mir::Variable::literal_benches(&literal);
-            GroupBuilder::new(at.get_span(), benches)
+            GroupBuilder::new(atomic.get_span(), benches)
         });
         Ok(mir::Variable::new(literal.into(), ty))
     }

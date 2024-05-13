@@ -184,10 +184,30 @@ complex_pu! {
     }
 }
 
-complex_pu! {
-    cpu ExprItem {
-        AtomicExpr,
-        Operators
+#[derive(Debug, Clone)]
+pub enum ExprItem {
+    AtomicExpr(PU<AtomicExpr>),
+    Operators(PU<Operators>),
+}
+
+impl WithSpan for ExprItem {
+    fn get_span(&self) -> Span {
+        match self {
+            ExprItem::AtomicExpr(ws) => ws.get_span(),
+            ExprItem::Operators(ws) => ws.get_span(),
+        }
+    }
+}
+
+impl From<PU<Operators>> for ExprItem {
+    fn from(v: PU<Operators>) -> Self {
+        Self::Operators(v)
+    }
+}
+
+impl From<PU<AtomicExpr>> for ExprItem {
+    fn from(v: PU<AtomicExpr>) -> Self {
+        Self::AtomicExpr(v)
     }
 }
 
@@ -195,7 +215,7 @@ complex_pu! {
 struct ExprItems;
 
 impl ParseUnit<Token> for ExprItems {
-    type Target = Vec<PU<ExprItem>>;
+    type Target = Vec<ExprItem>;
 
     fn parse(p: &mut Parser<Token>) -> terl::Result<Self::Target, ParseError> {
         let get_unary_op = |p: &mut Parser<Token>| {
@@ -211,12 +231,12 @@ impl ParseUnit<Token> for ExprItems {
             ))
         };
 
-        let left_bracket = |items: &[PU<ExprItem>], nth: usize| {
+        let left_bracket = |items: &[ExprItem], nth: usize| {
             items
                 .iter()
                 .rev()
-                .filter_map(|item| match &**item {
-                    ExprItem::Operators(Operators::BracketL) => Some(item.get_span()),
+                .filter_map(|item| match item {
+                    ExprItem::Operators(pu) if **pu == Operators::BracketL => Some(item.get_span()),
                     _ => None,
                 })
                 .nth(nth)
@@ -227,27 +247,27 @@ impl ParseUnit<Token> for ExprItems {
             Val,
             OP,
         }
-        let mut items = vec![];
+        let mut items: Vec<ExprItem> = vec![];
         let mut bracket_depth = 0;
         let mut state = Expect::Val;
         loop {
             state = match state {
                 Expect::Val => {
                     if let Some(lb) = p.match_(RPU(Operators::BracketL)).apply(mapper::Try)? {
-                        items.push(lb.map(Into::into));
+                        items.push(lb.into());
                         bracket_depth += 1;
                         Expect::Val
                     } else if let Some(unary) = p.once(get_unary_op).apply(mapper::Try)? {
-                        items.push(unary.map(Into::into));
+                        items.push(unary.into());
                         Expect::Val
                     } else {
-                        items.push(p.parse::<PU<AtomicExpr>>()?.map(Into::into));
+                        items.push(p.parse::<PU<AtomicExpr>>()?.into());
                         Expect::OP
                     }
                 }
                 Expect::OP => {
                     if let Some(rb) = p.match_(RPU(Operators::BracketR)).apply(mapper::Try)? {
-                        items.push(rb.map(Into::into));
+                        items.push(rb.into());
                         if bracket_depth == 0 {
                             break p.throw("unmatched right bracket").map_err(|mut e| {
                                 e.extend(left_bracket(&items, bracket_depth));
@@ -257,7 +277,7 @@ impl ParseUnit<Token> for ExprItems {
                         bracket_depth -= 1;
                         Expect::OP
                     } else if let Some(unary) = p.once(get_binary_op).apply(mapper::Try)? {
-                        items.push(unary.map(Into::into));
+                        items.push(unary.into());
                         Expect::Val
                     } else if bracket_depth != 0 {
                         let left_bracket = left_bracket(&items, bracket_depth);
@@ -282,7 +302,7 @@ impl ParseUnit<Token> for ExprItems {
 
 #[derive(Debug, Clone)]
 pub struct Expr {
-    items: Vec<PU<ExprItem>>,
+    items: Vec<ExprItem>,
     span: Span,
 }
 
@@ -293,7 +313,7 @@ impl WithSpan for Expr {
 }
 
 impl std::ops::Deref for Expr {
-    type Target = Vec<PU<ExprItem>>;
+    type Target = Vec<ExprItem>;
 
     fn deref(&self) -> &Self::Target {
         &self.items
@@ -313,8 +333,8 @@ impl ParseUnit<Token> for Expr {
         }
 
         for item in p.parse::<ExprItems>()? {
-            match &*item {
-                ExprItem::AtomicExpr(_) => {
+            match item {
+                ExprItem::AtomicExpr(..) => {
                     exprs.push(item);
                 }
                 ExprItem::Operators(op) => match *op {
@@ -324,7 +344,7 @@ impl ParseUnit<Token> for Expr {
                             if *op == Operators::BracketL {
                                 break;
                             }
-                            exprs.push(op.map(Into::into))
+                            exprs.push(op.into())
                         }
                     }
                     current => {
@@ -332,7 +352,7 @@ impl ParseUnit<Token> for Expr {
                             could_fold(**last, current) && exprs.len() >= last.cost()
                         }) {
                             let last = ops.pop().unwrap();
-                            exprs.push(last.map(Into::into));
+                            exprs.push(last.into());
                         }
                         ops.push(PU::new(item.get_span(), *op));
                     }
@@ -341,7 +361,7 @@ impl ParseUnit<Token> for Expr {
         }
 
         for op in ops.into_iter().rev() {
-            exprs.push(op.map(Into::into));
+            exprs.push(op.into());
         }
 
         Ok(Self {

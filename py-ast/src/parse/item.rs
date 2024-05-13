@@ -25,11 +25,11 @@ impl ParseUnit<Token> for Comment {
 #[derive(Debug, Clone)]
 pub struct FnDefine {
     pub ty: types::TypeDefine,
-    pub retty_span: Span,
-    pub sign_span: Span,
     pub name: Ident,
     pub params: Parameters,
     pub codes: CodeBlock,
+    pub retty_span: Span,
+    pub sign_span: Span,
 }
 
 impl ParseUnit<Token> for FnDefine {

@@ -335,29 +335,35 @@ mod serde_type_decorators {
 pub mod ir_variable {
     use py_lex::SharedString;
 
+    use super::{PrimitiveType, TypeDefine};
+
     /// this kind of expr is the most general expression
     ///
     /// type of literals are needed to be declared in operators, because `1` can mean `i8`, `i32`, etc.
     ///
-    /// [`Variable::Variable`] and [`Variable::FnCall`] are folded expression,for example,
+    /// [`Variable::Variable`] and [`Variable::FnCall`] are folded expression, for example,
     /// [`OperateExpr::Binary`] and [`OperateExpr::Unary`] will be transformed into a [`VarDefine`],
     /// and its result(a variable) will be used as [`Variable::Variable`]
     ///
     /// using this way to avoid expressions' tree, and make llvm-ir generation much easier
+    ///
+    /// [`OperateExpr::Binary`]: super
+    /// [`OperateExpr::unary`]: super
+    /// [`VarDefine`]: super
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
     pub enum Variable {
         Variable(SharedString),
         FnCall(FnCall<Self>),
         // #[deprecated = "unsupported now"]
         // Initialization(Vec<Expr>),
-        Literal(Literal, super::PrimitiveType),
+        Literal(Literal, PrimitiveType),
     }
 
     impl super::IRVariable for Variable {
-        type ComputeType = super::PrimitiveType;
-        type VarDefineType = super::TypeDefine;
-        type FnDefineType = super::TypeDefine;
-        type ParameterType = super::TypeDefine;
+        type ComputeType = PrimitiveType;
+        type VarDefineType = TypeDefine;
+        type FnDefineType = TypeDefine;
+        type ParameterType = TypeDefine;
     }
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
@@ -372,6 +378,8 @@ pub mod ir_variable {
     ///
     /// althogn [`String`] is also [`Literal`], it will be replaced with [`VarDefine`] statement
     /// so that the type of [`Literal`] can be represented by [`PrimitiveType`]
+    ///
+    /// [`VarDefine`]: super
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
     pub enum Literal {
         Char(char),
@@ -383,7 +391,7 @@ pub mod ir_variable {
 pub use ir_variable::*;
 
 pub mod ir_types {
-    use py_lex::SharedString;
+    use super::SharedString;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq)]
     pub enum PrimitiveType {

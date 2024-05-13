@@ -32,7 +32,7 @@ impl<M: Mangle> Defines<M> {
 /// a part of type information, and fn_call is not point to monomorphic fn
 ///
 ///
-/// then [`DeclareMap`] will decalre them and output [`ir::Statements`],  or a [`Error`] will be thrown
+/// then [`DeclareMap`] will decalre them and output [`py_ir::Statements`],  or a [`Error`] will be thrown
 #[derive(Default)]
 pub struct FnScope {
     // mangled
