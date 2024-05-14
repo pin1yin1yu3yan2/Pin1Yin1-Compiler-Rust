@@ -354,8 +354,6 @@ pub mod ir_variable {
     pub enum Variable {
         Variable(SharedString),
         FnCall(FnCall<Self>),
-        // #[deprecated = "unsupported now"]
-        // Initialization(Vec<Expr>),
         Literal(Literal, PrimitiveType),
     }
 

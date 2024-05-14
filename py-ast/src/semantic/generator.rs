@@ -466,6 +466,7 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
     fn generate(&mut self, atomic: &PU<parse::AtomicExpr>) -> Self::Forward {
         let literal = match &**atomic {
             // atomics
+            // 解析
             parse::AtomicExpr::CharLiteral(char) => ir::Literal::Char(char.parsed),
             parse::AtomicExpr::NumberLiteral(n) => match n {
                 parse::NumberLiteral::Float { number, .. } => ir::Literal::Float(*number),
@@ -484,11 +485,11 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
 
                 let variable = mir::Variable::new(mir::AtomicExpr::Variable(name.shared()), def.ty);
                 return Ok(variable);
-            } // // here, this is incorrect because operators may be overload
-              // // all operator overload must be casted into function calling here but primitives
-              // parse::AtomicExpr::UnaryExpr(unary) => {
-
-              // }
+            }
+            parse::AtomicExpr::Array(ref _array) => {
+                // elements in arrray must be same type
+                todo!()
+            }
         };
 
         let ty = self.fn_scope.declare_map.build_group({

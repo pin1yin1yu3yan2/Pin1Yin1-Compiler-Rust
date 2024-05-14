@@ -8,7 +8,7 @@ impl ParseUnit<Token> for Comment {
     type Target = Comment;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::Comment)?;
+        p.r#match(Symbol::Comment)?;
 
         loop {
             let str = p
@@ -61,12 +61,12 @@ impl ParseUnit<Token> for CodeBlock {
     type Target = CodeBlock;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::Block)?;
+        p.r#match(Symbol::Block)?;
         let mut stmts = vec![];
         while let Some(stmt) = p.parse::<Statement>().apply(mapper::Try)? {
             stmts.push(stmt)
         }
-        p.match_(Symbol::EndOfBlock)?;
+        p.r#match(Symbol::EndOfBlock)?;
         Ok(Self { stmts })
     }
 }

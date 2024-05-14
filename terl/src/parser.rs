@@ -262,6 +262,10 @@ impl<S: Source> Parser<S> {
         &self.src
     }
 
+    pub fn take_buffer(self) -> Buffer<S> {
+        self.src
+    }
+
     /// be different from directly call, this kind of parse will log
     /// (if parser_calling_tree feature enabled)
     ///
@@ -308,7 +312,7 @@ impl<S: Source> Parser<S> {
     }
 
     #[inline]
-    pub fn match_<P>(&mut self, rhs: P) -> Result<P::Left, ParseError>
+    pub fn r#match<P>(&mut self, rhs: P) -> Result<P::Left, ParseError>
     where
         P: ReverseParser<S>,
     {

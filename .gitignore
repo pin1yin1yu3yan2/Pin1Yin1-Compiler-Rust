@@ -1,6 +1,6 @@
 /target
 /Cargo.lock
-# /test.py1
+/test.py1
 /test.json
 /test.ll
 /test.s

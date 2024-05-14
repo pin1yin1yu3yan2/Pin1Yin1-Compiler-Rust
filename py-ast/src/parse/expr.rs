@@ -25,7 +25,7 @@ impl ParseUnit<Token> for CharLiteral {
     type Target = CharLiteral;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::Char)?;
+        p.r#match(Symbol::Char)?;
         let unparsed = p.parse::<Token>()?;
         if !(unparsed.len() == 1 || unparsed.len() == 2 && unparsed.starts_with('_')) {
             return unparsed.throw(format!("Invalid CharLiteral {}", unparsed));
@@ -49,7 +49,7 @@ impl ParseUnit<Token> for StringLiteral {
     type Target = StringLiteral;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::String)?;
+        p.r#match(Symbol::String)?;
         let unparsed = p.parse::<Token>()?;
 
         let mut next_escape = false;
@@ -111,20 +111,19 @@ impl ParseUnit<Token> for FnCallArgs {
     type Target = FnCallArgs;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::FnCallL)?;
+        p.r#match(Symbol::FnCallL)?;
         let Some(arg) = p.parse::<Expr>().apply(mapper::Try)? else {
-            p.match_(Symbol::FnCallR).apply(mapper::MustMatch)?;
+            p.r#match(Symbol::FnCallR).apply(mapper::MustMatch)?;
             return Ok(FnCallArgs { args: vec![] });
         };
 
         let mut args = vec![arg];
 
-        while p.match_(Symbol::Semicolon).is_ok() {
+        while p.r#match(Symbol::Semicolon).is_ok() {
             args.push(p.parse::<Expr>()?);
         }
 
-        dbg!(&args);
-        p.match_(Symbol::FnCallR).apply(mapper::MustMatch)?;
+        p.r#match(Symbol::FnCallR).apply(mapper::MustMatch)?;
 
         Ok(FnCallArgs { args })
     }
@@ -173,14 +172,41 @@ impl ParseUnit<Token> for FnCall {
 
 pub type Variable = Ident;
 
+#[derive(Debug, Clone)]
+pub struct Array {
+    elements: Vec<Expr>,
+}
+
+impl std::ops::Deref for Array {
+    type Target = Vec<Expr>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.elements
+    }
+}
+
+impl ParseUnit<Token> for Array {
+    type Target = Array;
+
+    fn parse(p: &mut Parser<Token>) -> terl::Result<Self::Target, ParseError> {
+        p.r#match(Symbol::ArrayL)?;
+        let mut elements = vec![];
+        while let Some(expr) = p.parse::<Expr>().apply(mapper::Try)? {
+            elements.push(expr);
+        }
+        p.r#match(Symbol::ArrayR).apply(mapper::MustMatch)?;
+        Ok(Self { elements })
+    }
+}
+
 complex_pu! {
     cpu AtomicExpr {
         CharLiteral,
         StringLiteral,
         NumberLiteral,
         FnCall,
+        Array,
         Variable
-        // Initialization
     }
 }
 
@@ -253,7 +279,7 @@ impl ParseUnit<Token> for ExprItems {
         loop {
             state = match state {
                 Expect::Val => {
-                    if let Some(lb) = p.match_(RPU(Operators::BracketL)).apply(mapper::Try)? {
+                    if let Some(lb) = p.r#match(RPU(Operators::BracketL)).apply(mapper::Try)? {
                         items.push(lb.into());
                         bracket_depth += 1;
                         Expect::Val
@@ -266,7 +292,7 @@ impl ParseUnit<Token> for ExprItems {
                     }
                 }
                 Expect::OP => {
-                    if let Some(rb) = p.match_(RPU(Operators::BracketR)).apply(mapper::Try)? {
+                    if let Some(rb) = p.r#match(RPU(Operators::BracketR)).apply(mapper::Try)? {
                         items.push(rb.into());
                         if bracket_depth == 0 {
                             break p.throw("unmatched right bracket").map_err(|mut e| {
@@ -329,7 +355,7 @@ impl ParseUnit<Token> for Expr {
         let mut ops: Vec<PU<Operators>> = vec![];
 
         fn could_fold(last: Operators, current: Operators) -> bool {
-            last.op_ty() != OperatorTypes::Bracket && last.priority() <= current.priority()
+            last.op_ty() != OperatorTypes::StructOperator && last.priority() <= current.priority()
         }
 
         for item in p.parse::<ExprItems>()? {

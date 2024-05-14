@@ -19,9 +19,9 @@ impl ParseUnit<Token> for Conditions {
     type Target = Conditions;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::Parameter)?;
+        p.r#match(Symbol::Parameter)?;
         let Some(cond) = p.parse::<Expr>().apply(mapper::Try)? else {
-            p.match_(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
+            p.r#match(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
             return Ok(Conditions {
                 conds: vec![],
                 semicolons: vec![],
@@ -31,12 +31,12 @@ impl ParseUnit<Token> for Conditions {
         let mut conds = vec![cond];
         let mut semicolons = vec![];
 
-        while let Some(semicolon) = p.match_(RPU(Symbol::Semicolon)).apply(mapper::Try)? {
+        while let Some(semicolon) = p.r#match(RPU(Symbol::Semicolon)).apply(mapper::Try)? {
             semicolons.push(semicolon.get_span());
             conds.push(p.parse::<Expr>()?);
         }
 
-        p.match_(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
+        p.r#match(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
         Ok(Conditions { conds, semicolons })
     }
 }
@@ -51,7 +51,7 @@ impl ParseUnit<Token> for IfBranch {
     type Target = IfBranch;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(ControlFlow::If)?;
+        p.r#match(ControlFlow::If)?;
         let conds = p.parse::<Conditions>()?;
         let body = p.parse::<CodeBlock>().apply(mapper::MustMatch)?;
         Ok(IfBranch { conds, body })
@@ -67,7 +67,7 @@ impl ParseUnit<Token> for ElseBranch {
     type Target = ElseBranch;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(ControlFlow::Else)?;
+        p.r#match(ControlFlow::Else)?;
         let block = p.parse::<CodeBlock>().apply(mapper::MustMatch)?;
         Ok(ElseBranch { block })
     }
@@ -82,8 +82,8 @@ impl ParseUnit<Token> for ElseIfBranch {
     type Target = IfBranch;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(ControlFlow::Else)?;
-        p.match_(ControlFlow::If)?;
+        p.r#match(ControlFlow::Else)?;
+        p.r#match(ControlFlow::If)?;
 
         let conds = p.parse::<Conditions>()?;
         let body = p.parse::<CodeBlock>().apply(mapper::MustMatch)?;
@@ -120,7 +120,7 @@ impl ParseUnit<Token> for While {
     type Target = While;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(ControlFlow::Repeat)?;
+        p.r#match(ControlFlow::Repeat)?;
         let conds = p.parse::<Conditions>().apply(mapper::MustMatch)?;
         let block = p.parse::<CodeBlock>().apply(mapper::MustMatch)?;
         Ok(While { conds, block })
@@ -136,9 +136,9 @@ impl ParseUnit<Token> for Return {
     type Target = Return;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(ControlFlow::Return)?;
+        p.r#match(ControlFlow::Return)?;
         let val = p.parse::<Expr>().apply(mapper::Try)?;
-        p.match_(Symbol::Semicolon)?;
+        p.r#match(Symbol::Semicolon)?;
 
         Ok(Return { val })
     }

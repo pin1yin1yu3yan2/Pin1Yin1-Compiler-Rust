@@ -12,6 +12,9 @@ crate::reverse_parse_keywords! {
         "jie2"   -> BracketL,
         "he2"    -> BracketR,
 
+        "zu3"    -> ArrayL,
+        "he2"    -> ArrayR,
+
         "han2"   -> Block,
         "can1"   -> Parameter,
         "shi4"   -> Comment,

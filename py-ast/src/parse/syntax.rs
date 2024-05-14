@@ -11,7 +11,7 @@ impl ParseUnit<Token> for VarAssign {
     type Target = VarAssign;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::Assign)?;
+        p.r#match(Symbol::Assign)?;
         let val = p.parse::<Expr>()?;
         Ok(Self { val })
     }
@@ -97,20 +97,20 @@ impl ParseUnit<Token> for Parameters {
     type Target = Parameters;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(Symbol::Parameter)?;
+        p.r#match(Symbol::Parameter)?;
         let Some(arg) = p.parse::<PU<Parameter>>().apply(mapper::Try)? else {
-            p.match_(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
+            p.r#match(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
 
             return Ok(Parameters { params: vec![] });
         };
 
         let mut params = vec![arg];
 
-        while p.match_(Symbol::Semicolon).is_ok() {
+        while p.r#match(Symbol::Semicolon).is_ok() {
             params.push(p.parse::<PU<Parameter>>()?);
         }
 
-        p.match_(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
+        p.r#match(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
         Ok(Parameters { params })
     }
 }

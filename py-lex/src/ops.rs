@@ -225,7 +225,7 @@ operators! {
         "zhuan3"    -> Cast       : Unary  2,
         "chang2du4" -> SizeOf     : Unary  3
     }
-    symbols Bracket {
+    symbols StructOperator {
         "jie2"      -> BracketL   : None 0,
         "he2"       -> BracketR   : None 0
     }

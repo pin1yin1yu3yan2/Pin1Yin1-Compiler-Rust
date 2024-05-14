@@ -13,7 +13,7 @@ impl ParseUnit<Token> for TypeConstExtend {
     type Target = TypeConstExtend;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(BasicExtenWord::Const)?;
+        p.r#match(BasicExtenWord::Const)?;
 
         Ok(TypeConstExtend)
     }
@@ -62,7 +62,7 @@ impl ParseUnit<Token> for TypeArrayExtend {
     type Target = TypeArrayExtend;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        let keyword = p.match_(RPU(BasicExtenWord::Array))?;
+        let keyword = p.r#match(RPU(BasicExtenWord::Array))?;
         let size = p.parse::<Size>().apply(mapper::Try)?;
         Ok(TypeArrayExtend { keyword, size })
     }
@@ -76,7 +76,7 @@ impl ParseUnit<Token> for TypeReferenceExtend {
     type Target = TypeReferenceExtend;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(BasicExtenWord::Reference)?;
+        p.r#match(BasicExtenWord::Reference)?;
         Ok(TypeReferenceExtend)
     }
 }
@@ -89,7 +89,7 @@ impl ParseUnit<Token> for TypePointerExtend {
     type Target = TypePointerExtend;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(BasicExtenWord::Pointer)?;
+        p.r#match(BasicExtenWord::Pointer)?;
         Ok(TypePointerExtend)
     }
 }
@@ -114,7 +114,7 @@ impl ParseUnit<Token> for TypeWidthExtend {
     type Target = TypeWidthExtend;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        p.match_(BasicExtenWord::Width)?;
+        p.r#match(BasicExtenWord::Width)?;
         let width = p.parse::<Size>().apply(mapper::MustMatch)?;
 
         Ok(TypeWidthExtend {  width })
@@ -156,14 +156,14 @@ pub struct TypeDefine {
 
 impl TypeDefine {
     pub(crate) fn to_mir_ty(&self) -> terl::Result<crate::ir::TypeDefine> {
-        self.clone().try_into()
+        self.try_into()
     }
 }
 
-impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
+impl TryFrom<&TypeDefine> for crate::ir::TypeDefine {
     type Error = terl::Error;
 
-    fn try_from(def: crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
+    fn try_from(def: &crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
         use crate::ir::{ComplexType, PrimitiveType};
         /*
            int: sign, width
@@ -251,8 +251,8 @@ impl TryFrom<TypeDefine> for crate::ir::TypeDefine {
             decorators.push(crate::ir::TypeDecorators::Const);
         }
 
-        for decorator in def.decorators {
-            let decorator = match decorator.take() {
+        for decorator in &def.decorators {
+            let decorator = match &**decorator{
                 crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
                     Some(size) => crate::ir::TypeDecorators::SizedArray(*size),
                     None => crate::ir::TypeDecorators::Array,

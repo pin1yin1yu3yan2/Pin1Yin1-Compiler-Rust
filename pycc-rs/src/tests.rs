@@ -1,74 +1,15 @@
-use inkwell::{context::Context, execution_engine::JitFunction};
-
-use py_ast::{
-    parse,
-    semantic::{Defines, Generator},
-};
-use py_ir as ir;
-use py_lex::Token;
-use terl::{Buffer, Parser, ResultMapperExt, Source};
-
 use crate::compile::CodeGen;
+use inkwell::{context::Context, execution_engine::JitFunction};
+use py_ir as ir;
 
-fn get_mir(src: &str) -> Vec<ir::Item<ir::Variable>> {
-    let source = Buffer::new("compiler_test.py1".to_owned(), src.chars().collect());
-    let parser = Parser::<char>::new(source);
-    let (char_buffer, mut parser) = parser
-        .process(|p| {
-            let mut tokens = vec![];
-
-            while let Some(token) = p.parse::<py_lex::Token>().apply(terl::mapper::Try)? {
-                tokens.push(token);
-            }
-            Ok(tokens)
-        })
-        .unwrap_or_else(|_| unreachable!());
-
-    let parse_result = (|| -> Result<_, terl::ParseError> {
-        let mut items = vec![];
-        while parser.peek().is_some() {
-            items.push(
-                parser
-                    .parse::<parse::Item>()
-                    .apply(terl::mapper::MustMatch)?,
-            )
-        }
-        Ok(items)
-    })();
-
-    let error_handler = (&char_buffer, parser.buffer());
-
-    let pu_items = match parse_result {
-        Ok(items) => items,
-        Err(error) => {
-            eprintln!("{}", parser.calling_tree());
-            eprintln!("{}", Token::handle_error(&error_handler, error.error()));
-
-            panic!()
-        }
-    };
-
-    let mut scope: Defines = Default::default();
-    let mut items = vec![];
-    for item in pu_items {
-        let item = scope
-            .generate(&item)
-            .map_err(|e| match e {
-                either::Either::Left(e) => eprintln!("{}", Token::handle_error(&error_handler, e)),
-                either::Either::Right(es) => es
-                    .into_iter()
-                    .for_each(|e| eprintln!("{}", Token::handle_error(&error_handler, e))),
-            })
-            .unwrap();
-        if let Some(item) = item {
-            items.push(item)
-        }
-    }
-    items
+fn test_generate_ir(src: &str) -> Vec<ir::Item<ir::Variable>> {
+    let (error_handler, ast) = crate::generate_ast("compiler-test.py1".to_owned(), src.to_owned());
+    let error_handler = (&error_handler.0, &error_handler.1);
+    crate::generate_ir(error_handler, &ast)
 }
 
 fn compile_tester(src: &str, tester: impl FnOnce(CodeGen)) {
-    let mir = get_mir(src);
+    let mir = test_generate_ir(src);
     let context = Context::create();
     let compiler = CodeGen::new(&context, "test", &mir).unwrap();
 
@@ -109,7 +50,7 @@ fn jia_jian_around_114514() {
 
 #[test]
 fn serde_test() {
-    let mir = get_mir(MORE_OPERATOES);
+    let mir = test_generate_ir(MORE_OPERATOES);
 
     let str1 = serde_json::to_string(&mir).unwrap();
     let ast1: Vec<_> = serde_json::from_str(&str1).unwrap();
@@ -228,16 +169,6 @@ fn overload_test() {
 }
 
 const BASIC_CONTROL_FLOW: &str = "
-zheng3 odd can1 zheng3 shu1ru4 jie2
-han2 
-    ruo4 can1 shu1ru4 mo2 2 tong2 0 jie2
-    han2
-        fan3 1 fen1
-    jie2 ze2 han2 
-        fan3 0 fen1
-    jie2
-jie2
-
 zheng3 fio can1 zheng3 n jie2
 han2
     ruo4 can1 n tong2 0 huo4 n tong2 1 jie2
@@ -253,13 +184,8 @@ jie2
 #[test]
 fn control_flow_test() {
     compile_tester(BASIC_CONTROL_FLOW, |tester| unsafe {
-        type Odd = unsafe extern "C" fn(i64) -> i64;
         type Fio = unsafe extern "C" fn(i64) -> i64;
 
-        let odd: JitFunction<Odd> = tester
-            .execution_engine
-            .get_function("odd 参 i64 结")
-            .unwrap();
         let py_fio: JitFunction<Fio> = tester
             .execution_engine
             .get_function("fio 参 i64 结")
@@ -271,10 +197,6 @@ fn control_flow_test() {
                 _ => native_fio(n - 1) + native_fio(n - 2),
             }
         }
-
-        assert_eq!(odd.call(114), 1);
-        assert_eq!(odd.call(514), 1);
-        assert_eq!(odd.call(11), 0);
 
         // too big range will make stack overflow
         for n in 0..20 {

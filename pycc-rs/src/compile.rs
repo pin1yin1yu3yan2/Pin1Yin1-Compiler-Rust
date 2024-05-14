@@ -197,7 +197,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// implements for [ir::Statement] will only be called in [Self::scope]
-    pub fn current_fn(&self) -> FunctionValue<'ctx> {
+    fn current_fn(&self) -> FunctionValue<'ctx> {
         self.current_fn.unwrap()
     }
 }

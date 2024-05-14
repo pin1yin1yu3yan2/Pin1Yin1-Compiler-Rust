@@ -21,7 +21,7 @@ macro_rules! statement_wrapper {
             fn parse(p: &mut terl::Parser<py_lex::Token>) -> terl::ParseResult<Self, py_lex::Token> {
 
                 let inner = p.parse::<py_lex::PU<$from>>()?;
-                p.match_(py_lex::syntax::Symbol::Semicolon).apply(terl::mapper::MustMatch)?;
+                p.r#match(py_lex::syntax::Symbol::Semicolon).apply(terl::mapper::MustMatch)?;
                 Ok($into(inner))
             }
         }
