@@ -1,3 +1,5 @@
+#![feature(lazy_cell)]
+
 mod branch;
 mod error;
 mod filter;
@@ -33,6 +35,7 @@ mod tests {
         // p(C, D) -> E
 
         let no_span = terl::Span::new(0, 0);
+        let ordered_span = |idx: usize| terl::Span::new(idx, idx + 1);
 
         use py_ir::{ComplexType, TypeDefine};
         use py_lex::SharedString;
@@ -54,9 +57,10 @@ mod tests {
             .collect::<Vec<_>>();
 
         let mut map = DeclareMap::new();
+        let defs = Defs::new();
 
         let m1 = map.build_group(GroupBuilder::new(
-            no_span,
+            ordered_span(1),
             vec![
                 types[1].clone().into(),
                 types[2].clone().into(),
@@ -64,7 +68,7 @@ mod tests {
             ],
         ));
         let n1 = map.build_group(GroupBuilder::new(
-            no_span,
+            ordered_span(2),
             vec![
                 types[2].clone().into(),
                 types[3].clone().into(),
@@ -74,24 +78,25 @@ mod tests {
 
         let i = {
             let gb = GroupBuilder::new(
-                no_span,
+                ordered_span(11),
                 vec![
-                    BranchBuilder::new(types[3].clone())
-                        .new_depend::<Directly, _>(&mut map, m1, &filters[1])
-                        .new_depend::<Directly, _>(&mut map, n1, &filters[2]),
-                    BranchBuilder::new(types[4].clone())
-                        .new_depend::<Directly, _>(&mut map, m1, &filters[2])
-                        .new_depend::<Directly, _>(&mut map, n1, &filters[3]),
-                    BranchBuilder::new(types[5].clone())
-                        .new_depend::<Directly, _>(&mut map, m1, &filters[3])
-                        .new_depend::<Directly, _>(&mut map, n1, &filters[4]),
+                    BranchesBuilder::new(types[3].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, m1, &filters[1])
+                        .new_depend::<Directly, _>(&mut map, &defs, n1, &filters[2]),
+                    BranchesBuilder::new(types[4].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, m1, &filters[2])
+                        .new_depend::<Directly, _>(&mut map, &defs, n1, &filters[3]),
+                    BranchesBuilder::new(types[5].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, m1, &filters[3])
+                        .new_depend::<Directly, _>(&mut map, &defs, n1, &filters[4]),
                 ],
             );
+
             map.build_group(gb)
         };
 
         let m2 = map.build_group(GroupBuilder::new(
-            no_span,
+            ordered_span(3),
             vec![
                 types[1].clone().into(),
                 types[2].clone().into(),
@@ -99,7 +104,7 @@ mod tests {
             ],
         ));
         let n2 = map.build_group(GroupBuilder::new(
-            no_span,
+            ordered_span(4),
             vec![
                 types[2].clone().into(),
                 types[3].clone().into(),
@@ -108,17 +113,17 @@ mod tests {
         ));
         let j = {
             let gb = GroupBuilder::new(
-                no_span,
+                ordered_span(12),
                 vec![
-                    BranchBuilder::new(types[3].clone())
-                        .new_depend::<Directly, _>(&mut map, m2, &filters[1])
-                        .new_depend::<Directly, _>(&mut map, n2, &filters[2]),
-                    BranchBuilder::new(types[4].clone())
-                        .new_depend::<Directly, _>(&mut map, m2, &filters[2])
-                        .new_depend::<Directly, _>(&mut map, n2, &filters[3]),
-                    BranchBuilder::new(types[5].clone())
-                        .new_depend::<Directly, _>(&mut map, m2, &filters[3])
-                        .new_depend::<Directly, _>(&mut map, n2, &filters[4]),
+                    BranchesBuilder::new(types[3].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, m2, &filters[1])
+                        .new_depend::<Directly, _>(&mut map, &defs, n2, &filters[2]),
+                    BranchesBuilder::new(types[4].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, m2, &filters[2])
+                        .new_depend::<Directly, _>(&mut map, &defs, n2, &filters[3]),
+                    BranchesBuilder::new(types[5].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, m2, &filters[3])
+                        .new_depend::<Directly, _>(&mut map, &defs, n2, &filters[4]),
                 ],
             );
             map.build_group(gb)
@@ -126,10 +131,10 @@ mod tests {
 
         let _k = {
             let gb = GroupBuilder::new(
-                no_span,
-                vec![BranchBuilder::new(types[5].clone())
-                    .new_depend::<Directly, _>(&mut map, i, &filters[4])
-                    .new_depend::<Directly, _>(&mut map, j, &filters[5])],
+                ordered_span(21),
+                vec![BranchesBuilder::new(types[5].clone())
+                    .new_depend::<Directly, _>(&mut map, &defs, i, &filters[4])
+                    .new_depend::<Directly, _>(&mut map, &defs, j, &filters[5])],
             );
             map.build_group(gb)
         };

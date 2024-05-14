@@ -1,14 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct OverloadIndex(pub usize);
-
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-// pub struct CacheTypeIndex(pub usize);
-
-use std::{any::Any, rc::Rc};
-
-use py_ir::TypeDefine;
-
 use crate::defs::FnSignWithName;
+use py_ir::TypeDefine;
+use std::{any::Any, rc::Rc};
 
 #[derive(Debug, Clone)]
 pub enum Type {

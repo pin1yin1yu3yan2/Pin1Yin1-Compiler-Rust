@@ -3,7 +3,7 @@ use py_ir::TypeDefine;
 use std::collections::{HashMap, HashSet};
 use terl::{Span, WithSpan};
 
-/// used to decalre which overload of function is called, or which possiable type is
+/// used to declare which overload of function is called, or which possiable type is
 ///
 #[derive(Default, Debug)]
 pub struct DeclareMap {
@@ -18,6 +18,16 @@ pub struct DeclareMap {
 impl DeclareMap {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    fn insert_depends(&mut self, who: Branch, depend: HashSet<Branch>) {
+        if depend.is_empty() {
+            return;
+        }
+        for &depend in &depend {
+            self.rdeps.entry(depend).or_default().insert(who);
+        }
+        self.deps.entry(who).or_default().extend(depend);
     }
 
     pub(crate) fn new_group_inner(
@@ -47,8 +57,14 @@ impl DeclareMap {
         let mut alives = HashMap::new();
         let mut failds = HashMap::new();
 
-        for builder in gb.builders {
-            let ty = match builder.branch_state {
+        enum BranchMark {
+            Used,
+            Error(DeclareError),
+        }
+
+        let mut used_branches: HashMap<GroupIdx, HashMap<usize, BranchMark>> = HashMap::new();
+        for branch_builder in gb.branches {
+            let ty = match branch_builder.state {
                 Ok(ty) => ty,
                 Err(e) => {
                     failds.insert(alives.len() + failds.len(), e);
@@ -56,26 +72,59 @@ impl DeclareMap {
                 }
             };
 
-            for state in builder.depends_grid {
-                let branch = Branch::new(gidx, alives.len() + failds.len());
-                match state {
-                    Ok(deps) => {
-                        for dep in deps.iter() {
-                            if let Some(val) = self.rdeps.get_mut(dep) {
-                                val.insert(branch);
-                            }
-                        }
-                        self.deps.insert(branch, deps);
-                        alives.insert(branch.branch_idx, ty.clone());
-                    }
-                    Err(err) => {
-                        failds.insert(branch.branch_idx, err);
+            let use_branch = |branch: Branch| -> Branch {
+                used_branches
+                    .entry(branch.belong_to)
+                    .or_default()
+                    .insert(branch.branch_idx, BranchMark::Used);
+                branch
+            };
+
+            match branch_builder.depends.merge_depends(use_branch) {
+                // may the branch doesnot depend on any other branches
+                Ok(branch_depends) if branch_depends.is_empty() => {
+                    let new_branch = Branch::new(gidx, alives.len() + failds.len());
+                    alives.insert(new_branch.branch_idx, ty.clone());
+                }
+                Ok(branch_depends) => {
+                    for branch_depends in branch_depends {
+                        let new_branch = Branch::new(gidx, alives.len() + failds.len());
+                        self.insert_depends(new_branch, branch_depends);
+                        alives.insert(new_branch.branch_idx, ty.clone());
                     }
                 }
+                Err(group_errors) => {
+                    for (group, errors) in group_errors {
+                        let group = used_branches.entry(group).or_default();
+                        for (branch, error) in errors {
+                            group.entry(branch).or_insert(BranchMark::Error(error));
+                        }
+                    }
+                }
+            };
+        }
+
+        let new_group = self.new_group_inner(gb.span, failds, alives.into());
+
+        for (group, mut branch_marks) in used_branches {
+            let remove = self[group].filter_alive(|branch, ty| {
+                match branch_marks.remove(&branch.branch_idx) {
+                    Some(BranchMark::Used) => Ok((branch, ty)),
+                    Some(BranchMark::Error(error)) => Err(error.with_location(gb.span)),
+                    None => Err(DeclareError::NeverUsed {
+                        in_group: gb.span,
+                        reason: None,
+                    }),
+                }
+                .map_err(|e| e.into_shared())
+            });
+            //
+            for (branch, reason) in remove {
+                self.remove_branch(branch, reason);
             }
         }
 
-        self.new_group_inner(gb.span, failds, alives.into())
+        new_group
     }
 
     pub fn apply_filter<T, B>(&mut self, gidx: GroupIdx, defs: &Defs, filter: B)
@@ -91,10 +140,10 @@ impl DeclareMap {
             .with_location(location)
             .into_shared()
         };
-        let removed = self[gidx].delete_branches(|_, ty| !filter.satisfy(ty), reason);
+        let removed = self[gidx].remove_branches(|_, ty| !filter.satisfy(ty), reason);
 
         for (branch, reason) in removed {
-            self.delete_branch(branch, reason);
+            self.remove_branch(branch, reason);
         }
     }
 
@@ -137,10 +186,10 @@ impl DeclareMap {
             .collect::<Vec<_>>();
 
         // TODO: improve error message here
-        let delete_reason = DeclareError::Filtered.with_location(at).into_shared();
+        let remove_reason = DeclareError::Filtered.with_location(at).into_shared();
 
         for remove in removed {
-            self.delete_branch(remove, delete_reason.clone());
+            self.remove_branch(remove, remove_reason.clone());
         }
     }
 
@@ -156,36 +205,53 @@ impl DeclareMap {
             DeclareError::Unexpect {
                 expect: expect_ty.to_string(),
             }
-            .into_shared()
             .with_location(at)
+            .into_shared()
         };
-        for (branch, delete) in group.delete_branches(|_, ty| ty.get_type() != expect_ty, reason) {
-            self.delete_branch(branch, delete);
+        for (branch, remove) in group.remove_branches(|_, ty| ty.get_type() != expect_ty, reason) {
+            self.remove_branch(branch, remove);
         }
     }
 
     /// Zhu double eight: is your Nine Clan([`Branch`]) wholesale?
     ///
-    /// `delete` a node, and all node which must depend on it
+    /// `remove` a node, and all node which must depend on it, and then a generate a error
+    /// with [`Type`] which previous branch stored in
     ///
-    /// notice that the `delete` will not remove the [`Branch`], this method
-    /// just tag the branch to [`BranchStatus::Faild`] because some reasons
-    pub(crate) fn delete_branch(&mut self, branch: Branch, reason: DeclareError) {
-        // KILL all branch that depend on removed one
-        //
+    /// # Note:
+    ///
+    /// make sure the reason passed in are wrapped by rc(by calling [`DeclareError::into_shared`])
+    pub(crate) fn remove_branch(&mut self, branch: Branch, reason: DeclareError) {
         // is it impossiable to be a cycle dep in map?
         let group = &mut self[branch.belong_to];
-        group.delete_branches(|previous, _| previous == branch, || reason.clone());
-        group.new_error(branch.branch_idx, reason.clone());
+        let group_loc = group.get_span();
+        {
+            let reason = group.remove_branch(branch, reason.clone());
+            group.new_error(branch.branch_idx, reason.clone());
+        }
 
+        // remove all branches depend on removed branch
         if let Some(rdeps) = self.rdeps.remove(&branch) {
             for rdep in rdeps {
-                self.delete_branch(rdep, reason.clone());
+                self.remove_branch(rdep, reason.clone());
             }
         }
+        // remove the record of all branch which removed branch depend on
         if let Some(deps) = self.deps.remove(&branch) {
             for dep in deps {
-                self.rdeps.get_mut(&dep).unwrap().remove(&branch);
+                match self.rdeps.get_mut(&dep) {
+                    Some(rdeps) if rdeps.len() == 1 => {
+                        let reason = DeclareError::NeverUsed {
+                            in_group: group_loc,
+                            reason: Some(reason.clone().into()),
+                        };
+                        self.remove_branch(dep, reason);
+                    }
+                    Some(rdeps) => {
+                        rdeps.remove(&branch);
+                    }
+                    None => {}
+                }
             }
         }
     }
@@ -193,7 +259,7 @@ impl DeclareMap {
     pub fn declare_all(&mut self) -> Result<(), Vec<terl::Error>> {
         let mut errors = vec![];
         for group in &self.groups {
-            // un-decalred group
+            // un-declared group
             if !group.is_declared() {
                 errors.push(group.make_error());
             }

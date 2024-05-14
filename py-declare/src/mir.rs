@@ -4,7 +4,7 @@ pub trait IntoIR {
 }
 
 pub mod mir_variable {
-    use crate::{branches, BranchBuilder, DeclareMap, GroupIdx};
+    use crate::{branches, BranchesBuilder, DeclareMap, GroupIdx};
     use py_ir as ir;
     use py_ir::Literal;
     use py_lex::SharedString;
@@ -53,7 +53,7 @@ pub mod mir_variable {
             !matches!(self.val, AtomicExpr::FnCall(..) | AtomicExpr::Variable(..))
         }
 
-        pub fn literal_branches(var: &Literal) -> Vec<BranchBuilder> {
+        pub fn literal_branches(var: &Literal) -> Vec<BranchesBuilder> {
             use py_ir::PrimitiveType;
             match var {
                 Literal::Char(_) => branches! {() =>  PrimitiveType::char()},

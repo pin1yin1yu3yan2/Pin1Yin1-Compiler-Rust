@@ -1,6 +1,6 @@
 use crate::Type;
 use std::rc::Rc;
-use terl::{Message, Span};
+use terl::{Message, Span, WithSpan};
 
 #[derive(Debug, Clone)]
 pub enum DeclareError {
@@ -14,7 +14,18 @@ pub enum DeclareError {
         conflict_with: Type,
         this: Type,
     },
-    Align {
+    NeverUsed {
+        in_group: Span,
+        reason: Option<Box<DeclareError>>,
+    },
+    //
+    Declared {
+        declare_as: Type,
+    },
+    Unexpect {
+        expect: String,
+    },
+    ShouldAlign {
         left: Span,
         right: Span,
     },
@@ -28,14 +39,6 @@ pub enum DeclareError {
     },
     Shared {
         err: Rc<DeclareError>,
-    },
-
-    //
-    Declared {
-        declare_as: Type,
-    },
-    Unexpect {
-        expect: String,
     },
 
     Filtered,
@@ -76,11 +79,18 @@ impl DeclareError {
                 conflict_with,
                 this,
             } => msgs.push(Message::Text(format!(
-                "this is required to been decalred as {} and {} together, but its impossiable",
+                "this is required to been declared as {} and {} together, but its impossiable",
                 this, conflict_with
             ))),
-            Self::Align { left, right } => {
-                msgs.push("those two has been decalred to have same type".into());
+            DeclareError::NeverUsed { reason, in_group } => {
+                msgs.push(in_group.make_message("the branch is never used in group"));
+                if let Some(reason) = reason.as_ref() {
+                    reason.generate_inner(msgs)
+                }
+            }
+
+            DeclareError::ShouldAlign { left, right } => {
+                msgs.push("those two has been declared to have same type".into());
                 msgs.push((*left).into());
                 msgs.push((*right).into());
             }
@@ -88,7 +98,7 @@ impl DeclareError {
                 "this has been declared as {declare_as}"
             ))),
             DeclareError::Unexpect { expect } => msgs.push(Message::Text(format!(
-                "expect this to be decalred as `{}`",
+                "expect this to be declared as `{}`",
                 expect.to_owned()
             ))),
             DeclareError::Filtered => msgs.push(Message::Text("this has been filtered".to_owned())),

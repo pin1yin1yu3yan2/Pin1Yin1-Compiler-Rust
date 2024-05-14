@@ -1,5 +1,5 @@
 use crate::*;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Branch {
@@ -18,29 +18,106 @@ impl Branch {
     }
 }
 
-pub struct BranchBuilder {
-    pub(crate) branch_state: Result<Type>,
-    pub(crate) used_groups: HashSet<GroupIdx>,
-    pub(crate) depends_grid: Vec<Result<HashSet<Branch>>>,
+#[derive(Default, Debug, Clone)]
+pub(crate) struct BranchDepend {
+    pub(crate) depends: HashMap<GroupIdx, HashSet<usize>>,
+    pub(crate) failds: GroupError,
 }
 
-impl From<Type> for BranchBuilder {
+type GroupError = HashMap<GroupIdx, HashMap<usize, DeclareError>>;
+
+impl BranchDepend {
+    pub fn new_depends<E>(&mut self, group: GroupIdx, branches: HashSet<usize>, filtered: E)
+    where
+        E: Fn(Branch) -> DeclareError,
+    {
+        let new_depend = match self.depends.remove(&group) {
+            Some(previous) => {
+                let new_depend = previous
+                    .into_iter()
+                    .filter(|previous| {
+                        if branches.contains(previous) {
+                            true
+                        } else {
+                            let branch = Branch::new(group, *previous);
+                            self.failds
+                                .entry(group)
+                                .or_default()
+                                .insert(branch.branch_idx, filtered(branch));
+                            false
+                        }
+                    })
+                    .collect();
+
+                new_depend
+            }
+            None => branches,
+        };
+
+        self.depends.insert(group, new_depend);
+    }
+
+    pub fn merge_depends<U>(mut self, mut use_branch: U) -> Result<Vec<HashSet<Branch>>, GroupError>
+    where
+        U: FnMut(Branch) -> Branch,
+    {
+        {
+            let mut errors = GroupError::new();
+            for (group, ..) in self
+                .depends
+                .iter()
+                .filter(|(_, branches)| branches.is_empty())
+            {
+                errors.insert(*group, self.failds.remove(group).unwrap_or_default());
+            }
+            if !errors.is_empty() {
+                return Err(errors);
+            }
+        }
+
+        let mut groups: Vec<HashSet<Branch>> = vec![HashSet::default()];
+        for (group, depend) in self.depends {
+            let len = groups.len();
+            // resize depends
+            //
+            // depend.len() >= 1 because depend.len() == 0 is an error and solved above
+            for _ in 1..depend.len() {
+                groups.extend(groups.clone());
+            }
+            // insert
+            for (new_depend_idx, new_depend) in depend.into_iter().enumerate() {
+                let branch = use_branch(Branch::new(group, new_depend));
+                for depends_idx in 0..len {
+                    groups[new_depend_idx * len + depends_idx].insert(branch);
+                }
+            }
+        }
+
+        Ok(groups)
+    }
+}
+
+pub struct BranchesBuilder {
+    pub(crate) state: Result<Type>,
+    pub(crate) depends: BranchDepend,
+}
+
+impl From<Type> for BranchesBuilder {
     fn from(value: Type) -> Self {
         Self::new(value)
     }
 }
 
-impl BranchBuilder {
+impl BranchesBuilder {
     pub fn new(ty: Type) -> Self {
         Self {
-            branch_state: Ok(ty),
-            used_groups: Default::default(),
-            depends_grid: vec![Ok(HashSet::new())],
+            state: Ok(ty),
+            depends: Default::default(),
         }
     }
 
     pub const fn is_ok(&self) -> bool {
-        self.branch_state.is_ok()
+        self.state.is_ok()
     }
 
     pub fn filter_self<T, B>(&mut self, defs: &Defs, filter: &B)
@@ -48,106 +125,53 @@ impl BranchBuilder {
         T: Types,
         B: BranchFilter<T>,
     {
-        if matches!(self.branch_state,Ok(ref ty) if !filter.satisfy(ty) ) {
-            let privious =
-                std::mem::replace(&mut self.branch_state, Err(DeclareError::Empty)).unwrap();
+        if self.state.as_ref().is_ok_and(|ty| !filter.satisfy(ty)) {
+            // update state to error
+            let privious = std::mem::replace(&mut self.state, Err(DeclareError::Empty)).unwrap();
             let err = DeclareError::Unexpect {
                 expect: filter.expect(defs),
             }
             .with_previous(privious);
-            self.branch_state = Err(err)
+            self.state = Err(err)
         }
     }
 
-    pub fn new_depend<T, B>(mut self, map: &mut DeclareMap, depend: GroupIdx, filter: &B) -> Self
+    /// let the bench depend on benches which satisfy the filter in group
+    pub fn new_depend<T, B>(
+        mut self,
+        map: &mut DeclareMap,
+        defs: &Defs,
+        depend: GroupIdx,
+        filter: &B,
+    ) -> Self
     where
         T: Types,
         B: BranchFilter<T>,
     {
-        if self.branch_state.is_err() {
+        if self.state.is_err() {
             return self;
         }
 
         let satisfy_branches = map[depend].alives(|alives| {
             alives
                 .filter(|(.., ty)| filter.satisfy(ty))
-                .map(|(branch, ..)| branch)
-                .collect::<Vec<_>>()
+                .map(|(branch, ..)| branch.branch_idx)
+                .collect::<HashSet<_>>()
         });
 
-        self.depends_grid = self
-            .depends_grid
-            .into_iter()
-            .fold(vec![], |mut states, state| {
-                match state {
-                    Ok(previous) => {
-                        let at = filter.get_span();
-                        let used_groups = &self.used_groups;
-                        update_deps(
-                            at,
-                            used_groups,
-                            &satisfy_branches,
-                            previous,
-                            map,
-                            &mut states,
-                        );
-                    }
-                    Err(e) => states.push(Err(e)),
-                }
-                states
-            });
-
-        self.used_groups.insert(depend);
-        self
-    }
-}
-
-fn update_deps(
-    at: terl::Span,
-    used_groups: &HashSet<GroupIdx>,
-    new_deps: &[Branch],
-    mut previous: HashSet<Branch>,
-    map: &mut DeclareMap,
-    states: &mut Vec<Result<HashSet<Branch>>>,
-) {
-    if new_deps.len() == 1 {
-        let dep = new_deps[0];
-        if used_groups.contains(&dep.belong_to) && !previous.contains(&dep) {
-            let previous = previous
-                .iter()
-                .find(|p| p.belong_to == dep.belong_to)
-                .unwrap();
-
-            let conflict_error = DeclareError::ConflictSelected {
-                conflict_with: map[*previous].clone(),
-                this: map[dep].clone(),
-            }
-            .with_location(at);
-            states.push(Err(conflict_error));
-        } else {
-            previous.insert(dep);
-            states.push(Ok(previous));
+        let filtered_reason = DeclareError::Unexpect {
+            expect: filter.expect(defs),
         }
-    } else {
-        new_deps.iter().for_each(|&dep| {
-            if used_groups.contains(&dep.belong_to) && !previous.contains(&dep) {
-                let previous = previous
-                    .iter()
-                    .find(|p| p.belong_to == dep.belong_to)
-                    .unwrap();
+        .with_location(filter.get_span())
+        .into_shared();
 
-                let conflict_error = DeclareError::ConflictSelected {
-                    conflict_with: map[*previous].clone(),
-                    this: map[dep].clone(),
-                }
-                .with_location(at);
-                states.push(Err(conflict_error));
-            } else {
-                let mut new_deps = previous.clone();
-                new_deps.insert(dep);
-                states.push(Ok(new_deps));
-            }
-        })
+        let filtered_reason =
+            |branch: Branch| filtered_reason.clone().with_previous(map[branch].clone());
+
+        self.depends
+            .new_depends(depend, satisfy_branches, filtered_reason);
+
+        self
     }
 }
 
@@ -160,7 +184,7 @@ macro_rules! branches {
     } => {
         {
             vec![$(
-                $crate::BranchBuilder::new(From::from($res))
+                $crate::BranchesBuilder::new(From::from($res))
                     $(.new_filter($filter))*
             ),*]
         }

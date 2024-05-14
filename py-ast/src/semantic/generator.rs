@@ -215,15 +215,19 @@ impl Generator<parse::FnCall> for StatementTransmuter<'_> {
         let branch_builders = overloads
             .iter()
             .map(|overload| {
-                let mut branch_builder = BranchBuilder::new(Type::Overload(overload.clone()));
+                let mut branch_builder = BranchesBuilder::new(Type::Overload(overload.clone()));
                 branch_builder.filter_self(self.defs, &overload_len_filter);
 
                 if branch_builder.is_ok() {
                     for ((param, arg), span) in overload.params.iter().zip(&args).zip(&args_spans) {
                         let filter = filters::TypeEqual::new(&param.ty, *span);
                         let declare_map = &mut self.fn_scope.declare_map;
-                        branch_builder =
-                            branch_builder.new_depend::<Directly, _>(declare_map, arg.ty, &filter);
+                        branch_builder = branch_builder.new_depend::<Directly, _>(
+                            declare_map,
+                            self.defs,
+                            arg.ty,
+                            &filter,
+                        );
                     }
                 }
                 branch_builder
