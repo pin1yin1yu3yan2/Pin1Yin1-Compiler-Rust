@@ -213,6 +213,17 @@ impl<S: Source> Parser<S> {
         Some(next)
     }
 
+    pub fn next_if<C>(&mut self, cond: C) -> Option<&S>
+    where
+        C: Fn(&S) -> bool,
+    {
+        if self.peek().is_some_and(cond) {
+            self.next()
+        } else {
+            None
+        }
+    }
+
     /// peek the next character
     #[inline]
     pub fn peek(&self) -> Option<&S> {

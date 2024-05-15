@@ -158,7 +158,10 @@ mod tests {
         
         jie2";
 
-        parse_test(src, |p| assert!(p.parse::<If>().is_ok()));
+        parse_test(src, |p| {
+            p.parse::<If>()?;
+            Ok(())
+        });
     }
 
     #[test]
@@ -167,6 +170,9 @@ mod tests {
         chong2 can1 i xiao3 5 jie2 han2 
             i wei2 i jia1 1 fen1 
         jie2";
-        parse_test(src, |p| assert!(p.parse::<While>().is_ok()));
+        parse_test(src, |p| {
+            p.parse::<While>()?;
+            Ok(())
+        });
     }
 }

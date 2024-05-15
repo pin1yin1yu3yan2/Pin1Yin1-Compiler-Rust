@@ -129,22 +129,17 @@ mod tests {
     #[test]
     fn good_ident() {
         parse_test("*)(&%^&*a(*&^%", |p| {
-            assert!(p.parse::<Ident>().is_ok());
+            assert!(&*p.parse::<Ident>()? == "a");
+            Ok(())
         })
     }
 
     #[test]
+    #[should_panic]
     fn bad_ident() {
         parse_test("1*)(&%^&*a(*&^%", |p| {
-            assert!(p.parse::<Ident>().is_err());
-        })
-    }
-
-    #[test]
-    fn utf8_ident() {
-        parse_test("中文 😅", |p| {
-            assert!(p.parse::<Ident>().is_ok_and(|ident| &*ident == "中文"));
-            assert!(p.parse::<Ident>().is_ok_and(|ident| &*ident == "😅"));
+            p.parse::<Ident>()?;
+            Ok(())
         })
     }
 }

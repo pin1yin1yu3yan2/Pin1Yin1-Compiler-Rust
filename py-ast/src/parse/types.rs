@@ -302,7 +302,8 @@ mod tests {
     #[test]
     fn fucking_type() {
         parse_test("yin3 zu3 114514 kuan1 32 wu2fu2 zheng3", |p| {
-            assert!(p.parse::<TypeDefine>().is_ok())
+            p.parse::<TypeDefine>()?;
+            Ok(())
         })
     }
 }

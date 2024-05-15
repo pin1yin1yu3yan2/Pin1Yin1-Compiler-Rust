@@ -79,7 +79,10 @@ mod tests {
 
     #[test]
     fn code_block() {
-        parse_test("han2 jie2", |p| assert!(p.parse::<CodeBlock>().is_ok()));
+        parse_test("han2 jie2", |p| {
+            p.parse::<CodeBlock>()?;
+            Ok(())
+        });
     }
 
     #[test]
@@ -88,7 +91,10 @@ mod tests {
             "zheng3 zhu3 can1 zheng3 argc fen1 zhi3 zhi3 zi4 argv jie2
                     han2
                     jie2",
-            |p| assert!((p.parse::<FnDefine>()).is_ok()),
+            |p| {
+                p.parse::<FnDefine>()?;
+                Ok(())
+            },
         );
     }
 
@@ -105,7 +111,8 @@ mod tests {
                         jie2
                     jie2",
             |p| {
-                p.parse::<FnDefine>().unwrap();
+                p.parse::<FnDefine>()?;
+                Ok(())
             },
         )
     }
@@ -113,14 +120,17 @@ mod tests {
     #[test]
     fn comment() {
         parse_test("shi4 ehhhaaaaaaaaaaaaaaaaaaaaaaaa jie2", |p| {
-            assert!(p.parse::<Comment>().is_ok())
+            p.parse::<Comment>()?;
+            Ok(())
         });
     }
 
     #[test]
+    #[should_panic]
     fn comment_without_ending() {
         parse_test("shi4 ehhhaaaaaaaaaaaaaaaaaaaaaaaa ajie2", |p| {
-            assert!(p.parse::<Comment>().is_err())
+            p.parse::<CodeBlock>()?;
+            Ok(())
         });
     }
 }

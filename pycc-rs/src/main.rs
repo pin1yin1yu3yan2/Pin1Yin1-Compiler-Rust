@@ -118,7 +118,6 @@ fn generate_ast(path: String, src: String) -> GenAstResult {
                 "{}",
                 py_lex::Token::handle_error(&error_handler, error.error())
             );
-
             panic!()
         }
     };

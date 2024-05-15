@@ -124,26 +124,33 @@ mod tests {
     #[test]
     fn variable_define() {
         parse_test("kuan1 32 zheng3 a", |p| {
-            assert!(p.parse::<VarDefine>().is_ok())
+            p.parse::<VarDefine>()?;
+            Ok(())
         })
     }
 
     #[test]
     fn variable_define_init() {
         let src = "kuan1 32 zheng3 a wei2 114514 fen1";
-        parse_test(src, |p| assert!(p.parse::<VarDefine>().is_ok()));
         parse_test(src, |p| {
-            assert!(p.parse::<Statement>().is_ok());
+            p.parse::<VarDefine>()?;
+            Ok(())
+        });
+        parse_test(src, |p| {
+            p.parse::<Statement>()?;
+            Ok(())
         });
     }
 
     #[test]
     fn variable_reassign() {
         parse_test("a wei2 114514 fen1", |p| {
-            assert!(p.parse::<Statement>().is_ok())
+            p.parse::<Statement>()?;
+            Ok(())
         });
         parse_test("a wei2 114514 fen1", |p| {
-            assert!(p.parse::<VarStore>().is_ok())
+            p.parse::<VarStore>()?;
+            Ok(())
         });
     }
 }

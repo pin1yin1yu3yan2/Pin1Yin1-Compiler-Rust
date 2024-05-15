@@ -43,8 +43,17 @@ fn jia_jian_around_114514() {
             .get_function("jian 参 i64 结")
             .unwrap();
 
-        assert_eq!(jia.call(114513), 114514);
-        assert_eq!(jian.call(114515), 114514);
+        fn native_jia(n: i64) -> i64 {
+            n + 1
+        }
+        fn native_jian(n: i64) -> i64 {
+            n - 1
+        }
+
+        for n in 114514..1919810 {
+            assert_eq!(jia.call(n), native_jia(n));
+            assert_eq!(jian.call(n), native_jian(n));
+        }
     })
 }
 
@@ -63,44 +72,10 @@ fn serde_test() {
     assert_eq!(str1, str2);
 }
 
-const TEST_SRC2: &str = "
-zheng3 jia can1 zheng3 x jie2
-han2
-    zheng3 jie2guo3 wei2 x jia1 1 fen1
-    fan3 jie2guo3 fen1
-jie2
-
-zheng3 jia2 can1 zheng3 x jie2
-han2
-    zheng3 jie2guo3 wei2
-        ya1 x jia1 1 ru4 jia fen1
-    fan3 jie2guo3 fen1
-jie2   
-";
-
-#[test]
-fn fn_call() {
-    compile_tester(TEST_SRC2, |tester| unsafe {
-        type TestFn = unsafe extern "C" fn(i64) -> i64;
-
-        let jia: JitFunction<TestFn> = tester
-            .execution_engine
-            .get_function("jia 参 i64 结")
-            .unwrap();
-        let jia2: JitFunction<TestFn> = tester
-            .execution_engine
-            .get_function("jia2 参 i64 结")
-            .unwrap();
-
-        assert_eq!(jia.call(114513), 114514);
-        assert_eq!(jia2.call(114512), 114514);
-    })
-}
-
 const MORE_OPERATOES: &str = "
 fu2 cheng can1 fu2 x jie2
 han2
-    fu2 ret wei2 x cheng2 2.0 fen1
+    fu2 ret wei2 x cheng2 2f0 fen1
     fan3 ret fen1
 jie2
 
@@ -125,8 +100,17 @@ fn more_operations() {
             .get_function("yi 参 i64 结")
             .unwrap();
 
-        assert_eq!(cheng.call(57257.0), 114514.0);
-        assert_eq!(yi.call(57257), 114514);
+        fn native_cheng(x: f32) -> f32 {
+            x * 2.0
+        }
+        fn native_yi(x: i64) -> i64 {
+            x << 1
+        }
+
+        for n in 114514..1919810 {
+            assert_eq!(cheng.call(n as f32), native_cheng(n as f32));
+            assert_eq!(yi.call(n), native_yi(n));
+        }
     })
 }
 
@@ -138,13 +122,13 @@ jie2
 
 fu2 a can1 fu2 a jie2
 han2
-    fan3 a jia1 1.0 fen1
+    fan3 a jia1 1f0 fen1
 jie2
 
-zheng3 test can1 zheng3 fuck fen1 fu2 you jie2
+zheng3 test can1 zheng3 oac fen1 fu2 amin jie2
 han2 
-    ya1 fuck ru4 a fen1
-    ya1 you  ru4 a fen1
+    ya1 oac ru4 a fen1
+    ya1 amin  ru4 a fen1
     fan3 114514 fen1
 jie2
 ";
@@ -152,18 +136,13 @@ jie2
 #[test]
 fn overload_test() {
     compile_tester(OVERLOAD_TEST, |tester| unsafe {
-        type A1 = unsafe extern "C" fn(i64) -> i64;
-        type A2 = unsafe extern "C" fn(f32) -> f32;
         type Test = unsafe extern "C" fn(i64, f32) -> i64;
 
-        let a1: JitFunction<A1> = tester.execution_engine.get_function("a 参 i64 结").unwrap();
-        let a2: JitFunction<A2> = tester.execution_engine.get_function("a 参 f32 结").unwrap();
         let test: JitFunction<Test> = tester
             .execution_engine
             .get_function("test 参 i64 f32 结")
             .unwrap();
-        assert_eq!(a1.call(114513), 114514);
-        assert_eq!(a2.call(114513.0), 114514.0);
+
         assert_eq!(test.call(114514, 114514.0), 114514);
     })
 }

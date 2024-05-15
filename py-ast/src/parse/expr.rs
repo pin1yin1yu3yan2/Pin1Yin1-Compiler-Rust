@@ -72,10 +72,10 @@ impl ParseUnit<Token> for StringLiteral {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NumberLiteral {
-    Float { number: f64 },
-    Digit { number: usize },
+    Float(f64),
+    Digit(usize),
 }
 
 impl ParseUnit<Token> for NumberLiteral {
@@ -83,14 +83,31 @@ impl ParseUnit<Token> for NumberLiteral {
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
         let number = p.parse::<Token>()?; // digit
-        if let Ok(number) = number.parse::<usize>() {
-            Ok(Self::Digit { number })
-        } else {
-            match number.parse::<f64>() {
-                Ok(number) => Ok(Self::Float { number }),
-                Err(fe) => p.unmatch(fe),
-            }
+        let mut int_dec = number.split('f');
+
+        let Some(int) = int_dec.next() else {
+            unreachable!()
+        };
+        let int = match int.parse::<usize>() {
+            Ok(int) => int,
+            Err(e) => return p.unmatch(e),
+        };
+
+        let dec = match int_dec.next() {
+            Some("") => 0.0,
+            Some(dec) => match dec.parse::<usize>() {
+                Ok(0) => 0.0,
+                Ok(dec) => dec as f64 / 10f64.powi(dec.ilog10() as _),
+                Err(e) => return p.unmatch(e),
+            },
+            None => return Ok(Self::Digit(int)),
+        };
+        // check that if anything left
+        if let Some(next) = int_dec.next() {
+            return p.unmatch(format!("unexpect {}", next));
         }
+
+        Ok(Self::Float(int as f64 + dec))
     }
 }
 
@@ -405,56 +422,64 @@ mod tests {
     #[test]
     fn char() {
         parse_test("wen2 _t", |p| {
-            assert!(p.parse::<CharLiteral>().is_ok());
+            p.parse::<CharLiteral>()?;
+            Ok(())
         });
     }
 
     #[test]
     fn string() {
         parse_test("chuan4 _t11514___na", |p| {
-            assert!(p.parse::<StringLiteral>().is_ok());
+            p.parse::<StringLiteral>()?;
+            Ok(())
         })
     }
 
     #[test]
     fn number1() {
         parse_test("114514", |p| {
-            assert!(p.parse::<NumberLiteral>().is_ok());
+            p.parse::<NumberLiteral>()?;
+            Ok(())
         })
     }
 
     #[test]
     fn number2() {
-        parse_test("114514.", |p| {
-            assert!(p.parse::<NumberLiteral>().is_ok());
+        parse_test("114514f", |p| {
+            p.parse::<NumberLiteral>()?;
+            Ok(())
         })
     }
 
     #[test]
     fn number3() {
-        parse_test("1919.810", |p| {
-            assert!(p.parse::<NumberLiteral>().is_ok());
+        parse_test("1919f810", |p| {
+            p.parse::<NumberLiteral>()?;
+            Ok(())
         })
     }
 
     #[test]
     fn function_call() {
         parse_test("ya1 1919810 fen1 chuan4 acminoac ru4 han2shu4", |p| {
-            assert!(p.parse::<FnCall>().is_ok());
+            p.parse::<FnCall>()?;
+            Ok(())
         })
     }
 
     #[test]
     fn unary() {
         parse_test("fei1 191810", |p| {
-            assert!(p.parse::<Expr>().is_ok());
+            p.parse::<Expr>()?;
+            Ok(())
         })
     }
 
     #[test]
     fn nested_unary() {
         parse_test("fei1 fei1 fei1 fei1 191810", |p| {
-            assert!(p.parse::<Expr>().is_ok());
+            p.parse::<Expr>()?;
+            Ok(())
         })
     }
 
@@ -462,7 +487,8 @@ mod tests {
     fn bracket() {
         // unary + bracket
         parse_test("fei1 jie2 114514 he2", |p| {
-            assert!(p.parse::<Expr>().is_ok());
+            p.parse::<Expr>()?;
+            Ok(())
         })
     }
 
@@ -470,7 +496,8 @@ mod tests {
     fn complex_expr() {
         // 119 + 810 * 114514 - 12
         parse_test("1919 jia1 810 cheng2 114514 jian3 12", |p| {
-            assert!(p.parse::<Expr>().is_ok());
+            p.parse::<Expr>()?;
+            Ok(())
         });
     }
 }

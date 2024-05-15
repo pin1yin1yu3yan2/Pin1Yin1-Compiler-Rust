@@ -104,16 +104,18 @@ mod token_source {
         type Target = Self;
 
         fn parse(p: &mut Parser<char>) -> ParseResult<Self, char> {
-            // skip whitespace
-            while p.peek().is_some_and(|c| c.is_whitespace()) {
-                p.next();
+            fn w(c: &char) -> bool {
+                c.is_ascii_alphanumeric() || *c == '_'
             }
+
+            // skip whitespace
+            while p.next_if(|c| !w(c)).is_some() {}
 
             // get string until whitespace
             let mut string = String::new();
             p.start_taking();
-            while p.peek().is_some_and(|n| !n.is_whitespace()) {
-                string.extend(p.next());
+            while let Some(next) = p.next_if(w) {
+                string.push(*next);
             }
 
             // return unmatch if string is empty

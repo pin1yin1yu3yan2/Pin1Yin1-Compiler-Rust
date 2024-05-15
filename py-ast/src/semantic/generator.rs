@@ -469,8 +469,8 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
             // 解析
             parse::AtomicExpr::CharLiteral(char) => ir::Literal::Char(char.parsed),
             parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float { number, .. } => ir::Literal::Float(*number),
-                parse::NumberLiteral::Digit { number, .. } => ir::Literal::Integer(*number),
+                parse::NumberLiteral::Float(number) => ir::Literal::Float(*number),
+                parse::NumberLiteral::Digit(number) => ir::Literal::Integer(*number),
             },
 
             parse::AtomicExpr::StringLiteral(_str) => {
