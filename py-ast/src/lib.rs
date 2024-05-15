@@ -1,3 +1,5 @@
+#![feature(let_chains)]
+
 mod macros;
 pub mod parse;
 pub mod semantic;

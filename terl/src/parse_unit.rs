@@ -39,26 +39,6 @@ pub trait ParseUnit<S: Source>: Sized + Debug {
     }
 }
 
-// impl ParseUnit<char> for usize {
-//     type Target = usize;
-
-//     fn parse(p: &mut Parser) -> ParseResult<Self> {
-//         let span = p.skip_whitespace().take_while(|c| c.is_ascii_digit());
-//         let chars = p.select(span);
-//         if chars.is_empty() {
-//             return p.unmatch("no chars found");
-//         }
-
-//         let num = chars
-//             .iter()
-//             .rev()
-//             .enumerate()
-//             .map(|(fac, c)| (c.to_digit(10).unwrap() as usize) * 10usize.pow(fac as _))
-//             .sum::<usize>();
-//         Ok(num)
-//     }
-// }
-
 pub trait ReverseParser<S: Source> {
     type Left;
     fn reverse_parse(&self, p: &mut Parser<S>) -> Result<Self::Left, ParseError>;

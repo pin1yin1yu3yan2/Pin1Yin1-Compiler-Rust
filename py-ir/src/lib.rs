@@ -389,6 +389,8 @@ pub mod ir_variable {
 pub use ir_variable::*;
 
 pub mod ir_types {
+    use std::collections::HashMap;
+
     use super::SharedString;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -510,6 +512,53 @@ pub mod ir_types {
             }
 
             write!(f, "{}", self.ty)
+        }
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+    pub enum Type {
+        Template(Template),
+        Primitive(PrimitiveType),
+        Custom(SharedString),
+    }
+
+    impl From<Template> for Type {
+        fn from(v: Template) -> Self {
+            Self::Template(v)
+        }
+    }
+
+    impl From<PrimitiveType> for Type {
+        fn from(v: PrimitiveType) -> Self {
+            Self::Primitive(v)
+        }
+    }
+
+    impl From<SharedString> for Type {
+        fn from(v: SharedString) -> Self {
+            Self::Custom(v)
+        }
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+    pub struct Template {
+        pub name: SharedString,
+        pub generics: HashMap<SharedString, Type>,
+    }
+
+    impl Template {
+        pub fn new<I>(name: I, generics: HashMap<SharedString, Type>) -> Self
+        where
+            I: Into<SharedString>,
+        {
+            Self {
+                name: name.into(),
+                generics,
+            }
+        }
+
+        pub fn reference(to: Type) -> Self {
+            Self::new("&", std::iter::once(("T".into(), to)).collect())
         }
     }
 

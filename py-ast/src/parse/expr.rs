@@ -147,19 +147,6 @@ impl ParseUnit<Token> for FnCallArgs {
 }
 
 #[derive(Debug, Clone)]
-pub struct Initialization {
-    pub args: Vec<Expr>,
-}
-
-impl ParseUnit<Token> for Initialization {
-    type Target = Initialization;
-
-    fn parse(_p: &mut Parser<Token>) -> ParseResult<Self, Token> {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct FnCall {
     span: Span,
     pub fn_name: Ident,
@@ -309,14 +296,11 @@ impl ParseUnit<Token> for ExprItems {
                     }
                 }
                 Expect::OP => {
-                    if let Some(rb) = p.r#match(RPU(Operators::BracketR)).apply(mapper::Try)? {
+                    if bracket_depth != 0
+                        && let Some(rb) = p.r#match(RPU(Operators::BracketR)).apply(mapper::Try)?
+                    {
                         items.push(rb.into());
-                        if bracket_depth == 0 {
-                            break p.throw("unmatched right bracket").map_err(|mut e| {
-                                e.extend(left_bracket(&items, bracket_depth));
-                                e.append(rb.make_message("right bracket here"))
-                            });
-                        }
+
                         bracket_depth -= 1;
                         Expect::OP
                     } else if let Some(unary) = p.once(get_binary_op).apply(mapper::Try)? {
@@ -499,5 +483,59 @@ mod tests {
             p.parse::<Expr>()?;
             Ok(())
         });
+    }
+
+    #[test]
+    fn empty_array() {
+        parse_test("zu3 he2", |p| {
+            assert!(p.parse::<Array>()?.elements.is_empty());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn array_with_an_element() {
+        parse_test("zu3 jie2 1 he2 he2", |p| {
+            p.parse::<Array>()?;
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn array_with_elements() {
+        parse_test(
+            concat!(
+                "zu3 ",             // start array
+                "jie2 1 he2 ",      // bracket
+                "ya1 ru4 foo ",     // fn_call
+                "a b c d e ",       // variables
+                "114514 1919f810 ", // number
+                "chuan4 awa ",      // string
+                "he2"               // end array
+            ),
+            |p| {
+                p.parse::<Array>()?;
+                Ok(())
+            },
+        );
+    }
+
+    #[test]
+    fn array_with_elements_with_white_space() {
+        parse_test(
+            concat!(
+                "zu3%",                                       // start array
+                "jie2#$#$1*&)*(he2^&*(^&*(",                  // bracket
+                "ya1{#$*()!@*}ru4<>#$%*$%&*(%^*(*^&foo{[&*}", // fn_call
+                "a啊b波呲d地e鹅",                             // variables
+                "114514-=-=-=-1919f810<?><{}(*)",             // number
+                "chuan4<>(^&%^%^&*awa$%&^",                   // string
+                "he2"                                         // end array
+            ),
+            |p| {
+                p.parse::<Array>()?;
+                Ok(())
+            },
+        );
     }
 }

@@ -1,17 +1,72 @@
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SharedString(Rc<String>);
+/// a wrapper around [`Rc<String>`] or `&'static str`, so that make deep clone calls much fewer
+///
+/// # Note
+///
+/// [`Rc`] does not implement [`Serialize`], because [`Serialize`] and [`Deserialize`]
+/// will breaks the original referencing count, so the memory usage will be bigger
+/// than the original data
+///
+/// but this type implemented [`Serialize`] and [`Deserialize`]
+///
+/// [`Deserialize`]: serde
+/// [`Serialize`]: serde
+#[derive(Debug, Clone)]
+pub enum SharedString {
+    Rc(Rc<String>),
+    Static(&'static str),
+}
 
-impl From<String> for SharedString {
-    fn from(value: String) -> Self {
-        Self(value.into())
+impl SharedString {
+    pub const fn static_str(str: &'static str) -> Self {
+        Self::Static(str)
+    }
+
+    pub const fn rc(str: Rc<String>) -> Self {
+        Self::Rc(str)
+    }
+
+    pub fn as_str(&self) -> &str {
+        self
     }
 }
 
-impl From<&str> for SharedString {
-    fn from(value: &str) -> Self {
-        value.to_owned().into()
+impl PartialEq for SharedString {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str().eq(other.as_str())
+    }
+}
+
+impl PartialOrd for SharedString {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Eq for SharedString {}
+
+impl Ord for SharedString {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other)
+    }
+}
+
+impl std::hash::Hash for SharedString {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
+
+impl From<String> for SharedString {
+    fn from(value: String) -> Self {
+        Self::Rc(value.into())
+    }
+}
+
+impl From<&'static str> for SharedString {
+    fn from(value: &'static str) -> Self {
+        Self::static_str(value)
     }
 }
 
@@ -20,7 +75,7 @@ impl serde::Serialize for SharedString {
     where
         S: serde::Serializer,
     {
-        String::serialize(&self.0, serializer)
+        str::serialize(self, serializer)
     }
 }
 
@@ -35,7 +90,7 @@ impl<'de> serde::Deserialize<'de> for SharedString {
 
 impl std::fmt::Display for SharedString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        f.write_str(self)
     }
 }
 
@@ -43,19 +98,16 @@ impl std::ops::Deref for SharedString {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        match self {
+            SharedString::Rc(s) => s,
+            SharedString::Static(s) => s,
+        }
     }
 }
 
 impl std::borrow::Borrow<str> for SharedString {
     fn borrow(&self) -> &str {
         self
-    }
-}
-
-impl std::borrow::Borrow<String> for SharedString {
-    fn borrow(&self) -> &String {
-        &self.0
     }
 }
 

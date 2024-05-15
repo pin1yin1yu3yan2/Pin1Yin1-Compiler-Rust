@@ -4,4 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+default = ["color"]
 parser_calling_tree = []
+color = ["colored"]
+
+
+[dependencies]
+colored = { version = "2", optional = true }

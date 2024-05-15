@@ -1,11 +1,12 @@
 #![feature(test)]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, process::exit};
 
 use clap::Parser;
 use compile::CodeGen;
 use inkwell::context::Context;
 use py_ast::semantic::Generator;
+use py_ir::{Item, Variable};
 use py_lex::Token;
 use terl::{Buffer, ResultMapperExt, Source};
 
@@ -39,14 +40,14 @@ fn main() -> std::io::Result<()> {
         println!("{ast:#?}")
     }
 
-    // generate mir
-    let mir = generate_ir(error_handler, &ast);
+    // generate ir
+    let ir = generate_ir(error_handler, &ast);
     if cli.output_ir {
-        println!("{mir:#?}")
+        println!("{}", serde_json::to_string(&ir).unwrap());
     }
 
     let context = Context::create();
-    let compiler = CodeGen::new(&context, "test", &mir).unwrap();
+    let compiler = CodeGen::new(&context, "test", &ir).unwrap();
     if cli.output_llvm {
         println!("{}", compiler.llvm_ir())
     }
@@ -56,24 +57,25 @@ fn main() -> std::io::Result<()> {
 fn generate_ir(
     error_handler: (&Buffer, &Buffer<Token>),
     ast: &[py_ast::parse::Item],
-) -> Vec<py_ir::Item<py_ir::Variable>> {
+) -> Vec<Item<Variable>> {
     let mut scope: py_ast::semantic::Defines = Default::default();
     let mut mir = vec![];
     for item in ast {
-        let item = scope
-            .generate(item)
-            .map_err(|e| match e {
-                either::Either::Left(e) => {
-                    eprintln!("{}", py_lex::Token::handle_error(&error_handler, e))
+        match scope.generate(item) {
+            Ok(Some(item)) => mir.push(item),
+            Err(e) => {
+                match e {
+                    either::Either::Left(e) => {
+                        eprintln!("{}", py_lex::Token::handle_error(&error_handler, e))
+                    }
+                    either::Either::Right(es) => es.into_iter().for_each(|e| {
+                        eprintln!("{}", py_lex::Token::handle_error(&error_handler, e))
+                    }),
                 }
-                either::Either::Right(es) => es
-                    .into_iter()
-                    .for_each(|e| eprintln!("{}", py_lex::Token::handle_error(&error_handler, e))),
-            })
-            .unwrap();
-        if let Some(item) = item {
-            mir.push(item)
-        }
+                exit(-1);
+            }
+            _ => {}
+        };
     }
     mir
 }
@@ -98,7 +100,7 @@ fn generate_ast(path: String, src: String) -> GenAstResult {
             Ok(tokens)
         })
         .unwrap_or_else(|_| unreachable!());
-    let parse_result = (|| -> Result<_, terl::ParseError> {
+    let parse_result = (|| -> terl::Result<_, terl::ParseError> {
         let mut ast = vec![];
         while parser.peek().is_some() {
             ast.push(
@@ -118,7 +120,8 @@ fn generate_ast(path: String, src: String) -> GenAstResult {
                 "{}",
                 py_lex::Token::handle_error(&error_handler, error.error())
             );
-            panic!()
+
+            exit(-1);
         }
     };
     ((char_buffer, parser.take_buffer()), ast)

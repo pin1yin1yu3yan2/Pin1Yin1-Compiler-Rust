@@ -130,7 +130,6 @@ pub mod filters {
             let mut msg = format!("a funcion with {} parameters", self.expect);
 
             if let Some(name) = self.name {
-                // TODO: import api so that note could be output here
                 msg += "\nexist overloads whose length is expected:\n";
                 let satisfies = defs
                     .get_unmangled(name)
