@@ -6,7 +6,7 @@ pub trait IntoIR {
 pub mod mir_variable {
     use crate::{branches, BranchesBuilder, DeclareMap, GroupIdx};
     use py_ir as ir;
-    use py_ir::Literal;
+    use py_ir::value::Literal;
     use py_lex::SharedString;
 
     use super::IntoIR;
@@ -22,7 +22,7 @@ pub mod mir_variable {
 
     #[derive(Debug, Clone)]
     pub struct FnCall {
-        pub args: Vec<Variable>,
+        pub args: Vec<Value>,
     }
 
     impl From<Literal> for AtomicExpr {
@@ -32,21 +32,21 @@ pub mod mir_variable {
     }
 
     #[derive(Debug, Clone)]
-    pub struct Variable {
+    pub struct Value {
         pub val: AtomicExpr,
         pub ty: GroupIdx,
     }
 
-    impl py_ir::IRVariable for Variable {
+    impl py_ir::IRValue for Value {
         type ComputeType = GroupIdx;
         type VarDefineType = GroupIdx;
-        type FnDefineType = ir::TypeDefine;
-        type ParameterType = ir::TypeDefine;
+        type FnDefineType = ir::types::TypeDefine;
+        type ParameterType = ir::types::TypeDefine;
     }
 
-    impl Variable {
+    impl Value {
         pub fn new(val: AtomicExpr, ty: GroupIdx) -> Self {
-            Variable { val, ty }
+            Value { val, ty }
         }
 
         pub fn is_literal(&self) -> bool {
@@ -54,7 +54,7 @@ pub mod mir_variable {
         }
 
         pub fn literal_branches(var: &Literal) -> Vec<BranchesBuilder> {
-            use py_ir::PrimitiveType;
+            use py_ir::types::PrimitiveType;
             match var {
                 Literal::Char(_) => branches! {() =>  PrimitiveType::char()},
                 // String: greatly in processing...
@@ -75,29 +75,29 @@ pub mod mir_variable {
         }
     }
 
-    impl IntoIR for Variable {
-        type Forward = ir::Variable;
+    impl IntoIR for Value {
+        type Forward = ir::value::Value;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
-            use ir::*;
+            use ir::value::*;
             match self.val {
                 AtomicExpr::Literal(literal) => {
                     let primitive_type = *map.get_type(self.ty).as_primitive().unwrap();
-                    Variable::Literal(literal, primitive_type)
+                    Value::Literal(literal, primitive_type)
                 }
-                AtomicExpr::Variable(item) => Variable::Variable(item),
+                AtomicExpr::Variable(item) => Value::Variable(item),
                 AtomicExpr::FnCall(item) => {
                     let unique = &map[self.ty].result();
                     let fn_name = unique.overload().name.clone();
                     let args = item.args.into_ir(map);
-                    Variable::FnCall(FnCall::<Variable> { fn_name, args })
+                    Value::FnCall(FnCall::<Value> { fn_name, args })
                 }
             }
         }
     }
 
-    impl IntoIR for Vec<Variable> {
-        type Forward = Vec<ir::Variable>;
+    impl IntoIR for Vec<Value> {
+        type Forward = Vec<ir::value::Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             self.into_iter().map(|var| var.into_ir(map)).collect()
@@ -110,12 +110,13 @@ pub use mir_variable::*;
 mod into_ir_impls {
 
     use super::IntoIR;
-    use super::Variable as MirVariable;
+    use super::Value as MirVariable;
     use crate::DeclareMap;
+    use py_ir::value::Value;
     use py_ir::*;
 
     impl IntoIR for Item<MirVariable> {
-        type Forward = Item<Variable>;
+        type Forward = Item<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             match self {
@@ -125,7 +126,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for FnDefine<MirVariable> {
-        type Forward = FnDefine<Variable>;
+        type Forward = FnDefine<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             FnDefine {
@@ -138,7 +139,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for Statements<MirVariable> {
-        type Forward = Statements<Variable>;
+        type Forward = Statements<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             Statements {
@@ -153,7 +154,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for Statement<MirVariable> {
-        type Forward = Statement<Variable>;
+        type Forward = Statement<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             match self {
@@ -169,7 +170,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for OperateExpr<MirVariable> {
-        type Forward = OperateExpr<Variable>;
+        type Forward = OperateExpr<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             match self {
@@ -187,7 +188,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for Compute<MirVariable> {
-        type Forward = Compute<Variable>;
+        type Forward = Compute<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             let ty = *map.get_type(self.ty).as_primitive().unwrap();
@@ -200,7 +201,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for VarDefine<MirVariable> {
-        type Forward = VarDefine<Variable>;
+        type Forward = VarDefine<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             let ty = map.get_type(self.ty).clone();
@@ -213,7 +214,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for VarStore<MirVariable> {
-        type Forward = VarStore<Variable>;
+        type Forward = VarStore<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             VarStore {
@@ -224,7 +225,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for Condition<MirVariable> {
-        type Forward = Condition<Variable>;
+        type Forward = Condition<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             Condition {
@@ -235,7 +236,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for IfBranch<MirVariable> {
-        type Forward = IfBranch<Variable>;
+        type Forward = IfBranch<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             IfBranch {
@@ -246,7 +247,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for If<MirVariable> {
-        type Forward = If<Variable>;
+        type Forward = If<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             If {
@@ -261,7 +262,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for While<MirVariable> {
-        type Forward = While<Variable>;
+        type Forward = While<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             While {
@@ -272,7 +273,7 @@ mod into_ir_impls {
     }
 
     impl IntoIR for Return<MirVariable> {
-        type Forward = Return<Variable>;
+        type Forward = Return<Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             Return {
@@ -282,4 +283,4 @@ mod into_ir_impls {
     }
 }
 
-py_ir::custom_ir_variable!(pub IR<mir_variable::Variable>);
+py_ir::custom_ir_variable!(pub IR<mir_variable::Value>);

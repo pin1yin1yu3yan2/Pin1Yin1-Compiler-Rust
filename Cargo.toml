@@ -1,13 +1,23 @@
 [workspace]
 resolver = "2"
 
-members = ["terl", "py-ir", "py-ast", "pycc-rs", "py-declare", "py-lex"]
+members = [
+    "terl",
+    "py-ir",
+    "py-ast",
+    "pycc-rs",
+    "py-declare",
+    "py-lex",
+    "py-codegen-llvm",
+    "pyc",
+]
 
 
 [workspace.dependencies]
 serde = "1"
 serde_json = "1"
 either = "1"
+
 
 [profile.release]
 lto = true

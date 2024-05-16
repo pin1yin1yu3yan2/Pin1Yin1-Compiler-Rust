@@ -1,5 +1,5 @@
 use crate::defs::FnSignWithName;
-use py_ir::TypeDefine;
+use py_ir::types::TypeDefine;
 use std::{any::Any, rc::Rc};
 
 #[derive(Debug, Clone)]

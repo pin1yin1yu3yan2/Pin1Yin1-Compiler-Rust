@@ -1,5 +1,5 @@
 use crate::*;
-use py_ir::TypeDefine;
+use py_ir::types::TypeDefine;
 use std::collections::{HashMap, HashSet};
 use terl::{Span, WithSpan};
 

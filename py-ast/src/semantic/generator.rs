@@ -15,7 +15,7 @@ pub trait Generator<Item> {
 }
 
 impl<M: Mangle> Generator<parse::Item> for Defines<M> {
-    type Forward = Result<Option<ir::Item<ir::Variable>>, Either<Error, Vec<Error>>>;
+    type Forward = Result<Option<ir::Item<ir::value::Value>>, Either<Error, Vec<Error>>>;
 
     fn generate(&mut self, item: &parse::Item) -> Self::Forward {
         match item {
@@ -26,7 +26,7 @@ impl<M: Mangle> Generator<parse::Item> for Defines<M> {
 }
 
 impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
-    type Forward = Result<ir::FnDefine<ir::Variable>, Either<Error, Vec<Error>>>;
+    type Forward = Result<ir::FnDefine<ir::value::Value>, Either<Error, Vec<Error>>>;
 
     fn generate(&mut self, fn_define: &parse::FnDefine) -> Self::Forward {
         let unmangled_name = fn_define.name.shared();
@@ -192,7 +192,7 @@ impl Generator<parse::Statement> for StatementTransmuter<'_> {
 }
 
 impl Generator<parse::FnCall> for StatementTransmuter<'_> {
-    type Forward = Result<mir::Variable>;
+    type Forward = Result<mir::Value>;
 
     fn generate(&mut self, fn_call: &parse::FnCall) -> Self::Forward {
         let args = fn_call.args.iter().try_fold(vec![], |mut args, expr| {
@@ -239,7 +239,7 @@ impl Generator<parse::FnCall> for StatementTransmuter<'_> {
             .build_group(GroupBuilder::new(fn_call.get_span(), branch_builders));
 
         let val = mir::AtomicExpr::FnCall(mir::FnCall { args });
-        let fn_call = mir::Variable::new(val, overload);
+        let fn_call = mir::Value::new(val, overload);
 
         Ok(fn_call)
     }
@@ -382,7 +382,7 @@ impl Generator<parse::Conditions> for StatementTransmuter<'_> {
         })?;
 
         // type check
-        let bool = ir::PrimitiveType::Bool.into();
+        let bool = ir::types::PrimitiveType::Bool.into();
         let last_cond_span = conds.last().unwrap().get_span();
         self.fn_scope
             .declare_map
@@ -392,7 +392,7 @@ impl Generator<parse::Conditions> for StatementTransmuter<'_> {
 }
 
 impl Generator<parse::Expr> for StatementTransmuter<'_> {
-    type Forward = Result<mir::Variable>;
+    type Forward = Result<mir::Value>;
 
     fn generate(&mut self, expr: &parse::Expr) -> Self::Forward {
         let mut vals = Vec::new();
@@ -409,7 +409,7 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
                         self.fn_scope
                             .declare_map
                             .merge_group(expr.get_span(), l.ty, r.ty);
-                        use py_ir::PrimitiveType;
+                        use py_ir::types::PrimitiveType;
                         use py_lex::ops::OperatorTypes::CompareOperator;
 
                         // for compare operators(like == != < >), the result will be a boolean value,
@@ -430,7 +430,7 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
                             name: temp_name.clone(),
                             eval,
                         });
-                        vals.push(mir::Variable {
+                        vals.push(mir::Value {
                             val: mir::AtomicExpr::Variable(temp_name),
                             ty: result_ty,
                         });
@@ -446,7 +446,7 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
                             eval: mir::OperateExpr::unary(**op, l),
                         };
                         self.push_stmt(compute);
-                        vals.push(mir::Variable {
+                        vals.push(mir::Value {
                             ty,
                             val: mir::AtomicExpr::Variable(name),
                         });
@@ -461,16 +461,16 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
 }
 
 impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
-    type Forward = Result<mir::Variable>;
+    type Forward = Result<mir::Value>;
 
     fn generate(&mut self, atomic: &PU<parse::AtomicExpr>) -> Self::Forward {
         let literal = match &**atomic {
             // atomics
             // 解析
-            parse::AtomicExpr::CharLiteral(char) => ir::Literal::Char(char.parsed),
+            parse::AtomicExpr::CharLiteral(char) => ir::value::Literal::Char(char.parsed),
             parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float(number) => ir::Literal::Float(*number),
-                parse::NumberLiteral::Digit(number) => ir::Literal::Integer(*number),
+                parse::NumberLiteral::Float(number) => ir::value::Literal::Float(*number),
+                parse::NumberLiteral::Digit(number) => ir::value::Literal::Integer(*number),
             },
 
             parse::AtomicExpr::StringLiteral(_str) => {
@@ -483,7 +483,7 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
                     return Err(atomic.make_error("use of undefined variable"));
                 };
 
-                let variable = mir::Variable::new(mir::AtomicExpr::Variable(name.shared()), def.ty);
+                let variable = mir::Value::new(mir::AtomicExpr::Variable(name.shared()), def.ty);
                 return Ok(variable);
             }
             parse::AtomicExpr::Array(ref _array) => {
@@ -493,9 +493,9 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
         };
 
         let ty = self.fn_scope.declare_map.build_group({
-            let branches = mir::Variable::literal_branches(&literal);
+            let branches = mir::Value::literal_branches(&literal);
             GroupBuilder::new(atomic.get_span(), branches)
         });
-        Ok(mir::Variable::new(literal.into(), ty))
+        Ok(mir::Value::new(literal.into(), ty))
     }
 }

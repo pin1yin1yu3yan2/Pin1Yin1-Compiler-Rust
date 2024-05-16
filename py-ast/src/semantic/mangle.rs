@@ -99,12 +99,12 @@ impl<M: Mangle> Mangler<M> {
         M::mangle(unit)
     }
 
-    pub fn mangle_ty(&self, ty: &py_ir::TypeDefine) -> MangleUnit {
+    pub fn mangle_ty(&self, ty: &py_ir::types::TypeDefine) -> MangleUnit {
         match ty {
-            py_ir::TypeDefine::Primitive(pty) => self.mangle_unit(MangleItem::Type {
+            py_ir::types::TypeDefine::Primitive(pty) => self.mangle_unit(MangleItem::Type {
                 ty: Cow::Owned(pty.to_string()),
             }),
-            py_ir::TypeDefine::Complex(_) => todo!(),
+            py_ir::types::TypeDefine::Complex(_) => todo!(),
         }
     }
 

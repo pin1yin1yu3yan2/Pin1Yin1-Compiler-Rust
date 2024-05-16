@@ -1,20 +1,27 @@
 #![feature(test)]
 
-use std::{path::PathBuf, process::exit};
+use std::{error::Error, path::PathBuf, process::exit};
 
-use clap::Parser;
-use compile::CodeGen;
-use inkwell::context::Context;
+use clap::{Parser, ValueEnum};
 use py_ast::semantic::Generator;
-use py_ir::{Item, Variable};
+use py_ir::Item;
 use py_lex::Token;
+use pyc::Backend;
 use terl::{Buffer, ResultMapperExt, Source};
 
 pub mod compile;
-pub mod primitive;
-pub mod scope;
-#[cfg(test)]
+
+#[cfg(all(test, feature = "backend-llvm"))]
 mod tests;
+
+#[derive(ValueEnum, Clone, Copy)]
+enum CodeGenBackend {
+    #[cfg(feature = "backend-llvm")]
+    #[allow(clippy::upper_case_acronyms)]
+    LLVM,
+    #[cfg(feature = "backend-c")]
+    C,
+}
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -26,14 +33,18 @@ struct Cli {
     output_ast: bool,
     #[arg(long)]
     output_ir: bool,
+    #[arg(long, value_enum, default_value_t = CodeGenBackend::LLVM)]
+    backend: CodeGenBackend,
 }
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
     // generate ast
     let path = &cli.src;
-    let (error_handler, ast) = generate_ast_from_fs(path)?;
+    let src = std::fs::read_to_string(path)?;
+    let path = path.to_string_lossy().to_string();
+    let (error_handler, ast) = generate_ast(path.clone(), src);
     let error_handler = (&error_handler.0, &error_handler.1);
 
     if cli.output_ast {
@@ -46,18 +57,26 @@ fn main() -> std::io::Result<()> {
         println!("{}", serde_json::to_string(&ir).unwrap());
     }
 
-    let context = Context::create();
-    let compiler = CodeGen::new(&context, "test", &ir).unwrap();
-    if cli.output_llvm {
-        println!("{}", compiler.llvm_ir())
-    }
+    let config = ();
+
+    match cli.backend {
+        #[cfg(feature = "backend-llvm")]
+        CodeGenBackend::LLVM => {
+            use py_codegen_llvm::LLVMBackend;
+            let backend = LLVMBackend::init(config);
+            let module = backend.module(&path, &ir)?;
+            if cli.output_llvm {
+                println!("{}", backend.code(&module))
+            }
+        }
+        #[cfg(feature = "backend-c")]
+        CodeGenBackend::C => todo!("unspport now"),
+    };
+
     Ok(())
 }
 
-fn generate_ir(
-    error_handler: (&Buffer, &Buffer<Token>),
-    ast: &[py_ast::parse::Item],
-) -> Vec<Item<Variable>> {
+fn generate_ir(error_handler: (&Buffer, &Buffer<Token>), ast: &[py_ast::parse::Item]) -> Vec<Item> {
     let mut scope: py_ast::semantic::Defines = Default::default();
     let mut mir = vec![];
     for item in ast {
@@ -81,11 +100,6 @@ fn generate_ir(
 }
 
 type GenAstResult = ((Buffer, Buffer<Token>), Vec<py_ast::parse::Item>);
-
-fn generate_ast_from_fs(path: &PathBuf) -> std::io::Result<GenAstResult> {
-    let src = std::fs::read_to_string(path)?;
-    Ok(generate_ast(path.to_string_lossy().to_string(), src))
-}
 
 fn generate_ast(path: String, src: String) -> GenAstResult {
     let source = Buffer::new(path, src.chars().collect());

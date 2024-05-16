@@ -155,16 +155,16 @@ pub struct TypeDefine {
 }
 
 impl TypeDefine {
-    pub(crate) fn to_mir_ty(&self) -> terl::Result<crate::ir::TypeDefine> {
+    pub(crate) fn to_mir_ty(&self) -> terl::Result<crate::ir::types::TypeDefine> {
         self.try_into()
     }
 }
 
-impl TryFrom<&TypeDefine> for crate::ir::TypeDefine {
+impl TryFrom<&TypeDefine> for crate::ir::types::TypeDefine {
     type Error = terl::Error;
 
     fn try_from(def: &crate::parse::TypeDefine) -> std::result::Result<Self, Self::Error> {
-        use crate::ir::{ComplexType, PrimitiveType};
+        use crate::ir::types::{ComplexType, PrimitiveType};
         /*
            int: sign, width
            float: width
@@ -246,22 +246,24 @@ impl TryFrom<&TypeDefine> for crate::ir::TypeDefine {
             return Ok(ComplexType::no_decorators(ty).into());
         }
 
+        use crate::ir::types::TypeDecorators::*;
+
         let mut decorators = vec![];
         if def.const_.is_some() {
-            decorators.push(crate::ir::TypeDecorators::Const);
+            decorators.push(Const);
         }
 
         for decorator in &def.decorators {
             let decorator = match &**decorator{
                 crate::parse::TypeDecorators::TypeArrayExtend(array) => match array.size {
-                    Some(size) => crate::ir::TypeDecorators::SizedArray(*size),
-                    None => crate::ir::TypeDecorators::Array,
+                    Some(size) => SizedArray(*size),
+                    None => Array,
                 },
                 crate::parse::TypeDecorators::TypeReferenceExtend(_) => {
-                    crate::ir::TypeDecorators::Reference
+                    Reference
                 }
                 crate::parse::TypeDecorators::TypePointerExtend(_) => {
-                    crate::ir::TypeDecorators::Pointer
+                    Pointer
                 }
             };
             decorators.push(decorator);

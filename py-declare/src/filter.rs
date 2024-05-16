@@ -62,13 +62,10 @@ where
 
 pub mod filters {
 
-    use std::any::TypeId;
-
-    use py_ir::TypeDefine;
-
-    use crate::{Directly, Overload};
-
     use super::*;
+    use crate::{Directly, Overload};
+    use py_ir::types::TypeDefine;
+    use std::any::TypeId;
 
     pub struct TypeEqual<'t> {
         expect: &'t TypeDefine,

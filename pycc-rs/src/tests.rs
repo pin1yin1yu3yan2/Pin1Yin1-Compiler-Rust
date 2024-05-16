@@ -1,19 +1,27 @@
-use crate::compile::CodeGen;
-use inkwell::{context::Context, execution_engine::JitFunction};
+use py_codegen_llvm::{
+    inkwell::{
+        execution_engine::{ExecutionEngine, JitFunction},
+        OptimizationLevel,
+    },
+    LLVMBackend,
+};
 use py_ir as ir;
+use pyc::Backend;
 
-fn test_generate_ir(src: &str) -> Vec<ir::Item<ir::Variable>> {
+fn test_generate_ir(src: &str) -> Vec<ir::Item> {
     let (error_handler, ast) = crate::generate_ast("compiler-test.py1".to_owned(), src.to_owned());
     let error_handler = (&error_handler.0, &error_handler.1);
     crate::generate_ir(error_handler, &ast)
 }
 
-fn compile_tester(src: &str, tester: impl FnOnce(CodeGen)) {
-    let mir = test_generate_ir(src);
-    let context = Context::create();
-    let compiler = CodeGen::new(&context, "test", &mir).unwrap();
-
-    tester(compiler);
+fn compile_tester(src: &str, tester: impl FnOnce(&ExecutionEngine)) {
+    let ir = test_generate_ir(src);
+    let backend = LLVMBackend::init(());
+    let module = backend.module(src, &ir).unwrap();
+    let ee = module
+        .create_jit_execution_engine(OptimizationLevel::Default)
+        .unwrap();
+    tester(&ee);
 }
 
 const TEST_SRC1: &str = "
@@ -31,17 +39,11 @@ jie2
 
 #[test]
 fn jia_jian_around_114514() {
-    compile_tester(TEST_SRC1, |compiler| unsafe {
+    compile_tester(TEST_SRC1, |ee| unsafe {
         type TestFn = unsafe extern "C" fn(i64) -> i64;
 
-        let jia: JitFunction<TestFn> = compiler
-            .execution_engine
-            .get_function("jia 参 i64 结")
-            .unwrap();
-        let jian: JitFunction<TestFn> = compiler
-            .execution_engine
-            .get_function("jian 参 i64 结")
-            .unwrap();
+        let jia: JitFunction<TestFn> = ee.get_function("jia 参 i64 结").unwrap();
+        let jian: JitFunction<TestFn> = ee.get_function("jian 参 i64 结").unwrap();
 
         fn native_jia(n: i64) -> i64 {
             n + 1
@@ -87,18 +89,12 @@ jie2
 
 #[test]
 fn more_operations() {
-    compile_tester(MORE_OPERATOES, |tester| unsafe {
+    compile_tester(MORE_OPERATOES, |ee| unsafe {
         type Cheng = unsafe extern "C" fn(f32) -> f32;
         type Yi = unsafe extern "C" fn(i64) -> i64;
 
-        let cheng: JitFunction<Cheng> = tester
-            .execution_engine
-            .get_function("cheng 参 f32 结")
-            .unwrap();
-        let yi: JitFunction<Yi> = tester
-            .execution_engine
-            .get_function("yi 参 i64 结")
-            .unwrap();
+        let cheng: JitFunction<Cheng> = ee.get_function("cheng 参 f32 结").unwrap();
+        let yi: JitFunction<Yi> = ee.get_function("yi 参 i64 结").unwrap();
 
         fn native_cheng(x: f32) -> f32 {
             x * 2.0
@@ -135,13 +131,10 @@ jie2
 
 #[test]
 fn overload_test() {
-    compile_tester(OVERLOAD_TEST, |tester| unsafe {
+    compile_tester(OVERLOAD_TEST, |ee| unsafe {
         type Test = unsafe extern "C" fn(i64, f32) -> i64;
 
-        let test: JitFunction<Test> = tester
-            .execution_engine
-            .get_function("test 参 i64 f32 结")
-            .unwrap();
+        let test: JitFunction<Test> = ee.get_function("test 参 i64 f32 结").unwrap();
 
         assert_eq!(test.call(114514, 114514.0), 114514);
     })
@@ -162,13 +155,10 @@ jie2
 
 #[test]
 fn control_flow_test() {
-    compile_tester(BASIC_CONTROL_FLOW, |tester| unsafe {
+    compile_tester(BASIC_CONTROL_FLOW, |ee| unsafe {
         type Fio = unsafe extern "C" fn(i64) -> i64;
 
-        let py_fio: JitFunction<Fio> = tester
-            .execution_engine
-            .get_function("fio 参 i64 结")
-            .unwrap();
+        let py_fio: JitFunction<Fio> = ee.get_function("fio 参 i64 结").unwrap();
 
         fn native_fio(n: i64) -> i64 {
             match n {

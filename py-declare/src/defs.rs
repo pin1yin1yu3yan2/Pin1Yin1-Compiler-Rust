@@ -1,5 +1,5 @@
 use crate::*;
-use py_ir::TypeDefine;
+use py_ir::types::TypeDefine;
 use py_lex::SharedString;
 use std::collections::HashMap;
 use terl::Span;

@@ -37,7 +37,7 @@ mod tests {
         let no_span = terl::Span::new(0, 0);
         let ordered_span = |idx: usize| terl::Span::new(idx, idx + 1);
 
-        use py_ir::{ComplexType, TypeDefine};
+        use py_ir::types::{ComplexType, TypeDefine};
         use py_lex::SharedString;
 
         let raw_types = (0..6)
