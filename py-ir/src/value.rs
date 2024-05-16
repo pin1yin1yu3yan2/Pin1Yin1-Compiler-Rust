@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use py_lex::SharedString;
 
 use crate::types::{PrimitiveType, TypeDefine};
@@ -48,4 +50,14 @@ pub enum Literal {
     Char(char),
     Integer(usize),
     Float(f64),
+}
+
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Char(ch) => f.write_char(*ch),
+            Literal::Integer(nu) => f.write_fmt(format_args!("{nu}")),
+            Literal::Float(fl) => f.write_fmt(format_args!("{fl}")),
+        }
+    }
 }

@@ -9,7 +9,7 @@ members = [
     "py-declare",
     "py-lex",
     "py-codegen-llvm",
-    "pyc",
+    "pyc", "py-codegen-c",
 ]
 
 

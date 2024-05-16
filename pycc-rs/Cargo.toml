@@ -15,8 +15,9 @@ py-lex = { path = "../py-lex" }
 py-ast = { path = "../py-ast" }
 clap = { version = "4.5", features = ["derive"] }
 py-codegen-llvm = { path = "../py-codegen-llvm", optional = true }
+py-codegen-c = { path = "../py-codegen-c", optional = true }
 
 [features]
 default = ["backend-llvm", "backend-c"]
 backend-llvm = ["py-codegen-llvm"]
-backend-c = []
+backend-c = ["py-codegen-c"]

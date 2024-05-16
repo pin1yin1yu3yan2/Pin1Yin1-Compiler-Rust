@@ -27,8 +27,8 @@ enum CodeGenBackend {
 #[command(version, about)]
 struct Cli {
     src: PathBuf,
-    #[arg(long, default_value_t = true)]
-    output_llvm: bool,
+    #[arg(short, long)]
+    output: Option<PathBuf>,
     #[arg(long)]
     output_ast: bool,
     #[arg(long)]
@@ -58,6 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let config = ();
+    let output = cli.output.unwrap_or_else(|| PathBuf::from("a.out"));
 
     match cli.backend {
         #[cfg(feature = "backend-llvm")]
@@ -65,12 +66,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             use py_codegen_llvm::LLVMBackend;
             let backend = LLVMBackend::init(config);
             let module = backend.module(&path, &ir)?;
-            if cli.output_llvm {
-                println!("{}", backend.code(&module))
-            }
+            let code = backend.code(&module);
+            std::fs::write(output, &*code)?;
         }
         #[cfg(feature = "backend-c")]
-        CodeGenBackend::C => todo!("unspport now"),
+        CodeGenBackend::C => {
+            use py_codegen_c::CBackend;
+            let backend = CBackend::init(config);
+            let module = backend.module(&path, &ir)?;
+            let code = backend.code(&module);
+            std::fs::write(output, &*code)?;
+        }
     };
 
     Ok(())

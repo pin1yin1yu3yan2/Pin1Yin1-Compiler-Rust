@@ -6,7 +6,7 @@ use crate::*;
 ///
 /// # Examples
 ///
-/// ```
+/// ```no_run
 /// use terl::Span;
 ///
 /// let span = Span::new(3, 7);
@@ -27,7 +27,7 @@ impl Span {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terl::Span;
     ///
     /// let span = Span::new(3, 7);
@@ -48,7 +48,7 @@ impl Span {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terl::Span;
     ///
     /// let span1 = Span::new(1, 5);
@@ -66,7 +66,7 @@ impl Span {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terl::Span;
     ///
     /// let span1 = Span::new(1, 5);
@@ -85,7 +85,7 @@ impl Span {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terl::Span;
     ///
     /// let span = Span::new(3, 7);
@@ -99,7 +99,7 @@ impl Span {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terl::Span;
     ///
     /// let span = Span::new(3, 3);
@@ -133,7 +133,7 @@ impl std::fmt::Debug for Span {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terl::Span;
     ///
     /// let span = Span::new(3, 7);

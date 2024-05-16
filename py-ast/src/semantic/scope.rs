@@ -72,7 +72,7 @@ impl FnScope {
     #[inline]
     pub fn temp_name(&mut self) -> SharedString {
         // whitespace to make temp name will not be accessed
-        (format!(" {}", self.temps), self.temps += 1).0.into()
+        (format!("_{}", self.temps), self.temps += 1).0.into()
     }
 
     #[inline]

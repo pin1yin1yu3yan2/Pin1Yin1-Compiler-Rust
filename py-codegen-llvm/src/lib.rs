@@ -2,9 +2,11 @@ mod codegen;
 mod primitive;
 mod scope;
 
+use std::borrow::Cow;
+
+use codegen::CodeGen;
 pub use inkwell;
 use inkwell::{context::Context, module::Module};
-use pyc::CodeGen;
 
 pub struct LLVMBackend {
     context: Context,
@@ -46,7 +48,10 @@ impl pyc::Backend for LLVMBackend {
         Ok(mod_gen.module)
     }
 
-    fn code(&self, module: &Self::Module<'_>) -> String {
-        module.print_to_string().to_string()
+    // fn code<'s>(&'s self, module: &'s Self::Module<'s>) -> Cow<'s, str> {
+    //     module.to_string().into()
+    // }
+    fn code<'m>(&self, module: &'m Self::Module<'_>) -> Cow<'m, str> {
+        module.to_string().into()
     }
 }

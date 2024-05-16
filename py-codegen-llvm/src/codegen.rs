@@ -10,13 +10,16 @@ use py_ir::value as ir_value;
 use py_ir::value::Value as IRValue;
 use py_ir::{types as ir_types, ControlFlow};
 use py_lex::SharedString;
-use pyc::*;
 
 pub struct ModuleGen<'ctx> {
     pub context: &'ctx Context,
     pub builder: Builder<'ctx>,
     pub module: Module<'ctx>,
     pub defines: Defines<'ctx>,
+}
+
+pub trait CodeGen<CGU> {
+    fn generate(&mut self, cgu: &CGU) -> Result<(), BuilderError>;
 }
 
 fn type_scast<'ctx>(context: &'ctx Context, ty: &ir_types::TypeDefine) -> BasicTypeEnum<'ctx> {
@@ -44,10 +47,6 @@ impl<'ctx> ModuleGen<'ctx> {
     fn type_cast(&self, ty: &ir_types::TypeDefine) -> BasicTypeEnum<'ctx> {
         type_scast(self.context, ty)
     }
-}
-
-impl CodeGenerator for ModuleGen<'_> {
-    type Backend = crate::LLVMBackend;
 }
 
 impl CodeGen<py_ir::Item> for ModuleGen<'_> {
@@ -146,10 +145,6 @@ impl<'ctx> std::ops::DerefMut for FnGen<'_, 'ctx> {
     }
 }
 
-impl CodeGenerator for FnGen<'_, '_> {
-    type Backend = crate::LLVMBackend;
-}
-
 impl<'ctx> FnGen<'_, 'ctx> {
     fn literal(
         &self,
@@ -229,10 +224,7 @@ impl<'ctx> FnGen<'_, 'ctx> {
 }
 
 impl CodeGen<py_ir::Statements<IRValue>> for FnGen<'_, '_> {
-    fn generate(
-        &mut self,
-        cgu: &py_ir::Statements<IRValue>,
-    ) -> Result<(), <Self::Backend as Backend>::Error> {
+    fn generate(&mut self, cgu: &py_ir::Statements<IRValue>) -> Result<(), BuilderError> {
         self.fn_scope.vars.push(Default::default());
         for cgu in &**cgu {
             self.generate(cgu)?;
@@ -245,10 +237,7 @@ impl CodeGen<py_ir::Statements<IRValue>> for FnGen<'_, '_> {
 /// same as the implementation for [`py_ir::Statements`] but no new scope created to make
 /// condition val usable
 impl CodeGen<py_ir::Condition<IRValue>> for FnGen<'_, '_> {
-    fn generate(
-        &mut self,
-        cgu: &py_ir::Condition<IRValue>,
-    ) -> Result<(), <Self::Backend as Backend>::Error> {
+    fn generate(&mut self, cgu: &py_ir::Condition<IRValue>) -> Result<(), BuilderError> {
         for cgu in &*cgu.compute {
             self.generate(cgu)?;
         }

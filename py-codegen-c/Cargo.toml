@@ -1,0 +1,10 @@
+[package]
+name = "py-codegen-c"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyc = { path = "../pyc" }
+py-ir = { path = "../py-ir" }
+py-lex = { path = "../py-lex", default-features = false, features = ["ops"] }
+base32 = "0.4"
