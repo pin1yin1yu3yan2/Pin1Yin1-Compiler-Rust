@@ -1,23 +1,51 @@
 use std::{fmt::Write, ops::Index};
 
-use crate::{Error, Message, Span};
+use crate::*;
 
+/// the source of [`Parser`]
+///
+/// Indicate how to format the error to String
 pub trait Source: Sized {
+    /// type is needed for [`Source::handle_error`]
     type HandleErrorWith<'b>;
+    /// handle an [`Error`] by formatting it into a string
+    ///
+    /// This function formats an error into a string. It iterates through the error's messages,
+    /// formatting each one and appending it to the `buffer`. If any formatting fails,
+    /// it returns an error.
+    ///
+    /// # Parameters
+    ///
+    /// * `with` - A reference to the [`Source::HandleErrorWith`], which is used to format the error.
+    /// * `error` - The error to be formatted and displayed.
+    ///
+    /// # Returns
+    ///
+    /// A [`String`] containing the formatted error message if successful, or panic if the formatting fails.
     fn handle_error(with: &Self::HandleErrorWith<'_>, error: Error) -> String {
-        (|| {
+        (|| -> Result<_, std::fmt::Error> {
             let mut buffer = String::new();
-            Self::handle_location(with, &mut buffer, error.main_span, &error.main_message)?;
-
             for msg in error.messages {
                 Self::handle_message(with, &mut buffer, msg)?;
             }
-
-            Result::<_, std::fmt::Error>::Ok(buffer)
+            Ok(buffer)
         })()
         .unwrap()
     }
 
+    /// Handle a message by formatting it into a string.
+    ///
+    /// This function formats a message into a string. It handles different types of messages and formats them accordingly.
+    ///
+    /// # Parameters
+    ///
+    /// * `with` - A reference to the [`Source::HandleErrorWith`], which is used to format the error.
+    /// * `buffer` - A mutable reference to a [`Write`] trait object, which is used to write the formatted error message.
+    /// * `message` - The message to be formatted and displayed.
+    ///
+    /// # Returns
+    ///
+    /// A [`Result`] containing the formatted error message as a [`String`] if successful, or an [`std::fmt::Error`] if the formatting fails.
     fn handle_message<S>(
         with: &Self::HandleErrorWith<'_>,
         buffer: &mut S,
@@ -34,6 +62,20 @@ pub trait Source: Sized {
         Ok(())
     }
 
+    /// Formats a message on given location to [`String`].
+    ///
+    /// This function formats a message on the given location to a string. It handles different types of messages and formats them accordingly.
+    ///
+    /// # Parameters
+    ///
+    /// * `with` - A reference to the [`HandleErrorWith`] trait object, which is used to format the error.
+    /// * `buffer` - A mutable reference to a [`Write`] trait object, which is used to write the formatted error message.
+    /// * `loc` - The [`Span`] representing the location where the error occurred.
+    /// * `msg` - The message to be formatted and displayed.
+    ///
+    /// # Returns
+    ///
+    /// A [`Result`] containing the formatted error message as a [`String`] if successful, or an [`std::fmt::Error`] if the formatting fails.
     fn handle_location<S>(
         with: &Self::HandleErrorWith<'_>,
         buffer: &mut S,
@@ -157,6 +199,7 @@ impl Source for char {
     }
 }
 
+/// a buffer,store source whihch is needed by [`Parser`] in
 #[derive(Debug, Clone)]
 pub struct Buffer<S = char> {
     name: String,
@@ -164,20 +207,18 @@ pub struct Buffer<S = char> {
 }
 
 impl<S> Buffer<S> {
+    /// create a new [`Buffer`]
     pub fn new(name: String, src: Vec<S>) -> Self {
         Self { name, src }
     }
 
+    /// Returns the name of the source.
+    ///
+    /// # Returns
+    ///
+    /// * `&str` - A reference to the name of the source.
     pub fn name(&self) -> &str {
         &self.name
-    }
-
-    #[inline]
-    pub fn handle_error(&self, error: Error) -> String
-    where
-        S: for<'b> Source<HandleErrorWith<'b> = Self>,
-    {
-        S::handle_error(self, error)
     }
 }
 

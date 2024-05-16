@@ -40,8 +40,7 @@ impl ParserState {
         }
     }
 
-    /// foward tmp parser's work to main parser
-
+    /// forward temp parser's work to main parser
     pub(crate) fn force_sync(mut self, tmp: &ParserState) -> Self {
         self.idx = tmp.idx;
         self.start = match (self.start, tmp.start) {
@@ -51,7 +50,7 @@ impl ParserState {
         self
     }
 
-    /// sync [`ParserState`] with the parsing result from a temp sub parser's [`ParserState`]
+    /// sync [`ParserState`] with the parsing result from another parser's [`ParserState`]
     pub(crate) fn sync_with<T, E>(self, tmp: &ParserState, result: &Result<T, E>) -> Self {
         if result.is_ok() {
             self.force_sync(tmp)
@@ -205,7 +204,7 @@ impl<S: Source> Parser<S> {
         &self.src[span]
     }
 
-    /// get the next character
+    /// get the next item
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<&S> {
         let next = self.src.get(self.current_idx())?;
@@ -213,6 +212,9 @@ impl<S: Source> Parser<S> {
         Some(next)
     }
 
+    /// return [`Some`] if the next item if it satisfies the given condition
+    ///
+    /// return [`None`] if the next item doesnot satisfy the given condition, or no item left
     pub fn next_if<C>(&mut self, cond: C) -> Option<&S>
     where
         C: Fn(&S) -> bool,
@@ -224,7 +226,7 @@ impl<S: Source> Parser<S> {
         }
     }
 
-    /// peek the next character
+    /// peek the next item
     #[inline]
     pub fn peek(&self) -> Option<&S> {
         self.src.get(self.current_idx())
@@ -251,6 +253,7 @@ impl<S: Source> Parser<S> {
         }
     }
 
+    /// make an new [`Parser`] from the current [`Parser`]
     #[inline]
     pub fn process<P, S1>(mut self, processer: P) -> Result<(Buffer<S>, Parser<S1>), ParseError>
     where
@@ -263,16 +266,21 @@ impl<S: Source> Parser<S> {
         Result::Ok((self.src, Parser::new(Buffer::<S1>::new(name, new_src))))
     }
 
+    /// get the [`CallingTree`] struct, you can print it directly
+    ///
+    /// [`CallingTree`]: calling_tree::CallingTree
     #[inline]
     #[cfg(feature = "parser_calling_tree")]
     pub fn calling_tree(&self) -> &calling_tree::CallingTree {
         &self.calling_tree
     }
 
+    /// get a reference to the [`Buffer`] in [`Parser`]
     pub fn buffer(&self) -> &Buffer<S> {
         &self.src
     }
 
+    /// take the [`Buffer`] in [`Parser`]
     pub fn take_buffer(self) -> Buffer<S> {
         self.src
     }
@@ -317,26 +325,20 @@ impl<S: Source> Parser<S> {
         result
     }
 
+    /// parse a [`ParseUnit`] by ording the type
     #[inline]
     pub fn parse<P: ParseUnit<S>>(&mut self) -> ParseResult<P, S> {
         self.once(P::parse)
     }
 
+    /// calling [`ReverseParseUnit`], testfor if it is able to be parsed
     #[inline]
     pub fn r#match<P>(&mut self, rhs: P) -> Result<P::Left, ParseError>
     where
-        P: ReverseParser<S>,
+        P: ReverseParseUnit<S>,
     {
         // also a `try`
         self.once(|p| rhs.reverse_parse(p))
-    }
-
-    #[inline]
-    pub fn handle_error(&self, error: Error) -> String
-    where
-        S: for<'b> Source<HandleErrorWith<'b> = Buffer<S>>,
-    {
-        S::handle_error(&self.src, error)
     }
 }
 
@@ -348,6 +350,7 @@ pub struct Try<'p, P: ParseUnit<S>, S: Source> {
 }
 
 impl<'p, S: Source, P: ParseUnit<S>> Try<'p, P, S> {
+    /// create a new [`Try`] from mutable reference to a [`Parser`]
     pub fn new(parser: &'p mut Parser<S>) -> Self {
         Self {
             parser,

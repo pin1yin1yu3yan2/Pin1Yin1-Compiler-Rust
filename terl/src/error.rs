@@ -1,15 +1,45 @@
 use crate::*;
 
+/// possiable error kind of parse error
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParseErrorKind {
+    /// unmatched
     Unmatch,
+    /// matched, but has semantic error
     Semantic,
 }
 
+/// bundle of [`Error`] and [`ParseErrorKind`]
 #[derive(Debug, Clone)]
 pub struct ParseError {
     pub(crate) error: Error,
     pub(crate) kind: ParseErrorKind,
+}
+
+impl ParseError {
+    /// create an [`ParseError`]
+    pub fn new(span: Span, reason: impl ToString, kind: ParseErrorKind) -> Self {
+        Self {
+            error: Error::new(span, reason),
+            kind,
+        }
+    }
+
+    /// same as [`Error::append`]
+    pub fn append(mut self, message: impl Into<Message>) -> Self {
+        self.messages.push(message.into());
+        self
+    }
+
+    /// return the kind of [`ParseError`]
+    pub fn kind(&self) -> ParseErrorKind {
+        self.kind
+    }
+
+    /// take [`Error`] from [`ParseError`]
+    pub fn error(self) -> Error {
+        self.error
+    }
 }
 
 impl std::ops::Deref for ParseError {
@@ -26,14 +56,19 @@ impl std::ops::DerefMut for ParseError {
     }
 }
 
+/// an error message
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// an error message with only location
     Location(Span),
+    /// an error message with only text
     Text(String),
+    /// an error message with both location and text
     Rich(String, Span),
 }
 
 impl Message {
+    /// create a error message with location and text
     pub fn rich(message: String, at: Span) -> Self {
         Self::Rich(message, at)
     }
@@ -51,31 +86,24 @@ impl<S: ToString> From<S> for Message {
     }
 }
 
+/// an error, with many messages in
 #[derive(Debug, Clone)]
 pub struct Error {
-    pub(crate) main_span: Span,
-    pub(crate) main_message: String,
     pub(crate) messages: Vec<Message>,
 }
 
 impl Error {
+    /// create an [`Error`] with [`Message::Rich`] in
     pub fn new(main_span: Span, reason: impl ToString) -> Self {
         Self {
-            main_span,
-            main_message: reason.to_string(),
-            messages: vec![],
+            messages: vec![main_span.make_message(reason)],
         }
     }
 
+    /// append an error [`Message`], and return [`Error`] for chain-calling
     pub fn append(mut self, message: impl Into<Message>) -> Self {
         self.messages.push(message.into());
         self
-    }
-}
-
-impl WithSpan for Error {
-    fn get_span(&self) -> Span {
-        self.main_span
     }
 }
 
@@ -89,18 +117,14 @@ impl std::ops::Add for Error {
     type Output = Error;
 
     fn add(mut self, rhs: Self) -> Self::Output {
-        self.messages.extend(
-            std::iter::once(Message::rich(rhs.main_message, rhs.main_span)).chain(rhs.messages),
-        );
+        self.messages.extend(rhs.messages);
         self
     }
 }
 
 impl std::ops::AddAssign for Error {
     fn add_assign(&mut self, rhs: Self) {
-        self.messages.extend(
-            std::iter::once(Message::rich(rhs.main_message, rhs.main_span)).chain(rhs.messages),
-        );
+        self.messages.extend(rhs.messages);
     }
 }
 
@@ -116,43 +140,6 @@ impl<M: Into<Message>> std::ops::Add<M> for Error {
 impl<M: Into<Message>> std::ops::AddAssign<M> for Error {
     fn add_assign(&mut self, rhs: M) {
         self.messages.push(rhs.into());
-    }
-}
-
-impl ParseError {
-    pub fn new(span: Span, reason: impl ToString, kind: ParseErrorKind) -> Self {
-        Self {
-            error: Error::new(span, reason),
-            kind,
-        }
-    }
-
-    pub fn map(mut self, new_reason: impl ToString) -> Self {
-        self.main_message = new_reason.to_string();
-        self
-    }
-
-    pub fn append(mut self, message: impl Into<Message>) -> Self {
-        self.messages.push(message.into());
-        self
-    }
-
-    pub fn kind(&self) -> ParseErrorKind {
-        self.kind
-    }
-
-    pub fn to_error(mut self) -> Self {
-        self.kind = ParseErrorKind::Semantic;
-        self
-    }
-
-    pub fn to_unmatch(mut self) -> Self {
-        self.kind = ParseErrorKind::Unmatch;
-        self
-    }
-
-    pub fn error(self) -> Error {
-        self.error
     }
 }
 
@@ -175,27 +162,35 @@ impl<T> TryFrom<Result<T>> for Error {
     }
 }
 
+/// tag types with a location information in sorce file
 pub trait WithSpan {
+    /// get the location information
     fn get_span(&self) -> Span;
 
+    /// make an [`Error`] at location
     fn make_error(&self, reason: impl ToString) -> Error {
         Error::new(self.get_span(), reason)
     }
 
+    /// make an [`Message`] at location
     fn make_message(&self, reason: impl ToString) -> Message {
         Message::Rich(reason.to_string(), self.get_span())
     }
 }
 
+/// making [`ParseError`] extend for [`WithSpan`] trait
 pub trait WithSpanExt: WithSpan {
+    /// make an [`ParseError`] at location with ordered [`ParseErrorKind`]
     fn make_parse_error(&self, reason: impl ToString, kind: ParseErrorKind) -> ParseError {
         ParseError::new(self.get_span(), reason, kind)
     }
 
+    /// make an Unmatched [`ParseError`] in [`Result`]
     fn unmatch<T>(&self, reason: impl ToString) -> Result<T, ParseError> {
         Err(self.make_parse_error(reason, ParseErrorKind::Unmatch))
     }
 
+    /// make an Semantic [`ParseError`] in [`Result`]
     fn throw<T>(&self, reason: impl ToString) -> Result<T, ParseError> {
         Err(self.make_parse_error(reason, ParseErrorKind::Semantic))
     }

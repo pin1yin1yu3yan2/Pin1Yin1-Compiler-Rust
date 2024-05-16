@@ -2,18 +2,19 @@ use std::marker::PhantomData;
 
 use crate::*;
 
-pub trait ExtendTuple {
-    type Next<T>: ExtendTuple;
-    fn extend_one<T>(self, append: T) -> Self::Next<T>;
-}
-
+/// an mapper that can be applied on [`ParseResult`]
 pub trait ParseMapper<P> {
+    /// mapped result
     type Result;
+    /// map a [`Result<P, ParseError>`] to [`ParseMapper::Result`]
     fn map(self, result: Result<P, ParseError>) -> Self::Result;
 }
 
+/// an extend for [`Result`]
 pub trait ResultMapperExt<P> {
+    /// binding for [`ParseMapper::Result`]
     type Result<Mapper: ParseMapper<P>>;
+    /// apply a [`ParseMapper`] to a [`Result<P, ParseError>`]
     fn apply<M: ParseMapper<P>>(self, mapper: M) -> Self::Result<M>;
 }
 
@@ -25,31 +26,9 @@ impl<P> ResultMapperExt<P> for Result<P, ParseError> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MapError<M>(M)
-where
-    M: FnOnce(ParseError) -> ParseError;
-
-impl<P, M> ParseMapper<P> for MapError<M>
-where
-    M: FnOnce(ParseError) -> ParseError,
-{
-    type Result = Result<P, ParseError>;
-
-    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
-        result.map_err(self.0)
-    }
-}
-
-impl<M> MapError<M>
-where
-    M: FnOnce(ParseError) -> ParseError,
-{
-    pub fn new(m: M) -> Self {
-        Self(m)
-    }
-}
-
+/// turn [`ParseErrorKind`] in [`ParseResult`] into [`ParseErrorKind::Semantic`]
+///
+/// so that [`Try`] will not filter out [`Error`]
 #[derive(Debug, Clone, Copy)]
 pub struct MustMatch;
 
@@ -59,7 +38,10 @@ impl<P> ParseMapper<P> for MustMatch {
     fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
         result.map_err(|e| {
             if e.kind() == ParseErrorKind::Unmatch {
-                e.to_error()
+                ParseError {
+                    error: e.error(),
+                    kind: ParseErrorKind::Semantic,
+                }
             } else {
                 e
             }
@@ -67,21 +49,7 @@ impl<P> ParseMapper<P> for MustMatch {
     }
 }
 
-pub struct MapMsg<Msg>(pub Msg)
-where
-    Msg: ToString;
-
-impl<P, Msg> ParseMapper<P> for MapMsg<Msg>
-where
-    Msg: ToString,
-{
-    type Result = Result<P, ParseError>;
-
-    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
-        result.map_err(|e| e.map(self.0))
-    }
-}
-
+/// testfor is result equal to expect value
 #[derive(Debug, Clone)]
 pub struct Equal<P, E> {
     eq: P,
@@ -110,11 +78,17 @@ where
     P: PartialEq + WithSpan,
     E: FnOnce(Span) -> Result<P, ParseError>,
 {
+    /// create a new [`Equal`] mapper
+    ///
+    /// * eq: expect val
+    ///
+    /// * or: Error generator
     pub fn new(eq: P, or: E) -> Self {
         Self { eq, or }
     }
 }
 
+/// testfor is result satisfy the condition
 pub struct Satisfy<P, C, E>
 where
     C: FnOnce(&P) -> bool,
@@ -148,6 +122,11 @@ where
     C: FnOnce(&P) -> bool,
     E: FnOnce(Span) -> Result<P, ParseError>,
 {
+    /// create a new [`Satisfy`] mapper
+    ///
+    /// * cond: condition
+    ///
+    /// * or: error generator for the value which not satisfy the condition
     pub fn new(cond: C, or: E) -> Self {
         Self {
             cond,
@@ -177,38 +156,6 @@ impl<P> ParseMapper<P> for Try {
             Ok(p) => Ok(Some(p)),
             Err(e) if e.kind() == ParseErrorKind::Unmatch => Ok(None),
             Err(e) => Err(e),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Custom<P, M>
-where
-    M: FnOnce(Result<P, ParseError>) -> Result<P, ParseError>,
-{
-    mapper: M,
-    _p: PhantomData<P>,
-}
-
-impl<P, M> ParseMapper<P> for Custom<P, M>
-where
-    M: FnOnce(Result<P, ParseError>) -> Result<P, ParseError>,
-{
-    type Result = Result<P, ParseError>;
-
-    fn map(self, result: Result<P, ParseError>) -> Result<P, ParseError> {
-        (self.mapper)(result)
-    }
-}
-
-impl<P, M> Custom<P, M>
-where
-    M: FnOnce(Result<P, ParseError>) -> Result<P, ParseError>,
-{
-    pub fn new(mapper: M) -> Self {
-        Self {
-            mapper,
-            _p: PhantomData,
         }
     }
 }

@@ -314,9 +314,9 @@ mod pus {
 
     pub struct RPU<Item>(pub Item);
 
-    impl<Item, S: Source> ReverseParser<S> for RPU<Item>
+    impl<Item, S: Source> ReverseParseUnit<S> for RPU<Item>
     where
-        Item: ReverseParser<S>,
+        Item: ReverseParseUnit<S>,
     {
         type Left = PU<Item::Left>;
 

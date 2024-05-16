@@ -242,6 +242,8 @@ impl CodeGen<py_ir::Statements<IRValue>> for FnGen<'_, '_> {
     }
 }
 
+/// same as the implementation for [`py_ir::Statements`] but no new scope created to make
+/// condition val usable
 impl CodeGen<py_ir::Condition<IRValue>> for FnGen<'_, '_> {
     fn generate(
         &mut self,

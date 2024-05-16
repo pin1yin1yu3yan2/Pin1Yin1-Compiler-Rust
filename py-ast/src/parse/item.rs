@@ -13,7 +13,7 @@ impl ParseUnit<Token> for Comment {
         loop {
             let str = p
                 .parse::<Token>()
-                .apply(mapper::MapMsg("comment without end"))?;
+                .map_err(|e| e.append("comment without ending"))?;
 
             if &*str == "jie2" {
                 return Ok(Comment {});

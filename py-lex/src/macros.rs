@@ -36,7 +36,7 @@ macro_rules! reverse_parse_keywords {
         }
 
         #[cfg(feature = "parse")]
-        impl terl::ReverseParser<$crate::Token> for $enum_name {
+        impl terl::ReverseParseUnit<$crate::Token> for $enum_name {
             type Left = $enum_name;
             fn reverse_parse(&self, p:&mut terl::Parser<$crate::Token>) -> Result<$enum_name, terl::ParseError> {
                 use terl::WithSpanExt;
