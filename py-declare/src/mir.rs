@@ -7,52 +7,36 @@ pub mod mir_variable {
     use crate::{branches, BranchesBuilder, DeclareMap, GroupIdx};
     use py_ir as ir;
     use py_ir::value::Literal;
+    use py_lex::ops::Operators;
     use py_lex::SharedString;
 
     use super::IntoIR;
 
-    #[derive(Debug, Clone)]
-    pub enum AtomicExpr {
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    pub enum Value {
         Literal(Literal),
         Variable(SharedString),
-        FnCall(FnCall),
-        // #[deprecated = "unsupported now"]
-        // Initialization(Vec<Expr>),
     }
 
-    #[derive(Debug, Clone)]
-    pub struct FnCall {
-        pub args: Vec<Value>,
-    }
-
-    impl From<Literal> for AtomicExpr {
+    impl From<Literal> for Value {
         fn from(v: Literal) -> Self {
             Self::Literal(v)
         }
     }
 
-    #[derive(Debug, Clone)]
-    pub struct Value {
-        pub val: AtomicExpr,
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    pub struct Undeclared<V> {
+        pub val: V,
         pub ty: GroupIdx,
     }
 
-    impl py_ir::IRValue for Value {
-        type ComputeType = GroupIdx;
-        type VarDefineType = GroupIdx;
-        type FnDefineType = ir::types::TypeDefine;
-        type ParameterType = ir::types::TypeDefine;
+    impl<V> Undeclared<V> {
+        pub fn new(val: V, ty: GroupIdx) -> Self {
+            Self { val, ty }
+        }
     }
 
-    impl Value {
-        pub fn new(val: AtomicExpr, ty: GroupIdx) -> Self {
-            Value { val, ty }
-        }
-
-        pub fn is_literal(&self) -> bool {
-            !matches!(self.val, AtomicExpr::FnCall(..) | AtomicExpr::Variable(..))
-        }
-
+    impl Undeclared<Value> {
         pub fn literal_branches(var: &Literal) -> Vec<BranchesBuilder> {
             use py_ir::types::PrimitiveType;
             match var {
@@ -75,32 +59,96 @@ pub mod mir_variable {
         }
     }
 
-    impl IntoIR for Value {
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    pub enum AssignValue {
+        Value(Value),
+        FnCall(FnCall),
+        Operate(Operate),
+    }
+
+    impl From<Value> for AssignValue {
+        fn from(v: Value) -> Self {
+            Self::Value(v)
+        }
+    }
+
+    impl From<FnCall> for AssignValue {
+        fn from(v: FnCall) -> Self {
+            Self::FnCall(v)
+        }
+    }
+
+    impl From<Operate> for AssignValue {
+        fn from(v: Operate) -> Self {
+            Self::Operate(v)
+        }
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    pub enum Operate {
+        Unary(Operators, Undeclared<Value>),
+        Binary(Operators, Undeclared<Value>, Undeclared<Value>),
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+    pub struct FnCall {
+        pub args: Vec<Undeclared<Value>>,
+    }
+
+    impl py_ir::IRValue for Undeclared<Value> {
+        type AssignValue = Undeclared<AssignValue>;
+        type VarDefineType = GroupIdx;
+        type FnDefineType = ir::types::TypeDefine;
+        type ParameterType = ir::types::TypeDefine;
+    }
+
+    impl IntoIR for Undeclared<Value> {
         type Forward = ir::value::Value;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
-            use ir::value::*;
+        fn into_ir(self, map: &crate::DeclareMap) -> Self::Forward {
             match self.val {
-                AtomicExpr::Literal(literal) => {
-                    let primitive_type = *map.get_type(self.ty).as_primitive().unwrap();
-                    Value::Literal(literal, primitive_type)
+                Value::Literal(literal) => {
+                    let ty = *map.get_type(self.ty).as_primitive().unwrap();
+                    ir::value::Value::Literal(literal, ty)
                 }
-                AtomicExpr::Variable(item) => Value::Variable(item),
-                AtomicExpr::FnCall(item) => {
-                    let unique = &map[self.ty].result();
-                    let fn_name = unique.overload().name.clone();
-                    let args = item.args.into_ir(map);
-                    Value::FnCall(FnCall::<Value> { fn_name, args })
+                Value::Variable(variable) => ir::value::Value::Variable(variable),
+            }
+        }
+    }
+
+    impl IntoIR for Undeclared<AssignValue> {
+        type Forward = ir::value::AssignValue;
+
+        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+            match self.val {
+                AssignValue::Value(value) => Undeclared::new(value, self.ty).into_ir(map).into(),
+                AssignValue::FnCall(fn_call) => {
+                    let fn_name = map[self.ty].result().overload().name.clone();
+                    ir::value::FnCall {
+                        fn_name,
+                        args: fn_call.args.into_ir(map),
+                    }
+                    .into()
+                }
+                AssignValue::Operate(operate) => {
+                    let ty = *map.get_type(self.ty).as_primitive().unwrap();
+                    let operate = match operate {
+                        Operate::Unary(op, l) => ir::value::Operate::Unary(op, l.into_ir(map)),
+                        Operate::Binary(op, l, r) => {
+                            ir::value::Operate::Binary(op, l.into_ir(map), r.into_ir(map))
+                        }
+                    };
+                    (operate, ty).into()
                 }
             }
         }
     }
 
-    impl IntoIR for Vec<Value> {
+    impl IntoIR for Vec<Undeclared<Value>> {
         type Forward = Vec<ir::value::Value>;
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
-            self.into_iter().map(|var| var.into_ir(map)).collect()
+            self.into_iter().map(|val| val.into_ir(map)).collect()
         }
     }
 }
@@ -109,11 +157,12 @@ pub use mir_variable::*;
 
 mod into_ir_impls {
 
-    use super::IntoIR;
-    use super::Value as MirVariable;
+    use super::{IntoIR, Undeclared};
     use crate::DeclareMap;
     use py_ir::value::Value;
     use py_ir::*;
+
+    type MirVariable = Undeclared<super::Value>;
 
     impl IntoIR for Item<MirVariable> {
         type Forward = Item<Value>;
@@ -158,44 +207,12 @@ mod into_ir_impls {
 
         fn into_ir(self, map: &DeclareMap) -> Self::Forward {
             match self {
-                Statement::Compute(item) => item.into_ir(map).into(),
                 Statement::VarDefine(item) => item.into_ir(map).into(),
                 Statement::VarStore(item) => item.into_ir(map).into(),
                 Statement::Block(item) => item.into_ir(map).into(),
                 Statement::If(item) => item.into_ir(map).into(),
                 Statement::While(item) => item.into_ir(map).into(),
                 Statement::Return(item) => item.into_ir(map).into(),
-            }
-        }
-    }
-
-    impl IntoIR for OperateExpr<MirVariable> {
-        type Forward = OperateExpr<Value>;
-
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
-            match self {
-                OperateExpr::Unary(op, l) => {
-                    let l = l.into_ir(map);
-                    OperateExpr::Unary(op, l)
-                }
-                OperateExpr::Binary(op, l, r) => {
-                    let l = l.into_ir(map);
-                    let r = r.into_ir(map);
-                    OperateExpr::Binary(op, l, r)
-                }
-            }
-        }
-    }
-
-    impl IntoIR for Compute<MirVariable> {
-        type Forward = Compute<Value>;
-
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
-            let ty = *map.get_type(self.ty).as_primitive().unwrap();
-            Compute {
-                ty,
-                eval: self.eval.into_ir(map),
-                name: self.name,
             }
         }
     }
@@ -209,6 +226,7 @@ mod into_ir_impls {
                 ty,
                 name: self.name,
                 init: self.init.map(|init| init.into_ir(map)),
+                is_temp: self.is_temp,
             }
         }
     }
@@ -283,4 +301,4 @@ mod into_ir_impls {
     }
 }
 
-py_ir::custom_ir_variable!(pub IR<mir_variable::Value>);
+py_ir::custom_ir_variable!(pub IR<Undeclared<mir_variable::Value>>);

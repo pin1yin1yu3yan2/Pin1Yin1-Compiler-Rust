@@ -61,7 +61,7 @@ impl ParserState {
 }
 
 #[cfg(feature = "parser_calling_tree")]
-mod calling_tree {
+pub mod calling_tree {
     use crate::{ParseErrorKind, Span};
 
     #[derive(Clone, Copy)]

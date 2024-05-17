@@ -1,37 +1,21 @@
 pub mod types;
 pub mod value;
 
-use py_lex::{ops::Operators, SharedString};
+use py_lex::SharedString;
 
 pub trait IRValue {
-    type ComputeType: serde::Serialize
-        + for<'a> serde::Deserialize<'a>
-        + std::fmt::Debug
-        + Clone
-        + PartialEq;
-    type VarDefineType: serde::Serialize
-        + for<'a> serde::Deserialize<'a>
-        + std::fmt::Debug
-        + Clone
-        + PartialEq;
-    type FnDefineType: serde::Serialize
-        + for<'a> serde::Deserialize<'a>
-        + std::fmt::Debug
-        + Clone
-        + PartialEq;
-    type ParameterType: serde::Serialize
-        + for<'a> serde::Deserialize<'a>
-        + std::fmt::Debug
-        + Clone
-        + PartialEq;
+    type AssignValue: serde::Serialize + for<'a> serde::Deserialize<'a> + std::fmt::Debug + Clone;
+    type VarDefineType: serde::Serialize + for<'a> serde::Deserialize<'a> + std::fmt::Debug + Clone;
+    type FnDefineType: serde::Serialize + for<'a> serde::Deserialize<'a> + std::fmt::Debug + Clone;
+    type ParameterType: serde::Serialize + for<'a> serde::Deserialize<'a> + std::fmt::Debug + Clone;
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub enum Item<Var: IRValue = crate::value::Value> {
     FnDefine(FnDefine<Var>),
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Statements<Var: IRValue> {
     pub stmts: Vec<Statement<Var>>,
     pub returned: bool,
@@ -76,6 +60,13 @@ impl<Var: IRValue> std::ops::Deref for Statements<Var> {
     }
 }
 
+/// rename vardefine support
+impl<Var: IRValue> std::ops::DerefMut for Statements<Var> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.stmts
+    }
+}
+
 pub trait ControlFlow {
     fn returned(&self) -> bool;
 }
@@ -86,9 +77,8 @@ impl<Var: IRValue> ControlFlow for Statements<Var> {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub enum Statement<Var: IRValue> {
-    Compute(Compute<Var>),
     VarDefine(VarDefine<Var>),
     VarStore(VarStore<Var>),
     Block(Statements<Var>),
@@ -114,12 +104,6 @@ mod from_impls {
     impl<Var: IRValue> From<FnDefine<Var>> for Item<Var> {
         fn from(v: FnDefine<Var>) -> Self {
             Self::FnDefine(v)
-        }
-    }
-
-    impl<Var: IRValue> From<Compute<Var>> for Statement<Var> {
-        fn from(v: Compute<Var>) -> Self {
-            Self::Compute(v)
         }
     }
 
@@ -160,40 +144,7 @@ mod from_impls {
     }
 }
 
-/// [`OperateExpr::Unary`] and [`OperateExpr::Binary`] are normal operations aroud primitives
-///
-/// computes around non-primitive types are turned into [FnCall]
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub enum OperateExpr<Var> {
-    Unary(Operators, Var),
-    Binary(Operators, Var, Var),
-}
-
-impl<Var: IRValue> OperateExpr<Var> {
-    pub fn binary(op: Operators, l: impl Into<Var>, r: impl Into<Var>) -> Self {
-        Self::Binary(op, l.into(), r.into())
-    }
-
-    pub fn unary(op: Operators, v: impl Into<Var>) -> Self {
-        Self::Unary(op, v.into())
-    }
-}
-
-/// computing aroud primitive types
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct Compute<Var: IRValue> {
-    /// computing is around same types
-    ///
-    /// this is [`OperateExpr::Binary`] or [`OperateExpr::Unary`]'s type
-    ///
-    /// although [`Variable::Literal`] own its type, [`Variable::FnCall`] and other are not
-    #[serde(rename = "type")]
-    pub ty: Var::ComputeType,
-    pub name: SharedString,
-    pub eval: OperateExpr<Var>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Parameter<Pty> {
     #[serde(rename = "type")]
     pub ty: Pty,
@@ -201,7 +152,7 @@ pub struct Parameter<Pty> {
     pub name: SharedString,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct FnDefine<Var: IRValue> {
     #[serde(rename = "type")]
     pub ty: Var::FnDefineType,
@@ -210,28 +161,30 @@ pub struct FnDefine<Var: IRValue> {
     pub body: Statements<Var>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VarDefine<Var: IRValue> {
     #[serde(rename = "type")]
     pub ty: Var::VarDefineType,
     pub name: SharedString,
-    pub init: Option<Var>,
+    pub init: Option<Var::AssignValue>,
+    /// is the current value generated from operate, fn_call or other
+    pub is_temp: bool,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VarStore<Var> {
     pub name: SharedString,
     pub val: Var,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Condition<Var: IRValue> {
     // the final value of the condition
     pub val: Var,
     pub compute: Statements<Var>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct IfBranch<Var: IRValue> {
     pub cond: Condition<Var>,
     pub body: Statements<Var>,
@@ -243,7 +196,7 @@ impl<Var: IRValue> ControlFlow for IfBranch<Var> {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct If<Var: IRValue> {
     pub branches: Vec<IfBranch<Var>>,
     #[serde(rename = "else")]
@@ -257,7 +210,7 @@ impl<Var: IRValue> ControlFlow for If<Var> {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct While<Var: IRValue> {
     pub cond: Condition<Var>,
     pub body: Statements<Var>,
@@ -269,7 +222,7 @@ impl<Var: IRValue> ControlFlow for While<Var> {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct Return<Var> {
     pub val: Option<Var>,
 }
@@ -287,7 +240,6 @@ macro_rules! custom_ir_variable {
         $vis type FnDefine    = $crate::FnDefine    <$variable>;
         $vis type Statements  = $crate::Statements  <$variable>;
         $vis type Statement   = $crate::Statement   <$variable>;
-        $vis type Compute     = $crate::Compute     <$variable>;
         $vis type VarDefine   = $crate::VarDefine   <$variable>;
         $vis type VarStore    = $crate::VarStore    <$variable>;
         $vis type Condition   = $crate::Condition   <$variable>;
@@ -295,7 +247,6 @@ macro_rules! custom_ir_variable {
         $vis type IfBranch    = $crate::IfBranch    <$variable>;
         $vis type While       = $crate::While       <$variable>;
         $vis type Return      = $crate::Return      <$variable>;
-        $vis type OperateExpr = $crate::OperateExpr <$variable>;
         $vis type Parameter   = $crate::Parameter   <<$variable as $crate::IRValue>::ParameterType>;
     };
 }

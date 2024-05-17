@@ -68,7 +68,7 @@ pub trait Source: Sized {
     ///
     /// # Parameters
     ///
-    /// * `with` - A reference to the [`HandleErrorWith`] trait object, which is used to format the error.
+    /// * `with` - A reference to the [`Source::HandleErrorWith`] trait object, which is used to format the error.
     /// * `buffer` - A mutable reference to a [`Write`] trait object, which is used to write the formatted error message.
     /// * `loc` - The [`Span`] representing the location where the error occurred.
     /// * `msg` - The message to be formatted and displayed.

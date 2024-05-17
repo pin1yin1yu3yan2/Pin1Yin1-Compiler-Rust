@@ -44,7 +44,6 @@ impl Translate<py_ir::Statements<IRValue>> for crate::FileModule {
 impl Translate<py_ir::Statement<IRValue>> for crate::FileModule {
     fn translate(&mut self, item: &py_ir::Statement<IRValue>) -> std::fmt::Result {
         match item {
-            py_ir::Statement::Compute(item) => self.translate(item),
             py_ir::Statement::VarDefine(item) => self.translate(item),
             py_ir::Statement::VarStore(item) => self.translate(item),
             py_ir::Statement::Block(item) => self.translate(item),
@@ -52,14 +51,6 @@ impl Translate<py_ir::Statement<IRValue>> for crate::FileModule {
             py_ir::Statement::While(item) => self.translate(item),
             py_ir::Statement::Return(item) => self.translate(item),
         }
-    }
-}
-impl Translate<py_ir::Compute<IRValue>> for crate::FileModule {
-    fn translate(&mut self, item: &py_ir::Compute<IRValue>) -> std::fmt::Result {
-        self.translate(&item.ty)?;
-        write!(self, " {}=", item.name)?;
-        self.translate(&item.eval)?;
-        self.eol()
     }
 }
 impl Translate<py_ir::VarDefine<IRValue>> for crate::FileModule {
@@ -158,76 +149,79 @@ impl Translate<py_ir::Return<IRValue>> for crate::FileModule {
         self.eol()
     }
 }
-impl Translate<py_ir::OperateExpr<IRValue>> for crate::FileModule {
-    fn translate(&mut self, item: &py_ir::OperateExpr<IRValue>) -> std::fmt::Result {
+impl Translate<py_ir::value::AssignValue> for crate::FileModule {
+    fn translate(&mut self, item: &py_ir::value::AssignValue) -> std::fmt::Result {
         match item {
-            py_ir::OperateExpr::Unary(op, v) => {
-                let op = match op {
-                    py_lex::ops::Operators::Not => "!",
-                    py_lex::ops::Operators::Bnot => "~",
-                    py_lex::ops::Operators::AddrOf => "&",
-                    py_lex::ops::Operators::Deref => "*",
-                    py_lex::ops::Operators::Log => {
-                        self.write_str("log(")?;
-                        self.translate(v)?;
-                        return self.write_str(")");
-                    }
-                    py_lex::ops::Operators::SizeOf => {
-                        self.write_str("sizeof(")?;
-                        self.translate(v)?;
-                        return self.write_str(")");
-                    }
-                    _ => panic!("unreadable or todo"),
-                };
-                self.write_str(op)?;
-                self.translate(v)
+            py_ir::value::AssignValue::FnCall(fn_call) => {
+                write!(self, "_{}(", encode_base32(&fn_call.fn_name))?;
+                self.translate(&*fn_call.args)?;
+                self.write_char(')')
             }
-            py_ir::OperateExpr::Binary(op, l, r) => {
-                let op = match op {
-                    py_lex::ops::Operators::Add => "+",
-                    py_lex::ops::Operators::Sub => "-",
-                    py_lex::ops::Operators::Mul => "*",
-                    py_lex::ops::Operators::Div => "/",
-                    py_lex::ops::Operators::Mod => "%",
-                    py_lex::ops::Operators::Eq => "==",
-                    py_lex::ops::Operators::Neq => "!=",
-                    py_lex::ops::Operators::Gt => ">",
-                    py_lex::ops::Operators::Lt => "<",
-                    py_lex::ops::Operators::Ge => ">=",
-                    py_lex::ops::Operators::Le => "<=",
-                    py_lex::ops::Operators::And => "&&",
-                    py_lex::ops::Operators::Or => "||",
-                    py_lex::ops::Operators::Band => "&",
-                    py_lex::ops::Operators::Bor => "|",
-                    py_lex::ops::Operators::Xor => "^",
-                    py_lex::ops::Operators::Shl => "<<",
-                    py_lex::ops::Operators::Shr => ">>",
-                    py_lex::ops::Operators::GetElement => ".",
-                    py_lex::ops::Operators::Pow => {
-                        self.write_str("pow(")?;
-                        self.translate(l)?;
-                        self.write_char(',')?;
-                        self.translate(r)?;
-                        return self.write_char(')');
-                    }
-                    _ => panic!("unreadable or todo"),
-                };
-                self.translate(l)?;
-                self.write_str(op)?;
-                self.translate(r)
-            }
+            py_ir::value::AssignValue::Value(value) => self.translate(value),
+            py_ir::value::AssignValue::Operate(op, _) => match op {
+                py_ir::value::Operate::Unary(op, v) => {
+                    let op = match op {
+                        py_lex::ops::Operators::Not => "!",
+                        py_lex::ops::Operators::Bnot => "~",
+                        py_lex::ops::Operators::AddrOf => "&",
+                        py_lex::ops::Operators::Deref => "*",
+                        py_lex::ops::Operators::Log => {
+                            self.write_str("log(")?;
+                            self.translate(v)?;
+                            return self.write_str(")");
+                        }
+                        py_lex::ops::Operators::SizeOf => {
+                            self.write_str("sizeof(")?;
+                            self.translate(v)?;
+                            return self.write_str(")");
+                        }
+                        _ => panic!("unreadable or todo"),
+                    };
+                    self.write_str(op)?;
+                    self.translate(v)
+                }
+                py_ir::value::Operate::Binary(op, l, r) => {
+                    let op = match op {
+                        py_lex::ops::Operators::Add => "+",
+                        py_lex::ops::Operators::Sub => "-",
+                        py_lex::ops::Operators::Mul => "*",
+                        py_lex::ops::Operators::Div => "/",
+                        py_lex::ops::Operators::Mod => "%",
+                        py_lex::ops::Operators::Eq => "==",
+                        py_lex::ops::Operators::Neq => "!=",
+                        py_lex::ops::Operators::Gt => ">",
+                        py_lex::ops::Operators::Lt => "<",
+                        py_lex::ops::Operators::Ge => ">=",
+                        py_lex::ops::Operators::Le => "<=",
+                        py_lex::ops::Operators::And => "&&",
+                        py_lex::ops::Operators::Or => "||",
+                        py_lex::ops::Operators::Band => "&",
+                        py_lex::ops::Operators::Bor => "|",
+                        py_lex::ops::Operators::Xor => "^",
+                        py_lex::ops::Operators::Shl => "<<",
+                        py_lex::ops::Operators::Shr => ">>",
+                        py_lex::ops::Operators::GetElement => ".",
+                        py_lex::ops::Operators::Pow => {
+                            self.write_str("pow(")?;
+                            self.translate(l)?;
+                            self.write_char(',')?;
+                            self.translate(r)?;
+                            return self.write_char(')');
+                        }
+                        _ => panic!("unreadable or todo"),
+                    };
+                    self.translate(l)?;
+                    self.write_str(op)?;
+                    self.translate(r)
+                }
+            },
         }
     }
 }
 impl Translate<py_ir::value::Value> for crate::FileModule {
     fn translate(&mut self, item: &py_ir::value::Value) -> std::fmt::Result {
         match item {
-            IRValue::Variable(v) => self.write_str(v),
-            IRValue::FnCall(fn_call) => {
-                write!(self, "_{}(", encode_base32(&fn_call.fn_name))?;
-                self.translate(&*fn_call.args)?;
-                self.write_char(')')
-            }
+            IRValue::Variable(var) => self.write_str(var),
             IRValue::Literal(l, _) => write!(self, "{l}"),
         }
     }

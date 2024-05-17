@@ -178,53 +178,6 @@ impl std::fmt::Display for ComplexType {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub enum Type {
-    Template(Template),
-    Primitive(PrimitiveType),
-    Custom(SharedString),
-}
-
-impl From<Template> for Type {
-    fn from(v: Template) -> Self {
-        Self::Template(v)
-    }
-}
-
-impl From<PrimitiveType> for Type {
-    fn from(v: PrimitiveType) -> Self {
-        Self::Primitive(v)
-    }
-}
-
-impl From<SharedString> for Type {
-    fn from(v: SharedString) -> Self {
-        Self::Custom(v)
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
-pub struct Template {
-    pub name: SharedString,
-    pub generics: HashMap<SharedString, Type>,
-}
-
-impl Template {
-    pub fn new<I>(name: I, generics: HashMap<SharedString, Type>) -> Self
-    where
-        I: Into<SharedString>,
-    {
-        Self {
-            name: name.into(),
-            generics,
-        }
-    }
-
-    pub fn reference(to: Type) -> Self {
-        Self::new("&", std::iter::once(("T".into(), to)).collect())
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub enum TypeDefine {
     Primitive(PrimitiveType),
     Complex(ComplexType),
@@ -305,5 +258,52 @@ impl PartialEq<PrimitiveType> for TypeDefine {
             TypeDefine::Primitive(s) => s == other,
             TypeDefine::Complex(_) => false,
         }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub enum Type {
+    Template(Template),
+    Primitive(PrimitiveType),
+    Custom(SharedString),
+}
+
+impl From<Template> for Type {
+    fn from(v: Template) -> Self {
+        Self::Template(v)
+    }
+}
+
+impl From<PrimitiveType> for Type {
+    fn from(v: PrimitiveType) -> Self {
+        Self::Primitive(v)
+    }
+}
+
+impl From<SharedString> for Type {
+    fn from(v: SharedString) -> Self {
+        Self::Custom(v)
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct Template {
+    pub name: SharedString,
+    pub generics: HashMap<SharedString, Type>,
+}
+
+impl Template {
+    pub fn new<I>(name: I, generics: HashMap<SharedString, Type>) -> Self
+    where
+        I: Into<SharedString>,
+    {
+        Self {
+            name: name.into(),
+            generics,
+        }
+    }
+
+    pub fn reference(to: Type) -> Self {
+        Self::new("&", std::iter::once(("T".into(), to)).collect())
     }
 }

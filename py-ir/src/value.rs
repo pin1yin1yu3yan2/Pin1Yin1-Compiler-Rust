@@ -1,37 +1,57 @@
 use std::fmt::Write;
 
-use py_lex::SharedString;
+use py_lex::{ops::Operators, SharedString};
 
 use crate::types::{PrimitiveType, TypeDefine};
 
-/// this kind of expr is the most general expression
-///
-/// type of literals are needed to be declared in operators, because `1` can mean `i8`, `i32`, etc.
-///
-/// [`Variable::Variable`] and [`Variable::FnCall`] are folded expression, for example,
-/// [`OperateExpr::Binary`] and [`OperateExpr::Unary`] will be transformed into a [`VarDefine`],
-/// and its result(a variable) will be used as [`Variable::Variable`]
-///
-/// using this way to avoid expressions' tree, and make llvm-ir generation much easier
-///
-/// [`OperateExpr::Binary`]: super
-/// [`OperateExpr::unary`]: super
-/// [`VarDefine`]: super
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub enum Value {
     Variable(SharedString),
-    FnCall(FnCall<Self>),
     Literal(Literal, PrimitiveType),
 }
 
+/// [`Operate::Unary`] and [`Operate::Binary`] are normal operations aroud primitives
+///
+/// computes around non-primitive types are turned into [FnCall]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub enum Operate {
+    Unary(Operators, Value),
+    Binary(Operators, Value, Value),
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub enum AssignValue {
+    Value(Value),
+    FnCall(FnCall<Value>),
+    Operate(Operate, PrimitiveType),
+}
+
+impl From<Value> for AssignValue {
+    fn from(v: Value) -> Self {
+        Self::Value(v)
+    }
+}
+
+impl From<FnCall<Value>> for AssignValue {
+    fn from(v: FnCall<Value>) -> Self {
+        Self::FnCall(v)
+    }
+}
+
+impl From<(Operate, PrimitiveType)> for AssignValue {
+    fn from(value: (Operate, PrimitiveType)) -> Self {
+        Self::Operate(value.0, value.1)
+    }
+}
+
 impl super::IRValue for Value {
-    type ComputeType = PrimitiveType;
+    type AssignValue = AssignValue;
     type VarDefineType = TypeDefine;
     type FnDefineType = TypeDefine;
     type ParameterType = TypeDefine;
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct FnCall<Var> {
     #[serde(rename = "fn")]
     pub fn_name: SharedString,
@@ -45,7 +65,7 @@ pub struct FnCall<Var> {
 /// so that the type of [`Literal`] can be represented by [`PrimitiveType`]
 ///
 /// [`VarDefine`]: super
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub enum Literal {
     Char(char),
     Integer(usize),

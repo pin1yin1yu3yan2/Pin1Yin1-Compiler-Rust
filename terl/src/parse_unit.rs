@@ -15,6 +15,6 @@ pub trait ParseUnit<S: Source>: Sized + Debug {
 pub trait ReverseParseUnit<S: Source> {
     /// the type of the reverse parse result
     type Left;
-    /// you should not call [`ReverseParser::reverse_parse`] directly, using [`Parser::r#match`] instead
+    /// you should not call [`ReverseParseUnit::reverse_parse`] directly, using [`Parser::r#match`] instead
     fn reverse_parse(&self, p: &mut Parser<S>) -> Result<Self::Left, ParseError>;
 }

@@ -7,6 +7,7 @@ use inkwell::{
     values::{BasicValue, BasicValueEnum, FunctionValue},
 };
 use py_ir::value as ir_value;
+use py_ir::value::AssignValue as IRAssignValue;
 use py_ir::value::Value as IRValue;
 use py_ir::{types as ir_types, ControlFlow};
 use py_lex::SharedString;
@@ -200,25 +201,42 @@ impl<'ctx> FnGen<'_, 'ctx> {
         Ok(ret)
     }
 
-    fn eval(&self, var: &IRValue) -> Result<BasicValueEnum<'ctx>, BuilderError> {
-        match var {
-            IRValue::FnCall(fn_call) => {
+    fn eval_val(&self, val: &IRValue) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+        match val {
+            IRValue::Variable(variable) => self.get_val(variable).load(self.builder),
+            IRValue::Literal(literal, ty) => self.literal(literal, ty),
+        }
+    }
+
+    fn eval_assign_val(&self, val: &IRAssignValue) -> Result<BasicValueEnum<'ctx>, BuilderError> {
+        match val {
+            IRAssignValue::Value(val) => self.eval_val(val),
+            IRAssignValue::FnCall(fn_call) => {
                 let fn_ = self.get_fn(&fn_call.fn_name);
                 let args = fn_call.args.iter().try_fold(vec![], |mut vec, arg| {
-                    vec.push(self.eval(arg)?.into());
+                    vec.push(self.eval_val(arg)?.into());
                     Ok(vec)
                 })?;
 
                 let val = self
                     .builder
-                    .build_call(fn_, &args, &fn_call.fn_name)?
+                    .build_call(fn_, &args, "")?
                     .try_as_basic_value()
                     // TODO: `kong1` as return type
                     .unwrap_left();
                 Ok(val)
             }
-            IRValue::Variable(variable) => self.get_val(variable).load(self.builder),
-            IRValue::Literal(literal, ty) => self.literal(literal, ty),
+            IRAssignValue::Operate(op, ty) => match op {
+                py_ir::value::Operate::Unary(op, val) => {
+                    let val = self.eval_val(val)?;
+                    crate::operators::unary(self.builder, *ty, *op, val, "")
+                }
+                py_ir::value::Operate::Binary(op, l, r) => {
+                    let l = self.eval_val(l)?;
+                    let r = self.eval_val(r)?;
+                    crate::operators::binary(self.builder, *ty, *op, l, r, "")
+                }
+            },
         }
     }
 }
@@ -248,7 +266,6 @@ impl CodeGen<py_ir::Condition<IRValue>> for FnGen<'_, '_> {
 impl CodeGen<py_ir::Statement<IRValue>> for FnGen<'_, '_> {
     fn generate(&mut self, cgu: &py_ir::Statement<IRValue>) -> Result<(), BuilderError> {
         match cgu {
-            py_ir::Statement::Compute(cgu) => self.generate(cgu),
             py_ir::Statement::VarDefine(cgu) => self.generate(cgu),
             py_ir::Statement::VarStore(cgu) => self.generate(cgu),
             py_ir::Statement::If(cgu) => self.generate(cgu),
@@ -259,40 +276,29 @@ impl CodeGen<py_ir::Statement<IRValue>> for FnGen<'_, '_> {
     }
 }
 
-impl CodeGen<py_ir::Compute<IRValue>> for FnGen<'_, '_> {
-    fn generate(&mut self, cgu: &py_ir::Compute<IRValue>) -> Result<(), BuilderError> {
-        let builder = &self.builder;
-        match &cgu.eval {
-            py_ir::OperateExpr::Unary(op, val) => {
-                let val = self.eval(val)?;
-                let val = crate::primitive::unary_compute(builder, cgu.ty, *op, val, &cgu.name)?;
-                self.regist_var(cgu.name.clone(), ComputeResult { val })
-            }
-            py_ir::OperateExpr::Binary(op, l, r) => {
-                let l = self.eval(l)?;
-                let r = self.eval(r)?;
-                let val = crate::primitive::binary_compute(builder, cgu.ty, *op, l, r, &cgu.name)?;
-                self.regist_var(cgu.name.clone(), ComputeResult { val })
-            }
-        };
-
-        Ok(())
-    }
-}
-
 /// alloca, eval, store
 impl CodeGen<py_ir::VarDefine<IRValue>> for FnGen<'_, '_> {
     fn generate(&mut self, cgu: &py_ir::VarDefine<IRValue>) -> Result<(), BuilderError> {
+        let init = match &cgu.init {
+            Some(init) => {
+                let val = self.eval_assign_val(init)?;
+                if cgu.is_temp {
+                    self.regist_var(cgu.name.clone(), ComputeResult { val });
+                    return Ok(());
+                }
+                Some(val)
+            }
+            None => None,
+        };
+
         let ty = self.type_cast(&cgu.ty);
         let pointer = self.builder.build_alloca(ty, &cgu.name)?;
+        self.regist_var(cgu.name.clone(), AllocVariable { ty, pointer });
 
-        let val = AllocVariable { ty, pointer };
-
-        if let Some(init) = &cgu.init {
-            let init = self.eval(init)?;
-            val.store(self.builder, init)?;
+        if let Some(init) = init {
+            self.builder.build_store(pointer, init)?;
         }
-        self.regist_var(cgu.name.clone(), val);
+
         Ok(())
     }
 }
@@ -300,7 +306,7 @@ impl CodeGen<py_ir::VarDefine<IRValue>> for FnGen<'_, '_> {
 // eval, store
 impl CodeGen<py_ir::VarStore<IRValue>> for FnGen<'_, '_> {
     fn generate(&mut self, cgu: &py_ir::VarStore<IRValue>) -> Result<(), BuilderError> {
-        let val = self.eval(&cgu.val)?;
+        let val = self.eval_val(&cgu.val)?;
         let s = self.get_val(&cgu.name);
         s.store(self.builder, val)?;
         Ok(())
@@ -312,7 +318,7 @@ impl CodeGen<py_ir::value::FnCall<IRValue>> for FnGen<'_, '_> {
     fn generate(&mut self, cgu: &py_ir::value::FnCall<IRValue>) -> Result<(), BuilderError> {
         let fn_ = self.get_fn(&cgu.fn_name);
         let args = cgu.args.iter().try_fold(vec![], |mut vec, arg| {
-            vec.push(self.eval(arg)?.into());
+            vec.push(self.eval_val(arg)?.into());
             Ok(vec)
         })?;
 
@@ -344,7 +350,7 @@ impl CodeGen<py_ir::If<IRValue>> for FnGen<'_, '_> {
             let condition = &cgu.branches[idx].cond;
 
             self.generate(condition)?;
-            let cond_val = self.eval(&condition.val)?.into_int_value();
+            let cond_val = self.eval_val(&condition.val)?.into_int_value();
             // br <cond> <code> <else>
             self.builder
                 .build_conditional_branch(cond_val, codes[idx], conds[idx + 1])?;
@@ -381,7 +387,7 @@ impl CodeGen<py_ir::While<IRValue>> for FnGen<'_, '_> {
         self.builder.position_at_end(cond);
 
         self.generate(&cgu.cond)?;
-        let cond_val = self.eval(&cgu.cond.val)?.into_int_value();
+        let cond_val = self.eval_val(&cgu.cond.val)?.into_int_value();
         self.builder
             .build_conditional_branch(cond_val, code, after)?;
 
@@ -398,7 +404,7 @@ impl CodeGen<py_ir::While<IRValue>> for FnGen<'_, '_> {
 impl CodeGen<py_ir::Return<IRValue>> for FnGen<'_, '_> {
     fn generate(&mut self, cgu: &py_ir::Return<IRValue>) -> Result<(), BuilderError> {
         let val = match &cgu.val {
-            Some(val) => Some(self.eval(val)?),
+            Some(val) => Some(self.eval_val(val)?),
             None => None,
         };
         self.builder

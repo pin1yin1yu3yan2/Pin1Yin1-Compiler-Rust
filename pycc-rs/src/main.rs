@@ -9,8 +9,6 @@ use py_lex::Token;
 use pyc::Backend;
 use terl::{Buffer, ResultMapperExt, Source};
 
-pub mod compile;
-
 #[cfg(all(test, feature = "backend-llvm"))]
 mod tests;
 
@@ -27,13 +25,13 @@ enum CodeGenBackend {
 #[command(version, about)]
 struct Cli {
     src: PathBuf,
-    #[arg(short, long)]
+    #[arg(short, long, help = "path for output file, default to be a.out")]
     output: Option<PathBuf>,
-    #[arg(long)]
-    output_ast: bool,
-    #[arg(long)]
-    output_ir: bool,
-    #[arg(long, value_enum, default_value_t = CodeGenBackend::LLVM)]
+    #[arg(long, help = "path for ast output file")]
+    output_ast: Option<PathBuf>,
+    #[arg(long, help = "path for py-ir output file")]
+    output_ir: Option<PathBuf>,
+    #[arg(long, value_enum, default_value_t = CodeGenBackend::C, help = "code generation backend")]
     backend: CodeGenBackend,
 }
 
@@ -47,14 +45,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (error_handler, ast) = generate_ast(path.clone(), src);
     let error_handler = (&error_handler.0, &error_handler.1);
 
-    if cli.output_ast {
-        println!("{ast:#?}")
+    if let Some(ast_path) = cli.output_ast {
+        std::fs::write(ast_path, format!("{ast:#?}"))?;
     }
 
     // generate ir
     let ir = generate_ir(error_handler, &ast);
-    if cli.output_ir {
-        println!("{}", serde_json::to_string(&ir).unwrap());
+    if let Some(ast_path) = cli.output_ir {
+        let mut file = std::fs::File::create(ast_path)?;
+        serde_json::to_writer(&mut file, &ir)?;
     }
 
     let config = ();

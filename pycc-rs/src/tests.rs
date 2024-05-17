@@ -64,14 +64,16 @@ fn serde_test() {
     let mir = test_generate_ir(MORE_OPERATOES);
 
     let str1 = serde_json::to_string(&mir).unwrap();
-    let ast1: Vec<_> = serde_json::from_str(&str1).unwrap();
+    let ast1: Vec<ir::Item> = serde_json::from_str(&str1).unwrap();
 
-    let str2 = serde_json::to_string(&mir).unwrap();
-    let ast2: Vec<_> = serde_json::from_str(&str1).unwrap();
+    let str2 = serde_json::to_string(&ast1).unwrap();
+    let ast2: Vec<ir::Item> = serde_json::from_str(&str1).unwrap();
 
-    assert_eq!(mir, ast1);
-    assert_eq!(mir, ast2);
+    let str3 = serde_json::to_string(&ast2).unwrap();
+    let _ast3: Vec<ir::Item> = serde_json::from_str(&str1).unwrap();
+
     assert_eq!(str1, str2);
+    assert_eq!(str2, str3);
 }
 
 const MORE_OPERATOES: &str = "

@@ -22,7 +22,11 @@ pub struct Ident(SharedString);
 impl Ident {
     #[inline]
     pub fn shared(&self) -> SharedString {
-        self.0.clone()
+        self.shared_ref().clone()
+    }
+    #[inline]
+    pub fn shared_ref(&self) -> &SharedString {
+        &self.0
     }
 }
 

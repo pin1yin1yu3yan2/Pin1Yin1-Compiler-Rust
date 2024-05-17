@@ -1,5 +1,5 @@
 mod codegen;
-mod primitive;
+mod operators;
 mod scope;
 
 use std::borrow::Cow;

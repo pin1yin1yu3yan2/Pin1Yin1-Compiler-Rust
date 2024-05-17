@@ -123,8 +123,10 @@ struct StatementTransmuter<'w> {
     stmts: mir::Statements,
 }
 
+struct VarDeineLoc(usize);
+
 impl<'w> StatementTransmuter<'w> {
-    pub fn new(defs: &mut Defs, fn_scope: FnScope, scopes: BasicScopes) -> StatementTransmuter<'_> {
+    fn new(defs: &mut Defs, fn_scope: FnScope, scopes: BasicScopes) -> StatementTransmuter<'_> {
         StatementTransmuter {
             defs,
             fn_scope,
@@ -134,29 +136,62 @@ impl<'w> StatementTransmuter<'w> {
     }
 
     #[inline]
-    pub fn push_stmt(&mut self, stmt: impl Into<mir::Statement>) {
+    fn push_stmt(&mut self, stmt: impl Into<mir::Statement>) {
         self.stmts.push(stmt.into());
     }
 
-    #[inline]
-    pub fn take_stmts(&mut self) -> mir::Statements {
+    fn temp_var_define<I>(
+        &mut self,
+        param_ty: GroupIdx,
+        result_ty: GroupIdx,
+        init: I,
+    ) -> ValueHandle
+    where
+        I: Into<mir::AssignValue>,
+    {
+        let init = mir::Undeclared::new(init.into(), param_ty);
+        let temp_name = self.fn_scope.temp_name();
+        let loc = self.push_var_define(mir::VarDefine {
+            ty: param_ty,
+            name: temp_name.clone(),
+            init: Some(init),
+            is_temp: true,
+        });
+        let handle = mir::Undeclared::new(mir::Value::Variable(temp_name), result_ty);
+        ValueHandle::new(loc, handle)
+    }
+
+    fn push_var_define(&mut self, var_define: mir::VarDefine) -> VarDeineLoc {
+        let loc = VarDeineLoc(self.stmts.len());
+        self.stmts.push(mir::Statement::VarDefine(var_define));
+        loc
+    }
+
+    fn rename_var_define(&mut self, loc: VarDeineLoc, new_name: &SharedString) {
+        match &mut self.stmts[loc.0] {
+            ir::Statement::VarDefine(define) => {
+                define.name = new_name.clone();
+                define.is_temp = false;
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn take_stmts(&mut self) -> mir::Statements {
         std::mem::take(&mut self.stmts)
     }
 
-    #[inline]
-    pub fn replace_stmts(&mut self, new: mir::Statements) -> mir::Statements {
+    fn replace_stmts(&mut self, new: mir::Statements) -> mir::Statements {
         std::mem::replace(&mut self.stmts, new)
     }
 
-    #[inline]
-    pub fn search_value(&mut self, name: &str) -> Option<defs::VarDef> {
+    fn search_value(&mut self, name: &str) -> Option<defs::VarDef> {
         self.fn_scope
             .search_parameter(name)
             .or_else(|| self.scopes.search_variable(name))
     }
 
-    #[inline]
-    pub fn in_new_basic_scope<R>(&mut self, active: impl FnOnce(&mut Self) -> R) -> R {
+    fn in_new_basic_scope<R>(&mut self, active: impl FnOnce(&mut Self) -> R) -> R {
         self.scopes.push(Default::default());
         let r = active(self);
         self.scopes.pop();
@@ -169,34 +204,59 @@ impl Generator<parse::Statement> for StatementTransmuter<'_> {
 
     fn generate(&mut self, stmt: &parse::Statement) -> Self::Forward {
         match stmt {
-            parse::Statement::FnCallStmt(stmt) => {
-                let result = self.generate(&****stmt)?;
-                let temp_name = self.fn_scope.temp_name();
-                let var_define = mir::VarDefine {
-                    ty: result.ty,
-                    name: temp_name,
-                    init: Some(result),
-                };
-                Ok(var_define.into())
-            }
             parse::Statement::VarStoreStmt(stmt) => self.generate(&****stmt).map(Into::into),
-            parse::Statement::VarDefineStmt(stmt) => self.generate(&****stmt).map(Into::into),
             parse::Statement::If(stmt) => self.generate(&**stmt).map(Into::into),
             parse::Statement::While(stmt) => self.generate(&**stmt).map(Into::into),
             parse::Statement::Return(stmt) => self.generate(&**stmt).map(Into::into),
             parse::Statement::CodeBlock(stmt) => self.generate(&**stmt).map(Into::into),
+            parse::Statement::VarDefineStmt(stmt) => match self.generate(&****stmt)? {
+                Some(var_define) => Ok(var_define.into()),
+                None => return Ok(None),
+            },
+            parse::Statement::FnCallStmt(stmt) => {
+                self.generate(&****stmt)?;
+                return Ok(None);
+            }
             parse::Statement::Comment(..) => return Ok(None),
         }
         .map(Some)
     }
 }
 
+struct ValueHandle {
+    loc: Option<VarDeineLoc>,
+    handle: mir::Undeclared<mir::Value>,
+}
+
+impl std::ops::Deref for ValueHandle {
+    type Target = mir::Undeclared<mir::Value>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.handle
+    }
+}
+
+impl ValueHandle {
+    fn new(loc: VarDeineLoc, handle: mir::Undeclared<mir::Value>) -> Self {
+        Self {
+            loc: Some(loc),
+            handle,
+        }
+    }
+}
+
+impl From<mir::Undeclared<mir::Value>> for ValueHandle {
+    fn from(handle: mir::Undeclared<mir::Value>) -> Self {
+        Self { loc: None, handle }
+    }
+}
+
 impl Generator<parse::FnCall> for StatementTransmuter<'_> {
-    type Forward = Result<mir::Value>;
+    type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, fn_call: &parse::FnCall) -> Self::Forward {
         let args = fn_call.args.iter().try_fold(vec![], |mut args, expr| {
-            args.push(self.generate(expr)?);
+            args.push(self.generate(expr)?.handle);
             Result::Ok(args)
         })?;
 
@@ -217,7 +277,6 @@ impl Generator<parse::FnCall> for StatementTransmuter<'_> {
             .map(|overload| {
                 let mut branch_builder = BranchesBuilder::new(Type::Overload(overload.clone()));
                 branch_builder.filter_self(self.defs, &overload_len_filter);
-
                 if branch_builder.is_ok() {
                     for ((param, arg), span) in overload.params.iter().zip(&args).zip(&args_spans) {
                         let filter = filters::TypeEqual::new(&param.ty, *span);
@@ -238,10 +297,7 @@ impl Generator<parse::FnCall> for StatementTransmuter<'_> {
             .declare_map
             .build_group(GroupBuilder::new(fn_call.get_span(), branch_builders));
 
-        let val = mir::AtomicExpr::FnCall(mir::FnCall { args });
-        let fn_call = mir::Value::new(val, overload);
-
-        Ok(fn_call)
+        Ok(self.temp_var_define(overload, overload, mir::FnCall { args }))
     }
 }
 
@@ -250,7 +306,7 @@ impl Generator<parse::VarStore> for StatementTransmuter<'_> {
 
     fn generate(&mut self, var_store: &parse::VarStore) -> Self::Forward {
         let name = var_store.name.shared();
-        let val = self.generate(&var_store.assign.val)?;
+        let val = self.generate(&var_store.assign.val)?.handle;
 
         let val_at = var_store.assign.val.get_span();
 
@@ -270,7 +326,7 @@ impl Generator<parse::VarStore> for StatementTransmuter<'_> {
 }
 
 impl Generator<parse::VarDefine> for StatementTransmuter<'_> {
-    type Forward = Result<mir::VarDefine>;
+    type Forward = Result<Option<mir::VarDefine>>;
 
     fn generate(&mut self, var_define: &parse::VarDefine) -> Self::Forward {
         let name = var_define.name.shared();
@@ -279,19 +335,31 @@ impl Generator<parse::VarDefine> for StatementTransmuter<'_> {
             .fn_scope
             .declare_map
             .new_static_group(var_define.ty.get_span(), std::iter::once(ty.into()));
-        let init = match &var_define.init {
-            Some(var_assign) => {
-                let init = self.generate(&var_assign.val)?;
-                let at = var_assign.val.get_span();
-                self.fn_scope.declare_map.merge_group(at, ty, init.ty);
-                Some(init)
-            }
-            None => None,
-        };
         self.scopes
             .regist_variable(&name, defs::VarDef { ty, mutable: true });
 
-        Ok(mir::VarDefine { ty, name, init })
+        let init = match &var_define.init {
+            Some(var_assign) => {
+                let init = self.generate(&var_assign.val)?;
+
+                if let Some(loc) = init.loc {
+                    self.rename_var_define(loc, var_define.name.shared_ref());
+                    return Ok(None);
+                }
+                let at = var_assign.val.get_span();
+                self.fn_scope.declare_map.merge_group(at, ty, init.ty);
+
+                Some(mir::Undeclared::new(init.handle.val.into(), init.handle.ty))
+            }
+            None => None,
+        };
+
+        Ok(Some(mir::VarDefine {
+            ty,
+            name,
+            init,
+            is_temp: false,
+        }))
     }
 }
 
@@ -345,7 +413,7 @@ impl Generator<parse::Return> for StatementTransmuter<'_> {
                 self.fn_scope
                     .declare_map
                     .declare_type(expr.get_span(), val.ty, &mangled_fn.ty);
-                Some(val)
+                Some(val.handle)
             }
             None => None,
         };
@@ -378,7 +446,7 @@ impl Generator<parse::Conditions> for StatementTransmuter<'_> {
             for arg in conds.iter().skip(1) {
                 last_condition = g.generate(arg)?;
             }
-            Ok((g.take_stmts(), last_condition))
+            Ok((g.take_stmts(), last_condition.handle))
         })?;
 
         // type check
@@ -392,7 +460,7 @@ impl Generator<parse::Conditions> for StatementTransmuter<'_> {
 }
 
 impl Generator<parse::Expr> for StatementTransmuter<'_> {
-    type Forward = Result<mir::Value>;
+    type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, expr: &parse::Expr) -> Self::Forward {
         let mut vals = Vec::new();
@@ -401,9 +469,6 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
                 parse::ExprItem::AtomicExpr(atomic) => vals.push(self.generate(atomic)?),
                 parse::ExprItem::Operators(op) => match op.associativity() {
                     py_lex::ops::OperatorAssociativity::Binary => {
-                        if vals.len() < 2 {
-                            todo!()
-                        }
                         let r = vals.pop().unwrap();
                         let l = vals.pop().unwrap();
                         self.fn_scope
@@ -423,33 +488,15 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
                             l.ty
                         };
 
-                        let eval = mir::OperateExpr::binary(**op, l, r);
-                        let temp_name = self.fn_scope.temp_name();
-                        self.push_stmt(mir::Compute {
-                            ty: param_ty,
-                            name: temp_name.clone(),
-                            eval,
-                        });
-                        vals.push(mir::Value {
-                            val: mir::AtomicExpr::Variable(temp_name),
-                            ty: result_ty,
-                        });
+                        let init = mir::Operate::Binary(**op, l.handle, r.handle);
+                        vals.push(self.temp_var_define(param_ty, result_ty, init));
                     }
                     py_lex::ops::OperatorAssociativity::Unary => {
-                        let l = vals.pop().unwrap();
-                        let name = self.fn_scope.temp_name();
+                        let v = vals.pop().unwrap();
+                        let ty = v.ty;
 
-                        let ty = l.ty;
-                        let compute = mir::Compute {
-                            ty,
-                            name: name.clone(),
-                            eval: mir::OperateExpr::unary(**op, l),
-                        };
-                        self.push_stmt(compute);
-                        vals.push(mir::Value {
-                            ty,
-                            val: mir::AtomicExpr::Variable(name),
-                        });
+                        let init = mir::Operate::Unary(**op, v.handle);
+                        vals.push(self.temp_var_define(ty, ty, init));
                     }
 
                     py_lex::ops::OperatorAssociativity::None => unreachable!(),
@@ -461,7 +508,7 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
 }
 
 impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
-    type Forward = Result<mir::Value>;
+    type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, atomic: &PU<parse::AtomicExpr>) -> Self::Forward {
         let literal = match &**atomic {
@@ -483,8 +530,8 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
                     return Err(atomic.make_error("use of undefined variable"));
                 };
 
-                let variable = mir::Value::new(mir::AtomicExpr::Variable(name.shared()), def.ty);
-                return Ok(variable);
+                let val = mir::Value::Variable(name.shared());
+                return Ok(mir::Undeclared::new(val, def.ty).into());
             }
             parse::AtomicExpr::Array(ref _array) => {
                 // elements in arrray must be same type
@@ -493,9 +540,9 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
         };
 
         let ty = self.fn_scope.declare_map.build_group({
-            let branches = mir::Value::literal_branches(&literal);
+            let branches = mir::Undeclared::literal_branches(&literal);
             GroupBuilder::new(atomic.get_span(), branches)
         });
-        Ok(mir::Value::new(literal.into(), ty))
+        Ok(mir::Undeclared::new(literal.into(), ty).into())
     }
 }

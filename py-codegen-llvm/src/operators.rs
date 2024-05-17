@@ -5,7 +5,7 @@ use inkwell::{
 use py_ir::types::PrimitiveType;
 use py_lex::ops::Operators;
 
-pub fn binary_compute<'ctx>(
+pub fn binary<'ctx>(
     builder: &Builder<'ctx>,
     ty: PrimitiveType,
     op: Operators,
@@ -121,7 +121,7 @@ pub fn binary_compute<'ctx>(
     }
 }
 
-pub fn unary_compute<'ctx>(
+pub fn unary<'ctx>(
     builder: &Builder<'ctx>,
     ty: PrimitiveType,
     op: Operators,
