@@ -21,6 +21,22 @@ enum CodeGenBackend {
     C,
 }
 
+#[cfg(feature = "backend-llvm")]
+#[derive(ValueEnum, Clone, Copy)]
+enum LLVMOutputMode {
+    Text,
+    Bitcode,
+}
+
+// #[cfg(feature = "backend-llvm")]
+// #[derive(ValueEnum, Clone, Copy)]
+// enum LLVMOptimizeLevel {
+//     O0,
+//     O1,
+//     O2,
+//     O3,
+// }
+
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
@@ -31,7 +47,13 @@ struct Cli {
     output_ast: Option<PathBuf>,
     #[arg(long, help = "path for py-ir output file")]
     output_ir: Option<PathBuf>,
-    #[arg(long, value_enum, default_value_t = CodeGenBackend::C, help = "code generation backend")]
+    #[cfg(feature = "backend-llvm")]
+    #[arg(short = 'm', long, value_enum, default_value_t = LLVMOutputMode::Bitcode, help = "llvm ir output mode",)]
+    output_mode: LLVMOutputMode,
+    #[cfg(feature = "backend-llvm")]
+    // #[arg(short = 'O', long = "opt", value_enum, default_value_t = LLVMOptimizeLevel::O1, help = "llvm ir optimize level",)]
+    // optimize_level: LLVMOptimizeLevel,
+    #[arg(short = 'b', long, value_enum, default_value_t = CodeGenBackend::C, help = "code generation backend")]
     backend: CodeGenBackend,
 }
 
@@ -56,25 +78,33 @@ fn main() -> Result<(), Box<dyn Error>> {
         serde_json::to_writer(&mut file, &ir)?;
     }
 
-    let config = ();
     let output = cli.output.unwrap_or_else(|| PathBuf::from("a.out"));
 
     match cli.backend {
         #[cfg(feature = "backend-llvm")]
         CodeGenBackend::LLVM => {
             use py_codegen_llvm::LLVMBackend;
-            let backend = LLVMBackend::init(config);
+            let backend = LLVMBackend::init(());
             let module = backend.module(&path, &ir)?;
-            let code = backend.code(&module);
-            std::fs::write(output, &*code)?;
+
+            match cli.output_mode {
+                LLVMOutputMode::Text => {
+                    use std::io::Write;
+                    let mut file = std::fs::File::create(output)?;
+                    write!(&mut file, "{}", module.print_to_string())?;
+                }
+                LLVMOutputMode::Bitcode => {
+                    module.write_bitcode_to_path(&output);
+                }
+            }
         }
         #[cfg(feature = "backend-c")]
         CodeGenBackend::C => {
             use py_codegen_c::CBackend;
-            let backend = CBackend::init(config);
+            let backend = CBackend::init(());
             let module = backend.module(&path, &ir)?;
-            let code = backend.code(&module);
-            std::fs::write(output, &*code)?;
+
+            std::fs::write(output, module.text())?;
         }
     };
 

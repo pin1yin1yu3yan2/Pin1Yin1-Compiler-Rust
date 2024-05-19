@@ -163,11 +163,20 @@ pub struct FnDefine<Var: IRValue> {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VarDefine<Var: IRValue> {
+    /// the type of the variable
     #[serde(rename = "type")]
     pub ty: Var::VarDefineType,
+    /// the name of the variable, either a named variable or a temp variable from computing
     pub name: SharedString,
+    /// the initial value of the variable
+    ///
+    /// [`None`] represents the variable is not initialized when it was created
     pub init: Option<Var::AssignValue>,
-    /// is the current value generated from operate, fn_call or other
+    /// a `temp value` will only be immediately used once in expressions
+    ///
+    /// this is a hint for code generation backend optimization
+    ///
+    /// code generation backend can directly inline `init` only when `is_temp` is true
     pub is_temp: bool,
 }
 

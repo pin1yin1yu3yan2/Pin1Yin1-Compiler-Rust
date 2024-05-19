@@ -2,7 +2,7 @@ mod codegen;
 mod operators;
 mod scope;
 
-use std::borrow::Cow;
+use std::error::Error;
 
 use codegen::CodeGen;
 pub use inkwell;
@@ -12,27 +12,15 @@ pub struct LLVMBackend {
     context: Context,
 }
 
-impl LLVMBackend {
-    pub fn new() -> Self {
-        Self {
-            context: Context::create(),
-        }
-    }
-}
-
-impl Default for LLVMBackend {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl pyc::Backend for LLVMBackend {
-    type Error = inkwell::builder::BuilderError;
+    type Error = Box<dyn Error>;
     type Config = ();
     type Module<'ctx> = Module<'ctx>;
 
     fn init(_config: Self::Config) -> Self {
-        Self::new()
+        Self {
+            context: Context::create(),
+        }
     }
 
     fn module(&self, name: &str, items: &[py_ir::Item]) -> Result<Module<'_>, Self::Error> {
@@ -45,13 +33,9 @@ impl pyc::Backend for LLVMBackend {
         for item in items {
             mod_gen.generate(item)?;
         }
-        Ok(mod_gen.module)
-    }
 
-    // fn code<'s>(&'s self, module: &'s Self::Module<'s>) -> Cow<'s, str> {
-    //     module.to_string().into()
-    // }
-    fn code<'m>(&self, module: &'m Self::Module<'_>) -> Cow<'m, str> {
-        module.to_string().into()
+        mod_gen.module.verify().map_err(|e| e.to_string())?;
+
+        Ok(mod_gen.module)
     }
 }

@@ -2,7 +2,7 @@ mod translate;
 
 pub struct CBackend;
 
-use std::{borrow::Cow, fmt::Write};
+use std::fmt::Write;
 
 use translate::Translate;
 
@@ -54,6 +54,10 @@ impl FileModule {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
 }
 
 impl std::fmt::Write for FileModule {
@@ -81,9 +85,5 @@ impl pyc::Backend for CBackend {
             module.translate(item)?;
         }
         Ok(module)
-    }
-
-    fn code<'m>(&self, module: &'m Self::Module<'_>) -> Cow<'m, str> {
-        (&module.text).into()
     }
 }
