@@ -67,14 +67,14 @@ impl Mangle for ChineseMangler {
 #[derive(Debug, Clone)]
 pub struct Mangler<M: Mangle> {
     prefix: Vec<ManglePrefix>,
-    _p: PhantomData<M>,
+    _m: PhantomData<M>,
 }
 
 impl<M: Mangle> Default for Mangler<M> {
     fn default() -> Self {
         Self {
             prefix: Default::default(),
-            _p: Default::default(),
+            _m: Default::default(),
         }
     }
 }
@@ -83,7 +83,7 @@ impl<M: Mangle> Mangler<M> {
     pub fn new(prefix: Vec<ManglePrefix>) -> Mangler<M> {
         Mangler {
             prefix,
-            _p: PhantomData,
+            _m: PhantomData,
         }
     }
 

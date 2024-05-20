@@ -114,6 +114,17 @@ pub struct FnSign {
     pub sign_span: Span,
 }
 
+impl FnSign {
+    pub fn new(ty: TypeDefine, params: Vec<Parameter>, retty_span: Span, sign_span: Span) -> Self {
+        Self {
+            ty,
+            params,
+            retty_span,
+            sign_span,
+        }
+    }
+}
+
 impl std::fmt::Display for FnSignWithName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // NOTO: this may only work with default Chinese Mangler

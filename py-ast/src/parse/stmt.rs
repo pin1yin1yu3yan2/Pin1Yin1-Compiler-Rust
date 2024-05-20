@@ -2,6 +2,121 @@ use crate::complex_pu;
 
 use super::*;
 
+use py_lex::syntax::Symbol;
+
+#[derive(Debug, Clone)]
+pub struct VarAssign {
+    pub val: Expr,
+}
+
+impl ParseUnit<Token> for VarAssign {
+    type Target = VarAssign;
+
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        p.r#match(Symbol::Assign)?;
+        let val = p.parse::<Expr>()?;
+        Ok(Self { val })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VarDefine {
+    pub ty: PU<types::TypeDefine>,
+    pub name: Ident,
+    pub init: Option<VarAssign>,
+}
+
+impl ParseUnit<Token> for VarDefine {
+    type Target = VarDefine;
+
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let ty = p.parse::<PU<types::TypeDefine>>()?;
+        let name = p.parse::<Ident>()?;
+        let init = p.parse::<VarAssign>().apply(mapper::Try)?;
+        Ok(Self { ty, name, init })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VarStore {
+    pub name: Ident,
+    pub assign: PU<VarAssign>,
+}
+
+impl ParseUnit<Token> for VarStore {
+    type Target = VarStore;
+
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let name = p.parse::<Ident>()?;
+        let assign = p.parse::<PU<VarAssign>>()?;
+        Ok(VarStore { name, assign })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Parameter {
+    /// so to make semantic cheaking easier
+    inner: VarDefine,
+}
+
+impl std::ops::Deref for Parameter {
+    type Target = VarDefine;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl ParseUnit<Token> for Parameter {
+    type Target = Parameter;
+
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let ty = p.parse::<PU<types::TypeDefine>>()?;
+        let name = p.parse::<Ident>()?;
+        let inner = VarDefine {
+            ty,
+            name,
+            init: None,
+        };
+        Ok(Parameter { inner })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Parameters {
+    pub params: Vec<PU<Parameter>>,
+}
+
+impl std::ops::Deref for Parameters {
+    type Target = Vec<PU<Parameter>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.params
+    }
+}
+
+impl ParseUnit<Token> for Parameters {
+    type Target = Parameters;
+
+    fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        p.r#match(Symbol::Parameter)?;
+        let Some(arg) = p.parse::<PU<Parameter>>().apply(mapper::Try)? else {
+            p.r#match(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
+
+            return Ok(Parameters { params: vec![] });
+        };
+
+        let mut params = vec![arg];
+
+        while p.r#match(Symbol::Semicolon).is_ok() {
+            params.push(p.parse::<PU<Parameter>>()?);
+        }
+
+        p.r#match(Symbol::EndOfBlock).apply(mapper::MustMatch)?;
+        Ok(Parameters { params })
+    }
+}
+
 /// however, this is the "best" way
 macro_rules! statement_wrapper {
     (
@@ -118,5 +233,45 @@ complex_pu! {
         // $ty $name (...)
         FnDefine,
         Comment
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parse_test;
+
+    use super::*;
+
+    #[test]
+    fn variable_define() {
+        parse_test("kuan1 32 zheng3 a", |p| {
+            p.parse::<VarDefine>()?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn variable_define_init() {
+        let src = "kuan1 32 zheng3 a wei2 114514 fen1";
+        parse_test(src, |p| {
+            p.parse::<VarDefine>()?;
+            Ok(())
+        });
+        parse_test(src, |p| {
+            p.parse::<Statement>()?;
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn variable_reassign() {
+        parse_test("a wei2 114514 fen1", |p| {
+            p.parse::<Statement>()?;
+            Ok(())
+        });
+        parse_test("a wei2 114514 fen1", |p| {
+            p.parse::<VarStore>()?;
+            Ok(())
+        });
     }
 }

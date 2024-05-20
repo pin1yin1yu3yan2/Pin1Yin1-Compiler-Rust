@@ -29,85 +29,52 @@ impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
     type Forward = Result<ir::FnDefine<ir::value::Value>, Either<Error, Vec<Error>>>;
 
     fn generate(&mut self, fn_define: &parse::FnDefine) -> Self::Forward {
-        let unmangled_name = fn_define.name.shared();
-        let retty = fn_define.ty.to_mir_ty().map_err(Either::Left)?;
+        let ty = fn_define.ty.to_mir_ty().map_err(Either::Left)?;
 
         let params = fn_define
             .params
             .iter()
             .try_fold(Vec::new(), |mut vec, pu| {
-                vec.push(defs::Parameter {
-                    name: pu.name.shared(),
-                    ty: pu.ty.to_mir_ty()?,
-                });
+                let name = pu.name.shared();
+                let ty = pu.ty.to_mir_ty()?;
+                vec.push(defs::Parameter { name, ty });
                 Result::Ok(vec)
             })
             .map_err(Either::Left)?;
 
-        let fn_sign = defs::FnSign {
-            retty_span: fn_define.retty_span,
-            sign_span: fn_define.sign_span,
-            ty: retty.clone(),
-            params: params.clone(),
-        };
+        let fn_sign = defs::FnSign::new(
+            ty.clone(),
+            params.clone(),
+            fn_define.retty_span,
+            fn_define.sign_span,
+        );
 
-        let mangled_name = {
-            let mangled_name =
-                SharedString::from(self.mangler.mangle_fn(&fn_define.name, &fn_sign));
-
-            if let Some(previous) = self.defs.try_get_mangled(&mangled_name) {
-                let previous_define = previous
-                    .sign_span
-                    .make_message(format!("funcion {} has been definded here", unmangled_name));
-                let mut err = fn_sign
-                    .sign_span
-                    .make_error(format!("double define for function {}", unmangled_name))
-                    .append(previous_define);
-                if previous.ty == fn_sign.ty {
-                    err += format!("note: if you want to overload funcion {}, you can define them with different parameters",unmangled_name)
-                } else {
-                    err += "note: overload which only return type is differnet is not allowed";
-                    err += format!("note: if you want to overload funcion {}, you can define them with different parameters",unmangled_name);
-                }
-                return Err(Either::Left(err));
-            }
-            mangled_name
-        };
-
-        self.defs
-            .new_fn(unmangled_name.clone(), mangled_name.clone(), fn_sign);
+        let mangled_name = self.regist_fn(fn_define, fn_sign).map_err(Either::Left)?;
 
         let mut statement_transmuter = {
             let scopes = BasicScopes::default();
-            let fn_scope = FnScope::new(
-                &mangled_name,
-                params.iter(),
-                fn_define.params.iter().map(WithSpan::get_span),
-            );
+            let spans = fn_define.params.iter().map(WithSpan::get_span);
+            let fn_scope = FnScope::new(&mangled_name, params.iter(), spans);
             StatementTransmuter::new(&mut self.defs, fn_scope, scopes)
         };
 
-        let body = {
-            let body = statement_transmuter
-                .generate(&fn_define.codes)
-                .map_err(Either::Left)?;
-            if !body.returned {
-                return Err(Either::Left(fn_define.sign_span.make_error(format!(
-                    "function `{}` is never return",
-                    unmangled_name
-                ))));
-            }
+        let body = statement_transmuter
+            .generate(&fn_define.codes)
+            .map_err(Either::Left)?;
+        if !body.returned {
+            let reason = format!("function `{}` is never return", fn_define.name);
+            let error = fn_define.sign_span.make_error(reason);
+            return Err(Either::Left(error));
+        }
 
-            statement_transmuter
-                .fn_scope
-                .declare_map
-                .declare_all()
-                .map_err(Either::Right)?;
-            body
-        };
+        statement_transmuter
+            .fn_scope
+            .declare_map
+            .declare_all()
+            .map_err(Either::Right)?;
 
         let mir_fn = mir::FnDefine {
-            ty: retty,
+            ty,
             body,
             params,
             name: mangled_name,
@@ -264,34 +231,34 @@ impl Generator<parse::FnCall> for StatementTransmuter<'_> {
             return Err(fn_call.make_error(format!("call undefinded function {}", fn_call.fn_name)));
         };
 
-        let overload_len_filter =
-            filters::FnParamLen::new(Some(&fn_call.fn_name), args.len(), fn_call.get_span());
-
         let args_spans = fn_call
             .args
             .iter()
             .map(|pu| pu.get_span())
             .collect::<Vec<_>>();
-        let branch_builders = overloads
-            .iter()
-            .map(|overload| {
-                let mut branch_builder = BranchesBuilder::new(Type::Overload(overload.clone()));
-                branch_builder.filter_self(self.defs, &overload_len_filter);
-                if branch_builder.is_ok() {
-                    for ((param, arg), span) in overload.params.iter().zip(&args).zip(&args_spans) {
-                        let filter = filters::TypeEqual::new(&param.ty, *span);
-                        let declare_map = &mut self.fn_scope.declare_map;
-                        branch_builder = branch_builder.new_depend::<Directly, _>(
-                            declare_map,
-                            self.defs,
-                            arg.ty,
-                            &filter,
-                        );
-                    }
+
+        let overload_len_filter =
+            filters::FnParamLen::new(Some(&fn_call.fn_name), args.len(), fn_call.get_span());
+
+        let branch_builder = |overload: &Overload| {
+            let mut branch_builder = BranchesBuilder::new(Type::Overload(overload.clone()));
+            if branch_builder.filter_self(self.defs, &overload_len_filter) {
+                // length of overload.params are equal to arg's
+                for ((param, arg), span) in overload.params.iter().zip(&args).zip(&args_spans) {
+                    let filter = filters::TypeEqual::new(&param.ty, *span);
+                    let declare_map = &mut self.fn_scope.declare_map;
+                    branch_builder = branch_builder.new_depend::<Directly, _>(
+                        declare_map,
+                        self.defs,
+                        arg.ty,
+                        &filter,
+                    );
                 }
-                branch_builder
-            })
-            .collect();
+            }
+            branch_builder
+        };
+
+        let branch_builders = overloads.iter().map(branch_builder).collect();
         let overload = self
             .fn_scope
             .declare_map

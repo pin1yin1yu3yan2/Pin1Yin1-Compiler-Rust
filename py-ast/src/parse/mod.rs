@@ -6,14 +6,12 @@ mod expr;
 mod flow;
 mod item;
 mod stmt;
-mod syntax;
 mod types;
 
 pub use expr::*;
 pub use flow::*;
 pub use item::*;
 pub use stmt::*;
-pub use syntax::*;
 pub use types::*;
 
 #[derive(Debug, Clone)]

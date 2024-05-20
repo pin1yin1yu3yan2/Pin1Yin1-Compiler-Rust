@@ -9,6 +9,38 @@ pub struct Defines<M: Mangle = DefaultMangler> {
     pub mangler: Mangler<M>,
 }
 
+impl<M: Mangle> Defines<M> {
+    /// # Return
+    ///
+    /// mangled_name
+    pub fn regist_fn(
+        &mut self,
+        fn_define: &crate::parse::FnDefine,
+        fn_sign: defs::FnSign,
+    ) -> Result<SharedString> {
+        let mangled_name = SharedString::from(self.mangler.mangle_fn(&fn_define.name, &fn_sign));
+
+        if let Some(previous) = self.defs.try_get_mangled(&mangled_name) {
+            let previous_define = previous
+                .sign_span
+                .make_message(format!("funcion {} has been definded here", fn_define.name));
+            let mut err = fn_sign
+                .sign_span
+                .make_error(format!("double define for function {}", fn_define.name))
+                .append(previous_define);
+            if previous.ty != fn_sign.ty {
+                err += "note: overload which only return type is differnet is not allowed";
+            }
+            err += format!("note: if you want to overload funcion {}, you can define them with different parameters",fn_define.name);
+            return Err(err);
+        }
+
+        self.defs
+            .new_fn(fn_define.name.shared(), mangled_name.clone(), fn_sign);
+        Ok(mangled_name)
+    }
+}
+
 impl<M: Mangle> Default for Defines<M> {
     fn default() -> Self {
         Self {

@@ -116,11 +116,10 @@ impl BranchesBuilder {
         }
     }
 
-    pub const fn is_ok(&self) -> bool {
-        self.state.is_ok()
-    }
-
-    pub fn filter_self<T, B>(&mut self, defs: &Defs, filter: &B)
+    /// # Return
+    ///
+    /// is self.state ok
+    pub fn filter_self<T, B>(&mut self, defs: &Defs, filter: &B) -> bool
     where
         T: Types,
         B: BranchFilter<T>,
@@ -134,6 +133,7 @@ impl BranchesBuilder {
             .with_previous(privious);
             self.state = Err(err)
         }
+        self.state.is_ok()
     }
 
     /// let the bench depend on benches which satisfy the filter in group
