@@ -72,7 +72,7 @@ pub struct FnScope {
     // a counter
     temps: usize,
     parameters: HashMap<SharedString, GroupIdx>,
-    pub declare_map: DeclareMap,
+    pub declare_map: DeclareGraph,
 }
 
 impl FnScope {
@@ -81,7 +81,7 @@ impl FnScope {
         PI: IntoIterator<Item = &'p defs::Parameter>,
         SI: IntoIterator<Item = Span>,
     {
-        let mut declare_map = DeclareMap::default();
+        let mut declare_map = DeclareGraph::default();
         let parameters = spans
             .into_iter()
             .zip(params)

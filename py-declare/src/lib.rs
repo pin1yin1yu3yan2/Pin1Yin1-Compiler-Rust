@@ -3,14 +3,14 @@
 mod branch;
 mod error;
 mod filter;
+mod graph;
 mod group;
-mod map;
 mod res;
 pub use branch::*;
 pub use error::*;
 pub use filter::*;
+pub use graph::*;
 pub use group::*;
-pub use map::*;
 pub use res::*;
 
 pub mod defs;
@@ -56,7 +56,7 @@ mod tests {
             .map(|raw| filters::TypeEqual::new(raw, no_span))
             .collect::<Vec<_>>();
 
-        let mut map = DeclareMap::new();
+        let mut map = DeclareGraph::new();
         let defs = Defs::new();
 
         let m1 = map.build_group(GroupBuilder::new(
@@ -80,9 +80,12 @@ mod tests {
             let gb = GroupBuilder::new(
                 ordered_span(11),
                 vec![
-                    BranchesBuilder::new(types[3].clone())
-                        .new_depend::<Directly, _>(&mut map, &defs, m1, &filters[1])
-                        .new_depend::<Directly, _>(&mut map, &defs, n1, &filters[2]),
+                    BranchesBuilder::new(types[3].clone()).new_depend::<Directly, _>(
+                        &mut map,
+                        &defs,
+                        m1,
+                        &filters[2],
+                    ),
                     BranchesBuilder::new(types[4].clone())
                         .new_depend::<Directly, _>(&mut map, &defs, m1, &filters[2])
                         .new_depend::<Directly, _>(&mut map, &defs, n1, &filters[3]),
@@ -132,9 +135,17 @@ mod tests {
         let _k = {
             let gb = GroupBuilder::new(
                 ordered_span(21),
-                vec![BranchesBuilder::new(types[5].clone())
-                    .new_depend::<Directly, _>(&mut map, &defs, i, &filters[4])
-                    .new_depend::<Directly, _>(&mut map, &defs, j, &filters[5])],
+                vec![
+                    BranchesBuilder::new(types[3].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, i, &filters[1])
+                        .new_depend::<Directly, _>(&mut map, &defs, j, &filters[2]),
+                    BranchesBuilder::new(types[4].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, i, &filters[3])
+                        .new_depend::<Directly, _>(&mut map, &defs, j, &filters[4]),
+                    BranchesBuilder::new(types[5].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, i, &filters[4])
+                        .new_depend::<Directly, _>(&mut map, &defs, j, &filters[5]),
+                ],
             );
             map.build_group(gb)
         };

@@ -139,7 +139,7 @@ impl BranchesBuilder {
     /// let the bench depend on benches which satisfy the filter in group
     pub fn new_depend<T, B>(
         mut self,
-        map: &mut DeclareMap,
+        map: &mut DeclareGraph,
         defs: &Defs,
         depend: GroupIdx,
         filter: &B,

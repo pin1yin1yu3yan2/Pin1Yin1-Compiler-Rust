@@ -1,10 +1,10 @@
 pub trait IntoIR {
     type Forward;
-    fn into_ir(self, map: &crate::DeclareMap) -> Self::Forward;
+    fn into_ir(self, map: &crate::DeclareGraph) -> Self::Forward;
 }
 
 pub mod mir_variable {
-    use crate::{branches, BranchesBuilder, DeclareMap, GroupIdx};
+    use crate::{branches, BranchesBuilder, DeclareGraph, GroupIdx};
     use py_ir as ir;
     use py_ir::value::Literal;
     use py_lex::ops::Operators;
@@ -105,7 +105,7 @@ pub mod mir_variable {
     impl IntoIR for Undeclared<Value> {
         type Forward = ir::value::Value;
 
-        fn into_ir(self, map: &crate::DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &crate::DeclareGraph) -> Self::Forward {
             match self.val {
                 Value::Literal(literal) => {
                     let ty = *map.get_type(self.ty).as_primitive().unwrap();
@@ -119,7 +119,7 @@ pub mod mir_variable {
     impl IntoIR for Undeclared<AssignValue> {
         type Forward = ir::value::AssignValue;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             match self.val {
                 AssignValue::Value(value) => Undeclared::new(value, self.ty).into_ir(map).into(),
                 AssignValue::FnCall(fn_call) => {
@@ -147,7 +147,7 @@ pub mod mir_variable {
     impl IntoIR for Vec<Undeclared<Value>> {
         type Forward = Vec<ir::value::Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             self.into_iter().map(|val| val.into_ir(map)).collect()
         }
     }
@@ -158,7 +158,7 @@ pub use mir_variable::*;
 mod into_ir_impls {
 
     use super::{IntoIR, Undeclared};
-    use crate::DeclareMap;
+    use crate::DeclareGraph;
     use py_ir::value::Value;
     use py_ir::*;
 
@@ -167,7 +167,7 @@ mod into_ir_impls {
     impl IntoIR for Item<MirVariable> {
         type Forward = Item<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             match self {
                 Item::FnDefine(fn_define) => fn_define.into_ir(map).into(),
             }
@@ -177,7 +177,7 @@ mod into_ir_impls {
     impl IntoIR for FnDefine<MirVariable> {
         type Forward = FnDefine<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             FnDefine {
                 ty: self.ty,
                 name: self.name,
@@ -190,7 +190,7 @@ mod into_ir_impls {
     impl IntoIR for Statements<MirVariable> {
         type Forward = Statements<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             Statements {
                 stmts: self
                     .stmts
@@ -205,7 +205,7 @@ mod into_ir_impls {
     impl IntoIR for Statement<MirVariable> {
         type Forward = Statement<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             match self {
                 Statement::VarDefine(item) => item.into_ir(map).into(),
                 Statement::VarStore(item) => item.into_ir(map).into(),
@@ -220,7 +220,7 @@ mod into_ir_impls {
     impl IntoIR for VarDefine<MirVariable> {
         type Forward = VarDefine<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             let ty = map.get_type(self.ty).clone();
             VarDefine {
                 ty,
@@ -234,7 +234,7 @@ mod into_ir_impls {
     impl IntoIR for VarStore<MirVariable> {
         type Forward = VarStore<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             VarStore {
                 name: self.name,
                 val: self.val.into_ir(map),
@@ -245,7 +245,7 @@ mod into_ir_impls {
     impl IntoIR for Condition<MirVariable> {
         type Forward = Condition<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             Condition {
                 val: self.val.into_ir(map),
                 compute: self.compute.into_ir(map),
@@ -256,7 +256,7 @@ mod into_ir_impls {
     impl IntoIR for IfBranch<MirVariable> {
         type Forward = IfBranch<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             IfBranch {
                 cond: self.cond.into_ir(map),
                 body: self.body.into_ir(map),
@@ -267,7 +267,7 @@ mod into_ir_impls {
     impl IntoIR for If<MirVariable> {
         type Forward = If<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             If {
                 branches: self
                     .branches
@@ -282,7 +282,7 @@ mod into_ir_impls {
     impl IntoIR for While<MirVariable> {
         type Forward = While<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             While {
                 cond: self.cond.into_ir(map),
                 body: self.body.into_ir(map),
@@ -293,7 +293,7 @@ mod into_ir_impls {
     impl IntoIR for Return<MirVariable> {
         type Forward = Return<Value>;
 
-        fn into_ir(self, map: &DeclareMap) -> Self::Forward {
+        fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             Return {
                 val: self.val.map(|val| val.into_ir(map)),
             }

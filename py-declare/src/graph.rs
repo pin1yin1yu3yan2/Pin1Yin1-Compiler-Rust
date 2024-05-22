@@ -6,7 +6,7 @@ use terl::{Span, WithSpan};
 /// used to declare which overload of function is called, or which possiable type is
 ///
 #[derive(Default, Debug)]
-pub struct DeclareMap {
+pub struct DeclareGraph {
     pub(crate) groups: Vec<DeclareGroup>,
     /// deps means that [`Branch`] depend **ALL** of them
     ///
@@ -15,7 +15,7 @@ pub struct DeclareMap {
     pub(crate) rdeps: HashMap<Branch, HashSet<Branch>>,
 }
 
-impl DeclareMap {
+impl DeclareGraph {
     pub fn new() -> Self {
         Self::default()
     }
@@ -276,7 +276,7 @@ impl DeclareMap {
     }
 }
 
-impl std::ops::Index<GroupIdx> for DeclareMap {
+impl std::ops::Index<GroupIdx> for DeclareGraph {
     type Output = DeclareGroup;
 
     fn index(&self, index: GroupIdx) -> &Self::Output {
@@ -284,13 +284,13 @@ impl std::ops::Index<GroupIdx> for DeclareMap {
     }
 }
 
-impl std::ops::IndexMut<GroupIdx> for DeclareMap {
+impl std::ops::IndexMut<GroupIdx> for DeclareGraph {
     fn index_mut(&mut self, index: GroupIdx) -> &mut Self::Output {
         &mut self.groups[index.idx]
     }
 }
 
-impl std::ops::Index<Branch> for DeclareMap {
+impl std::ops::Index<Branch> for DeclareGraph {
     type Output = Type;
 
     fn index(&self, index: Branch) -> &Self::Output {

@@ -50,7 +50,7 @@ struct Cli {
     #[cfg(feature = "backend-llvm")]
     #[arg(short = 'm', long, value_enum, default_value_t = LLVMOutputMode::Bitcode, help = "llvm ir output mode",)]
     output_mode: LLVMOutputMode,
-    #[cfg(feature = "backend-llvm")]
+    // #[cfg(feature = "backend-llvm")]
     // #[arg(short = 'O', long = "opt", value_enum, default_value_t = LLVMOptimizeLevel::O1, help = "llvm ir optimize level",)]
     // optimize_level: LLVMOptimizeLevel,
     #[arg(short = 'b', long, value_enum, default_value_t = CodeGenBackend::C, help = "code generation backend")]
@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 LLVMOutputMode::Text => {
                     use std::io::Write;
                     let mut file = std::fs::File::create(output)?;
-                    write!(&mut file, "{}", module.print_to_string())?;
+                    write!(&mut file, "{}", module.print_to_string().to_string())?;
                 }
                 LLVMOutputMode::Bitcode => {
                     module.write_bitcode_to_path(&output);
