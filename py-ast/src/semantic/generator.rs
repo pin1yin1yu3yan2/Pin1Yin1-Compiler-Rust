@@ -4,18 +4,217 @@ use crate::parse;
 use either::Either;
 use py_declare::mir::IntoIR;
 use py_declare::*;
-use py_ir as ir;
-use py_lex::{SharedString, PU};
+use py_lex::PU;
 use terl::*;
 
-pub trait Generator<Item> {
+py_ir::custom_ir_variable!(pub IR<py_ir::value::Value>);
+
+pub trait Generator<Item: ?Sized> {
     type Forward;
 
     fn generate(&mut self, item: &Item) -> Self::Forward;
 }
 
+type Errors = Either<Error, Vec<Error>>;
+
+type ItemsGenerateResult = Result<Vec<Item>, Either<Vec<Error>, Vec<Vec<Error>>>>;
+
+struct FallibleResults<T, E> {
+    inner: Result<Vec<T>, Vec<E>>,
+}
+
+impl<T, E> FallibleResults<T, E> {
+    fn new() -> Self {
+        Self { inner: Ok(vec![]) }
+    }
+
+    fn add_ok(&mut self, item: T) -> Result<(), T> {
+        match &mut self.inner {
+            Ok(state) => {
+                state.push(item);
+                Ok(())
+            }
+            _ => Err(item),
+        }
+    }
+
+    fn add_err(&mut self, err: E) {
+        match &mut self.inner {
+            Ok(_) => self.inner = Err(vec![err]),
+            Err(errs) => errs.push(err),
+        }
+    }
+
+    fn take(self) -> Result<Vec<T>, Vec<E>> {
+        self.inner
+    }
+}
+
+#[cfg(feature = "parallel")]
+mod parallel {
+    use super::*;
+
+    impl<M: Mangle> Generator<[parse::Item]> for Defines<M> {
+        type Forward = ItemsGenerateResult;
+
+        fn generate(&mut self, items: &[parse::Item]) -> Self::Forward {
+            let mut tasks = FallibleResults::new();
+            for item in items {
+                let next = match item {
+                    parse::Item::FnDefine(fn_define) => fn_define,
+                    parse::Item::Comment(_) => continue,
+                };
+                match fn_define_task(self, next).map(Box::new) {
+                    Ok(task) => {
+                        let _ = tasks.add_ok(task);
+                    }
+                    Err(err) => {
+                        tasks.add_err(err);
+                    }
+                };
+            }
+
+            use rayon::prelude::*;
+
+            let (item_s, item_r) = std::sync::mpsc::channel();
+            let (err_s, err_r) = std::sync::mpsc::channel();
+
+            let state = std::thread::spawn(move || {
+                let mut items = FallibleResults::new();
+
+                let mut items_disconnent = false;
+                let mut error_disconnent = false;
+
+                loop {
+                    use std::sync::mpsc::TryRecvError;
+                    if !items_disconnent {
+                        match item_r.try_recv() {
+                            Ok(item) => {
+                                let _ = items.add_ok(item);
+                            }
+                            Err(TryRecvError::Disconnected) => items_disconnent = true,
+                            _ => {}
+                        }
+                        continue;
+                    }
+                    if !error_disconnent {
+                        match err_r.try_recv() {
+                            Ok(err) => {
+                                items.add_err(err);
+                            }
+                            Err(TryRecvError::Disconnected) => error_disconnent = true,
+                            _ => {}
+                        }
+                        continue;
+                    }
+                    break items.take();
+                }
+            });
+
+            tasks
+                .take()
+                .map_err(Either::Left)?
+                .into_par_iter()
+                .map(|task| (task, item_s.clone(), err_s.clone()))
+                .for_each(|(task, item_s, err_s)| match task(self) {
+                    Ok(item) => item_s.send(Item::from(item)).unwrap(),
+                    Err(err) => err_s.send(err).unwrap(),
+                });
+            // drop them, or collection thread will never return
+            drop((item_s, err_s));
+
+            state.join().unwrap().map_err(Either::Right)
+        }
+    }
+
+    fn fn_define_task<'d, M: Mangle>(
+        define: &mut Defines<M>,
+        fn_define: &'d parse::FnDefine,
+    ) -> Result<impl FnOnce(&'d Defines<M>) -> Result<FnDefine, Vec<Error>>, Error> {
+        let ty = fn_define.ty.to_mir_ty()?;
+
+        let params = fn_define
+            .params
+            .iter()
+            .try_fold(Vec::new(), |mut vec, pu| {
+                let name = pu.name.to_string();
+                let ty = pu.ty.to_mir_ty()?;
+                vec.push(defs::Parameter { name, ty });
+                Result::Ok(vec)
+            })?;
+
+        let fn_sign = defs::FnSign::new(
+            ty.clone(),
+            params.clone(),
+            fn_define.retty_span,
+            fn_define.sign_span,
+        );
+
+        let mangled_name = define.regist_fn(fn_define, fn_sign)?;
+
+        Ok(|define: &Defines<M>| -> Result<FnDefine, Vec<Error>> {
+            let mut statement_transmuter = {
+                let scopes = BasicScopes::default();
+                let spans = fn_define.params.iter().map(WithSpan::get_span);
+                let fn_scope = FnScope::new(&mangled_name, params.iter(), spans);
+                StatementGenerator::new(&define.defs, fn_scope, scopes)
+            };
+
+            let body = match statement_transmuter.generate(&fn_define.codes) {
+                Err(error) => Err(vec![error]),
+                Ok(body) if !body.returned => {
+                    let reason = format!("function `{}` is never return", fn_define.name);
+                    let error = fn_define.sign_span.make_error(reason);
+                    Err(vec![error])
+                }
+
+                Ok(body) => Ok(body),
+            }?;
+
+            statement_transmuter.fn_scope.declare_map.declare_all()?;
+
+            let mir_fn = mir::FnDefine {
+                ty,
+                body,
+                params,
+                name: mangled_name,
+            };
+            Ok(mir_fn.into_ir(&statement_transmuter.fn_scope.declare_map))
+        })
+    }
+}
+
+#[cfg(not(feature = "parallel"))]
+mod normal {
+    use super::*;
+    impl<M: Mangle> Generator<[parse::Item]> for Defines<M> {
+        type Forward = ItemsGenerateResult;
+
+        fn generate(&mut self, items: &[parse::Item]) -> Self::Forward {
+            let state = FallibleResults::new();
+
+            for item in items {
+                let next = match item {
+                    parse::Item::FnDefine(fn_define) => fn_define,
+                    parse::Item::Comment(_) => continue,
+                };
+                match self.generate(item) {
+                    Ok(task) => {
+                        state.add_ok(task);
+                    }
+                    Err(err) => {
+                        state.add_err(err);
+                    }
+                };
+            }
+
+            state.take()
+        }
+    }
+}
+
 impl<M: Mangle> Generator<parse::Item> for Defines<M> {
-    type Forward = Result<Option<ir::Item<ir::value::Value>>, Either<Error, Vec<Error>>>;
+    type Forward = Result<Option<Item>, Errors>;
 
     fn generate(&mut self, item: &parse::Item) -> Self::Forward {
         match item {
@@ -26,7 +225,7 @@ impl<M: Mangle> Generator<parse::Item> for Defines<M> {
 }
 
 impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
-    type Forward = Result<ir::FnDefine<ir::value::Value>, Either<Error, Vec<Error>>>;
+    type Forward = Result<FnDefine, Errors>;
 
     fn generate(&mut self, fn_define: &parse::FnDefine) -> Self::Forward {
         let ty = fn_define.ty.to_mir_ty().map_err(Either::Left)?;
@@ -35,7 +234,7 @@ impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
             .params
             .iter()
             .try_fold(Vec::new(), |mut vec, pu| {
-                let name = pu.name.shared();
+                let name = pu.name.to_string();
                 let ty = pu.ty.to_mir_ty()?;
                 vec.push(defs::Parameter { name, ty });
                 Result::Ok(vec)
@@ -55,7 +254,7 @@ impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
             let scopes = BasicScopes::default();
             let spans = fn_define.params.iter().map(WithSpan::get_span);
             let fn_scope = FnScope::new(&mangled_name, params.iter(), spans);
-            StatementTransmuter::new(&mut self.defs, fn_scope, scopes)
+            StatementGenerator::new(&self.defs, fn_scope, scopes)
         };
 
         let body = statement_transmuter
@@ -83,8 +282,8 @@ impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
     }
 }
 
-struct StatementTransmuter<'w> {
-    pub defs: &'w mut Defs,
+struct StatementGenerator<'w> {
+    pub defs: &'w Defs,
     pub fn_scope: FnScope,
     pub scopes: BasicScopes,
     stmts: mir::Statements,
@@ -92,9 +291,9 @@ struct StatementTransmuter<'w> {
 
 struct VarDeineLoc(usize);
 
-impl<'w> StatementTransmuter<'w> {
-    fn new(defs: &mut Defs, fn_scope: FnScope, scopes: BasicScopes) -> StatementTransmuter<'_> {
-        StatementTransmuter {
+impl<'w> StatementGenerator<'w> {
+    fn new(defs: &Defs, fn_scope: FnScope, scopes: BasicScopes) -> StatementGenerator<'_> {
+        StatementGenerator {
             defs,
             fn_scope,
             scopes,
@@ -134,10 +333,10 @@ impl<'w> StatementTransmuter<'w> {
         loc
     }
 
-    fn rename_var_define(&mut self, loc: VarDeineLoc, new_name: &SharedString) {
+    fn rename_var_define(&mut self, loc: VarDeineLoc, new_name: &str) {
         match &mut self.stmts[loc.0] {
-            ir::Statement::VarDefine(define) => {
-                define.name = new_name.clone();
+            py_ir::Statement::VarDefine(define) => {
+                define.name = new_name.to_owned();
                 define.is_temp = false;
             }
             _ => unreachable!(),
@@ -166,7 +365,7 @@ impl<'w> StatementTransmuter<'w> {
     }
 }
 
-impl Generator<parse::Statement> for StatementTransmuter<'_> {
+impl Generator<parse::Statement> for StatementGenerator<'_> {
     type Forward = Result<Option<mir::Statement>>;
 
     fn generate(&mut self, stmt: &parse::Statement) -> Self::Forward {
@@ -218,7 +417,7 @@ impl From<mir::Undeclared<mir::Value>> for ValueHandle {
     }
 }
 
-impl Generator<parse::FnCall> for StatementTransmuter<'_> {
+impl Generator<parse::FnCall> for StatementGenerator<'_> {
     type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, fn_call: &parse::FnCall) -> Self::Forward {
@@ -268,11 +467,11 @@ impl Generator<parse::FnCall> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::VarStore> for StatementTransmuter<'_> {
+impl Generator<parse::VarStore> for StatementGenerator<'_> {
     type Forward = Result<mir::VarStore>;
 
     fn generate(&mut self, var_store: &parse::VarStore) -> Self::Forward {
-        let name = var_store.name.shared();
+        let name = var_store.name.to_string();
         let val = self.generate(&var_store.assign.val)?.handle;
 
         let val_at = var_store.assign.val.get_span();
@@ -292,25 +491,24 @@ impl Generator<parse::VarStore> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::VarDefine> for StatementTransmuter<'_> {
+impl Generator<parse::VarDefine> for StatementGenerator<'_> {
     type Forward = Result<Option<mir::VarDefine>>;
 
     fn generate(&mut self, var_define: &parse::VarDefine) -> Self::Forward {
-        let name = var_define.name.shared();
         let ty = var_define.ty.to_mir_ty()?;
         let ty = self
             .fn_scope
             .declare_map
             .new_static_group(var_define.ty.get_span(), std::iter::once(ty.into()));
         self.scopes
-            .regist_variable(&name, defs::VarDef { ty, mutable: true });
+            .regist_variable(&var_define.name, defs::VarDef { ty, mutable: true });
 
         let init = match &var_define.init {
             Some(var_assign) => {
                 let init = self.generate(&var_assign.val)?;
 
                 if let Some(loc) = init.loc {
-                    self.rename_var_define(loc, var_define.name.shared_ref());
+                    self.rename_var_define(loc, &var_define.name);
                     return Ok(None);
                 }
                 let at = var_assign.val.get_span();
@@ -321,6 +519,7 @@ impl Generator<parse::VarDefine> for StatementTransmuter<'_> {
             None => None,
         };
 
+        let name = var_define.name.to_string();
         Ok(Some(mir::VarDefine {
             ty,
             name,
@@ -330,7 +529,7 @@ impl Generator<parse::VarDefine> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::If> for StatementTransmuter<'_> {
+impl Generator<parse::If> for StatementGenerator<'_> {
     type Forward = Result<mir::If>;
 
     fn generate(&mut self, if_: &parse::If) -> Self::Forward {
@@ -349,7 +548,7 @@ impl Generator<parse::If> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::While> for StatementTransmuter<'_> {
+impl Generator<parse::While> for StatementGenerator<'_> {
     type Forward = Result<mir::While>;
 
     fn generate(&mut self, while_: &parse::While) -> Self::Forward {
@@ -359,7 +558,7 @@ impl Generator<parse::While> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::IfBranch> for StatementTransmuter<'_> {
+impl Generator<parse::IfBranch> for StatementGenerator<'_> {
     type Forward = Result<mir::IfBranch>;
 
     fn generate(&mut self, branch: &parse::IfBranch) -> Self::Forward {
@@ -369,7 +568,7 @@ impl Generator<parse::IfBranch> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::Return> for StatementTransmuter<'_> {
+impl Generator<parse::Return> for StatementGenerator<'_> {
     type Forward = Result<mir::Return>;
 
     fn generate(&mut self, ret: &parse::Return) -> Self::Forward {
@@ -388,7 +587,7 @@ impl Generator<parse::Return> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::CodeBlock> for StatementTransmuter<'_> {
+impl Generator<parse::CodeBlock> for StatementGenerator<'_> {
     type Forward = Result<mir::Statements>;
 
     fn generate(&mut self, item: &parse::CodeBlock) -> Self::Forward {
@@ -404,7 +603,7 @@ impl Generator<parse::CodeBlock> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::Conditions> for StatementTransmuter<'_> {
+impl Generator<parse::Conditions> for StatementGenerator<'_> {
     type Forward = Result<mir::Condition>;
 
     fn generate(&mut self, conds: &parse::Conditions) -> Self::Forward {
@@ -417,7 +616,7 @@ impl Generator<parse::Conditions> for StatementTransmuter<'_> {
         })?;
 
         // type check
-        let bool = ir::types::PrimitiveType::Bool.into();
+        let bool = py_ir::types::PrimitiveType::Bool.into();
         let last_cond_span = conds.last().unwrap().get_span();
         self.fn_scope
             .declare_map
@@ -426,7 +625,7 @@ impl Generator<parse::Conditions> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<parse::Expr> for StatementTransmuter<'_> {
+impl Generator<parse::Expr> for StatementGenerator<'_> {
     type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, expr: &parse::Expr) -> Self::Forward {
@@ -474,17 +673,17 @@ impl Generator<parse::Expr> for StatementTransmuter<'_> {
     }
 }
 
-impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
+impl Generator<PU<parse::AtomicExpr>> for StatementGenerator<'_> {
     type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, atomic: &PU<parse::AtomicExpr>) -> Self::Forward {
         let literal = match &**atomic {
             // atomics
             // 解析
-            parse::AtomicExpr::CharLiteral(char) => ir::value::Literal::Char(char.parsed),
+            parse::AtomicExpr::CharLiteral(char) => py_ir::value::Literal::Char(char.parsed),
             parse::AtomicExpr::NumberLiteral(n) => match n {
-                parse::NumberLiteral::Float(number) => ir::value::Literal::Float(*number),
-                parse::NumberLiteral::Digit(number) => ir::value::Literal::Integer(*number),
+                parse::NumberLiteral::Float(number) => py_ir::value::Literal::Float(*number),
+                parse::NumberLiteral::Digit(number) => py_ir::value::Literal::Integer(*number),
             },
 
             parse::AtomicExpr::StringLiteral(_str) => {
@@ -497,7 +696,7 @@ impl Generator<PU<parse::AtomicExpr>> for StatementTransmuter<'_> {
                     return Err(atomic.make_error("use of undefined variable"));
                 };
 
-                let val = mir::Value::Variable(name.shared());
+                let val = mir::Value::Variable(name.to_string());
                 return Ok(mir::Undeclared::new(val, def.ty).into());
             }
             parse::AtomicExpr::Array(ref _array) => {

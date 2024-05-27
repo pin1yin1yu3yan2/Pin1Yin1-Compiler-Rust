@@ -15,18 +15,7 @@ pub use stmt::*;
 pub use types::*;
 
 #[derive(Debug, Clone)]
-pub struct Ident(SharedString);
-
-impl Ident {
-    #[inline]
-    pub fn shared(&self) -> SharedString {
-        self.shared_ref().clone()
-    }
-    #[inline]
-    pub fn shared_ref(&self) -> &SharedString {
-        &self.0
-    }
-}
+pub struct Ident(String);
 
 impl std::ops::Deref for Ident {
     type Target = str;

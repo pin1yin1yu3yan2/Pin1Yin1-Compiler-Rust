@@ -102,11 +102,11 @@ impl DeclareGroup {
         }
     }
 
-    pub fn new_error(&mut self, at: usize, error: DeclareError) {
+    pub fn push_error(&mut self, at: usize, error: DeclareError) {
         self.failds.insert(at, error);
     }
 
-    pub fn update_state<U>(&mut self, updater: U)
+    fn update_state<U>(&mut self, updater: U)
     where
         U: FnOnce(DeclareState) -> DeclareState,
     {
@@ -114,16 +114,17 @@ impl DeclareGroup {
         self.status = updater(previous);
     }
 
-    pub fn filter_alive<F>(&mut self, mut filter: F) -> Vec<(Branch, DeclareError)>
+    pub fn filter_alive<F, C>(&mut self, mut filter: F) -> C
     where
         F: FnMut(Branch, Type) -> Result<(Branch, Type), DeclareError>,
+        C: Default + Extend<(Branch, DeclareError)>,
     {
-        let mut remove = vec![];
+        let mut remove = C::default();
         let belong_to = self.group;
         let filter_map = |(branch, ty)| {
             let branch = Branch::new(belong_to, branch);
             filter(branch, ty)
-                .map_err(|e| remove.push((branch, e)))
+                .map_err(|e| remove.extend(Some((branch, e))))
                 .map(|(branch, ty)| (branch.branch_idx, ty))
                 .ok()
         };
@@ -144,12 +145,12 @@ impl DeclareGroup {
 
     /// remove only one branch
     ///
-    /// note: this method will do nothng if the branch is not exist(including have been remvoed)
-    pub fn remove_branch(&mut self, branch: Branch, reason: DeclareError) -> DeclareError {
+    /// note: this method will do nothing if the branch is not exist(including have been remvoed)
+    pub fn remove_branch(&mut self, branch: usize, reason: DeclareError) -> DeclareError {
         let mut new_reason = DeclareError::Empty;
         self.update_state(|state| match state {
             DeclareState::Declared(unique, previous) => {
-                if unique == branch.branch_idx {
+                if unique == branch {
                     new_reason = reason.with_previous(previous);
                     DeclareState::Empty
                 } else {
@@ -157,7 +158,7 @@ impl DeclareGroup {
                 }
             }
             DeclareState::Declaring(mut items) => {
-                let previous = items.remove(&branch.branch_idx);
+                let previous = items.remove(&branch);
                 new_reason = reason.with_previous(previous.unwrap_or_else(|| unreachable!()));
                 items.into()
             }

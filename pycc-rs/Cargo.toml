@@ -18,6 +18,8 @@ py-codegen-llvm = { path = "../py-codegen-llvm", optional = true }
 py-codegen-c = { path = "../py-codegen-c", optional = true }
 
 [features]
-default = ["backend-llvm", "backend-c"]
+
+default = ["backend-llvm", "backend-c", "parallel-declare"]
 backend-llvm = ["py-codegen-llvm"]
 backend-c = ["py-codegen-c"]
+parallel-declare = ["py-ast/parallel"]

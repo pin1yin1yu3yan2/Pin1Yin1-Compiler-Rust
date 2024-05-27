@@ -1,6 +1,6 @@
 use crate::*;
 use py_ir::types::TypeDefine;
-use py_lex::SharedString;
+
 use std::collections::HashMap;
 use terl::Span;
 
@@ -14,12 +14,7 @@ impl Defs {
         Self::default()
     }
 
-    pub fn new_fn(
-        &mut self,
-        unmangled: SharedString,
-        mangled: SharedString,
-        sign: defs::FnSign,
-    ) -> Type {
+    pub fn new_fn(&mut self, unmangled: &str, mangled: &str, sign: defs::FnSign) -> Type {
         self.fn_signs.new_fn(unmangled, mangled, sign)
     }
 
@@ -39,8 +34,8 @@ impl Defs {
 #[derive(Default)]
 pub struct FnSigns {
     fn_signs: Vec<Overload>,
-    unmangled: HashMap<SharedString, Vec<Overload>>,
-    mangled: HashMap<SharedString, Overload>,
+    unmangled: HashMap<String, Vec<Overload>>,
+    mangled: HashMap<String, Overload>,
 }
 
 impl FnSigns {
@@ -48,25 +43,20 @@ impl FnSigns {
         Self::default()
     }
 
-    pub fn new_fn(
-        &mut self,
-        unmangled: SharedString,
-        mangled: SharedString,
-        sign: defs::FnSign,
-    ) -> Type {
+    pub fn new_fn(&mut self, unmangled: &str, mangled: &str, sign: defs::FnSign) -> Type {
         let value = defs::FnSignWithName {
             sign,
-            name: mangled.clone(),
+            name: mangled.to_owned(),
         };
 
         let overload: Overload = value.into();
 
         self.fn_signs.push(overload.clone());
         self.unmangled
-            .entry(unmangled)
+            .entry(unmangled.to_owned())
             .or_default()
             .push(overload.clone());
-        self.mangled.insert(mangled, overload.clone());
+        self.mangled.insert(mangled.to_owned(), overload.clone());
         Type::Overload(overload)
     }
 
@@ -88,7 +78,7 @@ impl FnSigns {
 #[derive(Debug, Clone)]
 pub struct FnSignWithName {
     pub sign: FnSign,
-    pub name: SharedString,
+    pub name: String,
 }
 
 impl std::ops::Deref for FnSignWithName {

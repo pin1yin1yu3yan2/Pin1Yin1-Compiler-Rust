@@ -1,5 +1,3 @@
-#![feature(lazy_cell)]
-
 mod branch;
 mod error;
 mod filter;
@@ -38,14 +36,9 @@ mod tests {
         let ordered_span = |idx: usize| terl::Span::new(idx, idx + 1);
 
         use py_ir::types::{ComplexType, TypeDefine};
-        use py_lex::SharedString;
 
         let raw_types = (0..6)
-            .map(|idx| {
-                TypeDefine::from(ComplexType::no_decorators(SharedString::from(format!(
-                    "t{idx}"
-                ))))
-            })
+            .map(|idx| TypeDefine::from(ComplexType::no_decorators(format!("t{idx}"))))
             .collect::<Vec<_>>();
         let types = raw_types
             .iter()
@@ -80,12 +73,9 @@ mod tests {
             let gb = GroupBuilder::new(
                 ordered_span(11),
                 vec![
-                    BranchesBuilder::new(types[3].clone()).new_depend::<Directly, _>(
-                        &mut map,
-                        &defs,
-                        m1,
-                        &filters[2],
-                    ),
+                    BranchesBuilder::new(types[3].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, m1, &filters[1])
+                        .new_depend::<Directly, _>(&mut map, &defs, n1, &filters[2]),
                     BranchesBuilder::new(types[4].clone())
                         .new_depend::<Directly, _>(&mut map, &defs, m1, &filters[2])
                         .new_depend::<Directly, _>(&mut map, &defs, n1, &filters[3]),
@@ -140,11 +130,11 @@ mod tests {
                         .new_depend::<Directly, _>(&mut map, &defs, i, &filters[1])
                         .new_depend::<Directly, _>(&mut map, &defs, j, &filters[2]),
                     BranchesBuilder::new(types[4].clone())
+                        .new_depend::<Directly, _>(&mut map, &defs, i, &filters[2])
+                        .new_depend::<Directly, _>(&mut map, &defs, j, &filters[3]),
+                    BranchesBuilder::new(types[5].clone())
                         .new_depend::<Directly, _>(&mut map, &defs, i, &filters[3])
                         .new_depend::<Directly, _>(&mut map, &defs, j, &filters[4]),
-                    BranchesBuilder::new(types[5].clone())
-                        .new_depend::<Directly, _>(&mut map, &defs, i, &filters[4])
-                        .new_depend::<Directly, _>(&mut map, &defs, j, &filters[5]),
                 ],
             );
             map.build_group(gb)

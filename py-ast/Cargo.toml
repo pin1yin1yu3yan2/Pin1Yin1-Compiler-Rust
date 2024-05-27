@@ -9,6 +9,10 @@ py-ir = { path = "../py-ir" }
 py-lex = { path = "../py-lex" }
 py-declare = { path = "../py-declare" }
 either = { workspace = true }
+rayon = { version = "1", optional = true }
 
 [dev-dependencies]
 terl = { path = "../terl", features = ["parser_calling_tree"] }
+
+[features]
+parallel = ["py-declare/parallel", "rayon"]

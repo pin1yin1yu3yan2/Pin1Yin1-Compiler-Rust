@@ -8,3 +8,6 @@ serde = { workspace = true }
 py-ir = { path = "../py-ir" }
 py-lex = { path = "../py-lex", default-features = false }
 terl = { path = "../terl" }
+
+[features]
+parallel = []

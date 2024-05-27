@@ -8,14 +8,13 @@ pub mod mir_variable {
     use py_ir as ir;
     use py_ir::value::Literal;
     use py_lex::ops::Operators;
-    use py_lex::SharedString;
 
     use super::IntoIR;
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
     pub enum Value {
         Literal(Literal),
-        Variable(SharedString),
+        Variable(String),
     }
 
     impl From<Literal> for Value {

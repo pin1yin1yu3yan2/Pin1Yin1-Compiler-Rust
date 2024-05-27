@@ -10,7 +10,6 @@ use py_ir::value as ir_value;
 use py_ir::value::AssignValue as IRAssignValue;
 use py_ir::value::Value as IRValue;
 use py_ir::{types as ir_types, ControlFlow};
-use py_lex::SharedString;
 
 pub struct ModuleGen<'ctx> {
     pub context: &'ctx Context,
@@ -123,7 +122,7 @@ impl<'mg, 'ctx> FnGen<'mg, 'ctx> {
             .unwrap()
     }
 
-    pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: SharedString, val: V) {
+    pub fn regist_var<V: Variable<'ctx> + 'ctx>(&mut self, name: String, val: V) {
         self.fn_scope
             .vars
             .last_mut()

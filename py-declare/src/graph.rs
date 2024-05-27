@@ -57,6 +57,7 @@ impl DeclareGraph {
         let mut alives = HashMap::new();
         let mut failds = HashMap::new();
 
+        #[derive(Debug)]
         enum BranchMark {
             Used,
             Error(DeclareError),
@@ -107,7 +108,8 @@ impl DeclareGraph {
         let new_group = self.new_group_inner(gb.span, failds, alives.into());
 
         for (group, mut branch_marks) in used_branches {
-            let remove = self[group].filter_alive(|branch, ty| {
+            // use hashmap avoiding remove same branch more than once
+            let remove: HashMap<_, _> = self[group].filter_alive(|branch, ty| {
                 match branch_marks.remove(&branch.branch_idx) {
                     Some(BranchMark::Used) => Ok((branch, ty)),
                     Some(BranchMark::Error(error)) => Err(error.with_location(gb.span)),
@@ -226,8 +228,8 @@ impl DeclareGraph {
         let group = &mut self[branch.belong_to];
         let group_loc = group.get_span();
         {
-            let reason = group.remove_branch(branch, reason.clone());
-            group.new_error(branch.branch_idx, reason.clone());
+            let reason = group.remove_branch(branch.branch_idx, reason.clone());
+            group.push_error(branch.branch_idx, reason.clone());
         }
 
         // remove all branches depend on removed branch

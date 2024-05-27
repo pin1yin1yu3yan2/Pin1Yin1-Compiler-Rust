@@ -3,11 +3,10 @@ use std::collections::HashMap;
 use inkwell::builder::{Builder, BuilderError};
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
-use py_lex::SharedString;
 
 /// this is not the most elegant way, but it works for now
 pub struct Defines<'ctx> {
-    pub fns: HashMap<SharedString, FunctionValue<'ctx>>,
+    pub fns: HashMap<String, FunctionValue<'ctx>>,
 }
 
 impl<'ctx> Defines<'ctx> {
@@ -21,7 +20,7 @@ impl<'ctx> Defines<'ctx> {
         *self.fns.get(name).unwrap()
     }
 
-    pub fn regist_fn(&mut self, name: SharedString, val: FunctionValue<'ctx>) {
+    pub fn regist_fn(&mut self, name: String, val: FunctionValue<'ctx>) {
         self.fns.insert(name, val);
     }
 }
@@ -35,14 +34,14 @@ impl<'ctx> Default for Defines<'ctx> {
 /// scope is still necessary bacause variable may be shadowed in scope
 #[derive(Default)]
 pub struct FnScope<'ctx> {
-    pub vars: Vec<HashMap<SharedString, Box<dyn Variable<'ctx> + 'ctx>>>,
-    pub params: HashMap<SharedString, ComputeResult<'ctx>>,
+    pub vars: Vec<HashMap<String, Box<dyn Variable<'ctx> + 'ctx>>>,
+    pub params: HashMap<String, ComputeResult<'ctx>>,
 }
 
 impl<'ctx> FnScope<'ctx> {
     pub fn new<I>(params: I) -> Self
     where
-        I: IntoIterator<Item = (SharedString, ComputeResult<'ctx>)>,
+        I: IntoIterator<Item = (String, ComputeResult<'ctx>)>,
     {
         Self {
             // CodeGen for Statemnts will create a template map

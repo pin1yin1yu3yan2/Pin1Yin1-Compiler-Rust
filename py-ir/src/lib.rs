@@ -1,8 +1,6 @@
 pub mod types;
 pub mod value;
 
-use py_lex::SharedString;
-
 pub trait IRValue {
     type AssignValue: serde::Serialize + for<'a> serde::Deserialize<'a> + std::fmt::Debug + Clone;
     type VarDefineType: serde::Serialize + for<'a> serde::Deserialize<'a> + std::fmt::Debug + Clone;
@@ -149,14 +147,14 @@ pub struct Parameter<Pty> {
     #[serde(rename = "type")]
     pub ty: Pty,
     /// using string because its the name of parameter, not a value
-    pub name: SharedString,
+    pub name: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct FnDefine<Var: IRValue> {
     #[serde(rename = "type")]
     pub ty: Var::FnDefineType,
-    pub name: SharedString,
+    pub name: String,
     pub params: Vec<Parameter<Var::ParameterType>>,
     pub body: Statements<Var>,
 }
@@ -167,7 +165,7 @@ pub struct VarDefine<Var: IRValue> {
     #[serde(rename = "type")]
     pub ty: Var::VarDefineType,
     /// the name of the variable, either a named variable or a temp variable from computing
-    pub name: SharedString,
+    pub name: String,
     /// the initial value of the variable
     ///
     /// [`None`] represents the variable is not initialized when it was created
@@ -182,7 +180,7 @@ pub struct VarDefine<Var: IRValue> {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct VarStore<Var> {
-    pub name: SharedString,
+    pub name: String,
     pub val: Var,
 }
 

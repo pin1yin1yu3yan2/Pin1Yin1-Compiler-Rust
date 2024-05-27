@@ -1,12 +1,12 @@
 use std::fmt::Write;
 
-use py_lex::{ops::Operators, SharedString};
+use py_lex::ops::Operators;
 
 use crate::types::{PrimitiveType, TypeDefine};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub enum Value {
-    Variable(SharedString),
+    Variable(String),
     Literal(Literal, PrimitiveType),
 }
 
@@ -54,7 +54,7 @@ impl super::IRValue for Value {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct FnCall<Var> {
     #[serde(rename = "fn")]
-    pub fn_name: SharedString,
+    pub fn_name: String,
     pub args: Vec<Var>,
 }
 

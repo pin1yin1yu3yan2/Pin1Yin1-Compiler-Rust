@@ -1,6 +1,11 @@
 use crate::defs::FnSignWithName;
 use py_ir::types::TypeDefine;
-use std::{any::Any, rc::Rc};
+use std::any::Any;
+
+#[cfg(not(feature = "parallel"))]
+use std::rc::Rc;
+#[cfg(feature = "parallel")]
+use std::sync::Arc as Rc;
 
 #[derive(Debug, Clone)]
 pub enum Type {

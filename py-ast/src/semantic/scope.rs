@@ -1,6 +1,6 @@
 use super::mangle::*;
 use py_declare::*;
-use py_lex::SharedString;
+
 use std::collections::HashMap;
 use terl::*;
 
@@ -17,8 +17,8 @@ impl<M: Mangle> Defines<M> {
         &mut self,
         fn_define: &crate::parse::FnDefine,
         fn_sign: defs::FnSign,
-    ) -> Result<SharedString> {
-        let mangled_name = SharedString::from(self.mangler.mangle_fn(&fn_define.name, &fn_sign));
+    ) -> Result<String> {
+        let mangled_name = self.mangler.mangle_fn(&fn_define.name, &fn_sign);
 
         if let Some(previous) = self.defs.try_get_mangled(&mangled_name) {
             let previous_define = previous
@@ -35,8 +35,7 @@ impl<M: Mangle> Defines<M> {
             return Err(err);
         }
 
-        self.defs
-            .new_fn(fn_define.name.shared(), mangled_name.clone(), fn_sign);
+        self.defs.new_fn(&fn_define.name, &mangled_name, fn_sign);
         Ok(mangled_name)
     }
 }
@@ -71,7 +70,7 @@ pub struct FnScope {
     pub fn_name: String,
     // a counter
     temps: usize,
-    parameters: HashMap<SharedString, GroupIdx>,
+    parameters: HashMap<String, GroupIdx>,
     pub declare_map: DeclareGraph,
 }
 
@@ -102,9 +101,9 @@ impl FnScope {
     }
 
     #[inline]
-    pub fn temp_name(&mut self) -> SharedString {
+    pub fn temp_name(&mut self) -> String {
         // whitespace to make temp name will not be accessed
-        (format!("_{}", self.temps), self.temps += 1).0.into()
+        (format!("_{}", self.temps), self.temps += 1).0
     }
 
     #[inline]

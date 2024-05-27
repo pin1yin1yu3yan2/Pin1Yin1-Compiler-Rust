@@ -113,25 +113,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn generate_ir(error_handler: (&Buffer, &Buffer<Token>), ast: &[py_ast::parse::Item]) -> Vec<Item> {
     let mut scope: py_ast::semantic::Defines = Default::default();
-    let mut mir = vec![];
-    for item in ast {
-        match scope.generate(item) {
-            Ok(Some(item)) => mir.push(item),
-            Err(e) => {
-                match e {
-                    either::Either::Left(e) => {
-                        eprintln!("{}", py_lex::Token::handle_error(&error_handler, e))
-                    }
-                    either::Either::Right(es) => es.into_iter().for_each(|e| {
-                        eprintln!("{}", py_lex::Token::handle_error(&error_handler, e))
-                    }),
-                }
-                exit(-1);
-            }
-            _ => {}
-        };
+
+    match scope.generate(ast) {
+        Ok(mir) => return mir,
+        Err(err) => match err {
+            either::Either::Left(errs) => errs
+                .into_iter()
+                .for_each(|e| eprintln!("{}", py_lex::Token::handle_error(&error_handler, e))),
+            either::Either::Right(errss) => errss
+                .into_iter()
+                .flatten()
+                .for_each(|e| eprintln!("{}", py_lex::Token::handle_error(&error_handler, e))),
+        },
     }
-    mir
+    exit(-1);
 }
 
 type GenAstResult = ((Buffer, Buffer<Token>), Vec<py_ast::parse::Item>);

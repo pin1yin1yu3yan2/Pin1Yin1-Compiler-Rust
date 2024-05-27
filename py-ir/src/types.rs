@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use super::SharedString;
-
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq)]
 pub enum PrimitiveType {
     Bool, // boolean
@@ -142,11 +140,11 @@ pub struct ComplexType {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub decorators: Vec<TypeDecorators>,
     #[serde(rename = "type")]
-    pub ty: SharedString,
+    pub ty: String,
 }
 
 impl ComplexType {
-    pub fn no_decorators(ty: SharedString) -> Self {
+    pub fn no_decorators(ty: String) -> Self {
         Self {
             decorators: Vec::new(),
             ty,
@@ -265,7 +263,7 @@ impl PartialEq<PrimitiveType> for TypeDefine {
 pub enum Type {
     Template(Template),
     Primitive(PrimitiveType),
-    Custom(SharedString),
+    Custom(String),
 }
 
 impl From<Template> for Type {
@@ -280,22 +278,22 @@ impl From<PrimitiveType> for Type {
     }
 }
 
-impl From<SharedString> for Type {
-    fn from(v: SharedString) -> Self {
+impl From<String> for Type {
+    fn from(v: String) -> Self {
         Self::Custom(v)
     }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
 pub struct Template {
-    pub name: SharedString,
-    pub generics: HashMap<SharedString, Type>,
+    pub name: String,
+    pub generics: HashMap<String, Type>,
 }
 
 impl Template {
-    pub fn new<I>(name: I, generics: HashMap<SharedString, Type>) -> Self
+    pub fn new<I>(name: I, generics: HashMap<String, Type>) -> Self
     where
-        I: Into<SharedString>,
+        I: Into<String>,
     {
         Self {
             name: name.into(),
