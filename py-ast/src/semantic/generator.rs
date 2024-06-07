@@ -45,9 +45,72 @@ impl<T, E> FallibleResults<T, E> {
         }
     }
 
+    fn add_result(&mut self, result: Result<T, E>) {
+        match result {
+            Ok(ok) => _ = self.add_ok(ok),
+            Err(err) => self.add_err(err),
+        }
+    }
+
     fn take(self) -> Result<Vec<T>, Vec<E>> {
         self.inner
     }
+}
+
+fn fn_define_task<'d, M: Mangle>(
+    define: &mut Defines<M>,
+    fn_define: &'d parse::FnDefine,
+) -> Result<impl FnOnce(&'d Defines<M>) -> Result<FnDefine, Vec<Error>>, Error> {
+    let ty = fn_define.ty.to_mir_ty()?;
+
+    let params = fn_define
+        .params
+        .iter()
+        .try_fold(Vec::new(), |mut vec, pu| {
+            let name = pu.name.to_string();
+            let ty = pu.ty.to_mir_ty()?;
+            vec.push(defs::Parameter { name, ty });
+            Result::Ok(vec)
+        })?;
+
+    let fn_sign = defs::FnSign::new(
+        ty.clone(),
+        params.clone(),
+        fn_define.retty_span,
+        fn_define.sign_span,
+    );
+
+    let mangled_name = define.regist_fn(fn_define, fn_sign)?;
+
+    Ok(|define: &Defines<M>| -> Result<FnDefine, Vec<Error>> {
+        let mut statement_transmuter = {
+            let scopes = BasicScopes::default();
+            let spans = fn_define.params.iter().map(WithSpan::get_span);
+            let fn_scope = FnScope::new(&mangled_name, params.iter(), spans);
+            StatementGenerator::new(&define.defs, fn_scope, scopes)
+        };
+
+        let body = match statement_transmuter.generate(&fn_define.codes) {
+            Err(error) => Err(vec![error]),
+            Ok(body) if !body.returned => {
+                let reason = format!("function `{}` is never return", fn_define.name);
+                let error = fn_define.sign_span.make_error(reason);
+                Err(vec![error])
+            }
+
+            Ok(body) => Ok(body),
+        }?;
+
+        statement_transmuter.fn_scope.declare_map.declare_all()?;
+
+        let mir_fn = mir::FnDefine {
+            ty,
+            body,
+            params,
+            name: mangled_name,
+        };
+        Ok(mir_fn.into_ir(&statement_transmuter.fn_scope.declare_map))
+    })
 }
 
 #[cfg(feature = "parallel")]
@@ -76,111 +139,30 @@ mod parallel {
 
             use rayon::prelude::*;
 
-            let (item_s, item_r) = std::sync::mpsc::channel();
-            let (err_s, err_r) = std::sync::mpsc::channel();
+            let (result_s, result_r) = std::sync::mpsc::channel();
 
             let state = std::thread::spawn(move || {
                 let mut items = FallibleResults::new();
 
-                let mut items_disconnent = false;
-                let mut error_disconnent = false;
-
-                loop {
-                    use std::sync::mpsc::TryRecvError;
-                    if !items_disconnent {
-                        match item_r.try_recv() {
-                            Ok(item) => {
-                                let _ = items.add_ok(item);
-                            }
-                            Err(TryRecvError::Disconnected) => items_disconnent = true,
-                            _ => {}
-                        }
-                        continue;
-                    }
-                    if !error_disconnent {
-                        match err_r.try_recv() {
-                            Ok(err) => {
-                                items.add_err(err);
-                            }
-                            Err(TryRecvError::Disconnected) => error_disconnent = true,
-                            _ => {}
-                        }
-                        continue;
-                    }
-                    break items.take();
+                while let Ok(result) = result_r.recv() {
+                    items.add_result(result);
                 }
+                items.take()
             });
 
             tasks
                 .take()
                 .map_err(Either::Left)?
                 .into_par_iter()
-                .map(|task| (task, item_s.clone(), err_s.clone()))
-                .for_each(|(task, item_s, err_s)| match task(self) {
-                    Ok(item) => item_s.send(Item::from(item)).unwrap(),
-                    Err(err) => err_s.send(err).unwrap(),
+                .map(|task| (task, result_s.clone()))
+                .for_each(|(task, result_s)| {
+                    _ = result_s.send(task(self).map(Into::into));
                 });
             // drop them, or collection thread will never return
-            drop((item_s, err_s));
+            drop(result_s);
 
             state.join().unwrap().map_err(Either::Right)
         }
-    }
-
-    fn fn_define_task<'d, M: Mangle>(
-        define: &mut Defines<M>,
-        fn_define: &'d parse::FnDefine,
-    ) -> Result<impl FnOnce(&'d Defines<M>) -> Result<FnDefine, Vec<Error>>, Error> {
-        let ty = fn_define.ty.to_mir_ty()?;
-
-        let params = fn_define
-            .params
-            .iter()
-            .try_fold(Vec::new(), |mut vec, pu| {
-                let name = pu.name.to_string();
-                let ty = pu.ty.to_mir_ty()?;
-                vec.push(defs::Parameter { name, ty });
-                Result::Ok(vec)
-            })?;
-
-        let fn_sign = defs::FnSign::new(
-            ty.clone(),
-            params.clone(),
-            fn_define.retty_span,
-            fn_define.sign_span,
-        );
-
-        let mangled_name = define.regist_fn(fn_define, fn_sign)?;
-
-        Ok(|define: &Defines<M>| -> Result<FnDefine, Vec<Error>> {
-            let mut statement_transmuter = {
-                let scopes = BasicScopes::default();
-                let spans = fn_define.params.iter().map(WithSpan::get_span);
-                let fn_scope = FnScope::new(&mangled_name, params.iter(), spans);
-                StatementGenerator::new(&define.defs, fn_scope, scopes)
-            };
-
-            let body = match statement_transmuter.generate(&fn_define.codes) {
-                Err(error) => Err(vec![error]),
-                Ok(body) if !body.returned => {
-                    let reason = format!("function `{}` is never return", fn_define.name);
-                    let error = fn_define.sign_span.make_error(reason);
-                    Err(vec![error])
-                }
-
-                Ok(body) => Ok(body),
-            }?;
-
-            statement_transmuter.fn_scope.declare_map.declare_all()?;
-
-            let mir_fn = mir::FnDefine {
-                ty,
-                body,
-                params,
-                name: mangled_name,
-            };
-            Ok(mir_fn.into_ir(&statement_transmuter.fn_scope.declare_map))
-        })
     }
 }
 
@@ -191,16 +173,25 @@ mod normal {
         type Forward = ItemsGenerateResult;
 
         fn generate(&mut self, items: &[parse::Item]) -> Self::Forward {
-            let state = FallibleResults::new();
+            let tasks = items
+                .iter()
+                .fold(FallibleResults::new(), |mut result, item| {
+                    match item {
+                        parse::Item::FnDefine(fn_define) => {
+                            result.add_result(fn_define_task(self, fn_define))
+                        }
+                        parse::Item::Comment(_) => {}
+                    };
+                    result
+                })
+                .take()
+                .map_err(Either::Left)?;
 
-            for item in items {
-                let next = match item {
-                    parse::Item::FnDefine(fn_define) => fn_define,
-                    parse::Item::Comment(_) => continue,
-                };
-                match self.generate(item) {
-                    Ok(task) => {
-                        state.add_ok(task);
+            let mut state = FallibleResults::new();
+            for task in tasks {
+                match task(self) {
+                    Ok(fn_define) => {
+                        _ = state.add_ok(py_ir::Item::from(fn_define));
                     }
                     Err(err) => {
                         state.add_err(err);
@@ -208,7 +199,7 @@ mod normal {
                 };
             }
 
-            state.take()
+            state.take().map_err(Either::Right)
         }
     }
 }
