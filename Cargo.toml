@@ -39,28 +39,36 @@ inkwell = "0.4.0"
 
 
 [workspace.dependencies.terl]
+version = "0.0.1"
 path = "./terl"
 
 [workspace.dependencies.py-lex]
+version = "0.0.1"
 path = "./py-lex"
 default-features = false
 
 [workspace.dependencies.py-ir]
+version = "0.0.1"
 path = "./py-ir"
 
 [workspace.dependencies.py-ast]
+version = "0.0.1"
 path = "./py-ast"
 
 [workspace.dependencies.py-declare]
+version = "0.0.1"
 path = "./py-declare"
 
 [workspace.dependencies.py-codegen]
+version = "0.0.1"
 path = "./py-codegen"
 
 [workspace.dependencies.py-codegen-c]
+version = "0.0.1"
 path = "./py-codegen-c"
 
 [workspace.dependencies.py-codegen-llvm]
+version = "0.0.1"
 path = "./py-codegen-llvm"
 
 

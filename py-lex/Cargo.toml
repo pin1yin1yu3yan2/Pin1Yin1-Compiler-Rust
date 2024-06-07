@@ -13,7 +13,7 @@ description = "lex definition for pycc-rs"
 
 [dependencies]
 terl = { workspace = true, optional = true }
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 
 [features]
 default = ["parse", "ops", "preprocess", "syntax", "types"]
