@@ -1,5 +1,5 @@
 [package]
-name = "py-declare"
+name = "py-codegen"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,13 +7,8 @@ license.workspace = true
 categories.workspace = true
 readme.workspace = true
 repository.workspace = true
-keywords = ["type", "declare", "compiler", "pinyin"]
-description = "type declare system for pycc-rs"
-[dependencies]
-serde = { workspace = true }
-py-ir = { workspace = true }
-py-lex = { workspace = true }
-terl = { workspace = true }
+keywords = ["codegen", "compiler", "pinyin"]
+description = "pycc-rs codegen interface"
 
-[features]
-parallel = []
+[dependencies]
+py-ir = { workspace = true }

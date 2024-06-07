@@ -1,10 +1,18 @@
 [package]
 name = "py-codegen-c"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords = ["c", "codegen", "compiler", "pinyin"]
+description = "C codegen backend implementation for Pin1Yin1"
+
 
 [dependencies]
-pyc = { path = "../pyc" }
-py-ir = { path = "../py-ir" }
-py-lex = { path = "../py-lex", default-features = false, features = ["ops"] }
-base32 = "0.4"
+py-codegen = { workspace = true }
+py-ir = { workspace = true }
+py-lex = { workspace = true, features = ["ops"] }
+base32 = { workspace = true }

@@ -66,7 +66,7 @@ impl std::fmt::Write for FileModule {
     }
 }
 
-impl pyc::Backend for CBackend {
+impl py_codegen::Backend for CBackend {
     type Error = std::fmt::Error;
 
     type Config = ();

@@ -1,7 +1,0 @@
-[package]
-name = "pyc"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-py-ir = { path = "../py-ir" }

@@ -1,10 +1,18 @@
 [package]
 name = "py-lex"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords = ["type", "declare", "compiler", "pinyin"]
+description = "lex definition for pycc-rs"
+
 
 [dependencies]
-terl = { path = "../terl", optional = true }
+terl = { workspace = true, optional = true }
 serde = { workspace = true }
 
 [features]

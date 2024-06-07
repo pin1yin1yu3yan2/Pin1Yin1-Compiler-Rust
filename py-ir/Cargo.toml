@@ -1,10 +1,17 @@
 [package]
 name = "py-ir"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords = ["ir", "compiler", "pinyin"]
+description = "Pin1Yin1 ir implementation"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-py-lex = { path = "../py-lex", default-features = false, features = ["ops"] }
+py-lex = { workspace = true, features = ["ops"] }
 serde = { workspace = true, features = ["serde_derive"] }

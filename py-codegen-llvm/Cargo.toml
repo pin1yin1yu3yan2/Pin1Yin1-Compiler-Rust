@@ -1,10 +1,17 @@
 [package]
 name = "py-codegen-llvm"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords = ["llvm", "codegen", "compiler", "pinyin"]
+description = "llvm codegen backend implementation for Pin1Yin1"
 
 [dependencies]
-py-ir = { path = "../py-ir" }
-py-lex = { path = "../py-lex" }
-pyc = { path = "../pyc" }
-inkwell = { version = "0.4.0", features = ["llvm17-0-prefer-dynamic"] }
+py-ir = { workspace = true }
+py-lex = { workspace = true }
+py-codegen = { workspace = true }
+inkwell = { workspace = true, features = ["llvm17-0-prefer-dynamic"] }

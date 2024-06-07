@@ -1,3 +1,4 @@
+use py_codegen::Backend;
 use py_codegen_llvm::{
     inkwell::{
         execution_engine::{ExecutionEngine, JitFunction},
@@ -6,7 +7,6 @@ use py_codegen_llvm::{
     LLVMBackend,
 };
 use py_ir as ir;
-use pyc::Backend;
 
 fn test_generate_ir(src: &str) -> Vec<ir::Item> {
     let (error_handler, ast) = crate::generate_ast("compiler-test.py1".to_owned(), src.to_owned());

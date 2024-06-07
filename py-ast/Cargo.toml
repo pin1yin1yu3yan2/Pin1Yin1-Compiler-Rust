@@ -1,18 +1,26 @@
 [package]
 name = "py-ast"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+categories.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords = ["ast", "compiler", "pinyin"]
+description = "Pin1Yin1 ast definition and parse for pycc-rs"
+
 
 [dependencies]
-terl = { path = "../terl" }
-py-ir = { path = "../py-ir" }
-py-lex = { path = "../py-lex" }
-py-declare = { path = "../py-declare" }
 either = { workspace = true }
-rayon = { version = "1", optional = true }
+terl = { workspace = true }
+py-ir = { workspace = true }
+py-lex = { workspace = true, default-features = true }
+py-declare = { workspace = true }
+rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
-terl = { path = "../terl", features = ["parser_calling_tree"] }
+terl = { workspace = true, features = ["parser_calling_tree"] }
 
 [features]
 parallel = ["py-declare/parallel", "rayon"]

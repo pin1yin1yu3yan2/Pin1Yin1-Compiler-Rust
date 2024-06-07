@@ -12,7 +12,7 @@ pub struct LLVMBackend {
     context: Context,
 }
 
-impl pyc::Backend for LLVMBackend {
+impl py_codegen::Backend for LLVMBackend {
     type Error = Box<dyn Error>;
     type Config = ();
     type Module<'ctx> = Module<'ctx>;

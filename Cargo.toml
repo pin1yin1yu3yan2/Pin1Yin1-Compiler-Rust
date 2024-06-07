@@ -8,16 +8,60 @@ members = [
     "pycc-rs",
     "py-declare",
     "py-lex",
-    "py-codegen-llvm",
-    "pyc",
+    "py-codegen",
     "py-codegen-c",
+    "py-codegen-llvm",
 ]
+
+
+[workspace.package]
+authors = ["pin1yin1yu3yan2/core"]
+description = "Chinese Phonetic Alphabet based programming language"
+readme = "README.md"
+homepage = "https://github.com/pin1yin1yu3yan2"
+repository = "https://github.com/pin1yin1yu3yan2/Pin1Yin1-Compiler-Rust"
+license = "GPL-3.0"
+keywords = ["language", "parser", "Chinese", "compiler", "pinyin"]
+categories = ["compilers"]
+edition = "2021"
+version = "0.0.1"
 
 
 [workspace.dependencies]
 serde = "1"
 serde_json = "1"
 either = "1"
+rayon = "1"
+colored = "2"
+base32 = "0.5"
+clap = "4.5"
+inkwell = "0.4.0"
+
+
+[workspace.dependencies.terl]
+path = "./terl"
+
+[workspace.dependencies.py-lex]
+path = "./py-lex"
+default-features = false
+
+[workspace.dependencies.py-ir]
+path = "./py-ir"
+
+[workspace.dependencies.py-ast]
+path = "./py-ast"
+
+[workspace.dependencies.py-declare]
+path = "./py-declare"
+
+[workspace.dependencies.py-codegen]
+path = "./py-codegen"
+
+[workspace.dependencies.py-codegen-c]
+path = "./py-codegen-c"
+
+[workspace.dependencies.py-codegen-llvm]
+path = "./py-codegen-llvm"
 
 
 [profile.release]

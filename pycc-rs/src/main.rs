@@ -4,9 +4,9 @@ use std::{error::Error, path::PathBuf, process::exit};
 
 use clap::{Parser, ValueEnum};
 use py_ast::semantic::Generator;
+use py_codegen::Backend;
 use py_ir::Item;
 use py_lex::Token;
-use pyc::Backend;
 use terl::{Buffer, ResultMapperExt, Source};
 
 #[cfg(all(test, feature = "backend-llvm"))]
