@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-linux:
+  ci:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -23,7 +23,8 @@ jobs:
         sudo apt install llvm-17
 
     - name: install nightly rust
-      run : rustup install nightly;
+      run : |
+        rustup install nightly;
         rustup default nightly
 
     - name: Build
@@ -37,46 +38,16 @@ jobs:
       with:
         files: |
           target/release/pycc-rs
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-    - name: install nightly rust
-      run : rustup install nightly;
-        rustup default nightly
-
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
-
-    - name: release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: |
-          target/release/pycc-rs
-    - name: release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: |
-          target/release/pycc-rs.exe
-          
-  publish-crate:
-    needs: [build-linux, build-windows]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-  
+    
     - name: Publish to crates.io
+      if: startsWith(github.ref, 'refs/tags/')
       run: |
-        cd terl;               cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }} 
-        cd ../py-lex;          cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }}
-        cd ../py-ir;           cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }}
-        cd ../py-declare;      cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }}
-        cd ../py-ast;          cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }}
-        cd ../py-codegen;      cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }}
-        cd ../py-codegen-c;    cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }}
-        cd ../py-codegen-llvm; cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }}
-        cd ../pycc-rs;         cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }}
+        cd terl;               cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-lex;          cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-ir;           cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-declare;      cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-ast;          cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-codegen;      cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-codegen-c;    cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-codegen-llvm; cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../pycc-rs;         cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
