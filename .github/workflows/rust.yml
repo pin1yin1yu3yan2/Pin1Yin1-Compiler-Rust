@@ -41,12 +41,12 @@ jobs:
     - name: Publish to crates.io
       if: startsWith(github.ref, 'refs/tags/')
       run: |
-        cd terl;               cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
-        cd ../py-lex;          cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
-        cd ../py-ir;           cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
-        cd ../py-declare;      cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
-        cd ../py-ast;          cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
-        cd ../py-codegen;      cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
-        cd ../py-codegen-c;    cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
-        cd ../py-codegen-llvm; cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
-        cd ../pycc-rs;         cargo publish --dry-run --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd terl;               cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-lex;          cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-ir;           cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-declare;      cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-ast;          cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-codegen;      cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-codegen-c;    cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../py-codegen-llvm; cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
+        cd ../pycc-rs;         cargo publish --token ${{ secrets.CRATES_IO_TOKEN }};
