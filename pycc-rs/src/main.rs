@@ -103,8 +103,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             use py_codegen_c::CBackend;
             let backend = CBackend::init(());
             let module = backend.module(&path, &ir)?;
+            let mut output = output;
 
-            std::fs::write(output, module.text())?;
+            output.set_extension("c");
+            std::fs::write(&output, module.c_file())?;
+
+            output.set_extension("h");
+            std::fs::write(&output, module.h_file())?;
         }
     };
 

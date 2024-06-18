@@ -6,9 +6,17 @@ use std::fmt::Write;
 
 use translate::Translate;
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum Buffer {
+    C,
+    H,
+}
+
 pub struct FileModule {
     name: String,
-    text: String,
+    buffer: Buffer,
+    c_file: String,
+    h_file: String,
     label_idx: usize,
 }
 
@@ -16,9 +24,12 @@ struct Label(String);
 
 impl FileModule {
     pub fn new(name: String) -> Self {
+        const HEADER_FILES: &str = "#include <math.h>\n#include <stdbool.h>\n#include <stdint.h>\n";
         Self {
             name,
-            text: String::from("#include <stdint.h>\n#include <stdbool.h>\n#include <math.h>\n"),
+            buffer: Buffer::C,
+            c_file: String::from(HEADER_FILES),
+            h_file: String::from(HEADER_FILES),
             label_idx: 0,
         }
     }
@@ -31,6 +42,31 @@ impl FileModule {
 
     fn goto(&mut self, label: &Label) -> Result<(), std::fmt::Error> {
         write!(self, "goto {};", label.0)
+    }
+
+    fn swap_to(&mut self, target: Buffer) {
+        if self.buffer != target {
+            std::mem::swap(&mut self.c_file, &mut self.h_file);
+            self.buffer = target;
+        }
+    }
+
+    pub fn write_header_file(
+        &mut self,
+        writer: impl FnOnce(&mut Self) -> std::fmt::Result,
+    ) -> std::fmt::Result {
+        self.swap_to(Buffer::H);
+        writer(self)?;
+        self.swap_to(Buffer::C);
+        Ok(())
+    }
+
+    pub fn write_source_file(
+        &mut self,
+        writer: impl FnOnce(&mut Self) -> std::fmt::Result,
+    ) -> std::fmt::Result {
+        self.swap_to(Buffer::C);
+        writer(self)
     }
 
     fn eol(&mut self) -> Result<(), std::fmt::Error> {
@@ -51,18 +87,25 @@ impl FileModule {
         self.goto(or)
     }
 
+    #[inline]
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    pub fn text(&self) -> &str {
-        &self.text
+    #[inline]
+    pub fn c_file(&self) -> &str {
+        &self.c_file
+    }
+
+    #[inline]
+    pub fn h_file(&self) -> &str {
+        &self.h_file
     }
 }
 
 impl std::fmt::Write for FileModule {
     fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        self.text.write_str(s)
+        self.c_file.write_str(s)
     }
 }
 

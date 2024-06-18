@@ -24,6 +24,7 @@ impl ParseUnit<Token> for Comment {
 
 #[derive(Debug, Clone)]
 pub struct FnDefine {
+    pub export: Option<Span>,
     pub ty: types::TypeDefine,
     pub name: Ident,
     pub params: Parameters,
@@ -36,12 +37,17 @@ impl ParseUnit<Token> for FnDefine {
     type Target = FnDefine;
 
     fn parse(p: &mut Parser<Token>) -> ParseResult<Self, Token> {
+        let export = p
+            .r#match(RPU(Symbol::Export))
+            .apply(mapper::Try)?
+            .map(|pu| pu.get_span());
         let ty = p.parse::<PU<types::TypeDefine>>()?;
         let name = p.parse::<Ident>()?;
         let params = p.parse::<PU<Parameters>>()?;
         let codes = p.parse::<CodeBlock>().apply(mapper::MustMatch)?;
 
         Ok(Self {
+            export,
             retty_span: ty.get_span(),
             sign_span: ty.get_span().merge(params.get_span()),
             ty: ty.take(),

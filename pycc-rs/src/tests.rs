@@ -143,14 +143,14 @@ fn overload_test() {
 }
 
 const BASIC_CONTROL_FLOW: &str = "
-zheng3 fio can1 zheng3 n jie2
+zheng3 fib can1 zheng3 n jie2
 han2
     ruo4 can1 n tong2 0 huo4 n tong2 1 jie2
     han2
         fan3 1 fen1
     jie2 ze2 han2
-        fan3 ya1 n jian3 1 ru4 fio jia1  
-             ya1 n jian3 2 ru4 fio fen1
+        fan3 ya1 n jian3 1 ru4 fib jia1  
+             ya1 n jian3 2 ru4 fib fen1
     jie2
 jie2
 ";

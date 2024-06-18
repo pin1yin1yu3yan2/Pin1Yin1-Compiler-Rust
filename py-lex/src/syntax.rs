@@ -6,26 +6,28 @@ crate::reverse_parse_keywords! {
         "jie2gou4" -> Struct,
     }
     keywords Symbol {
-        "ya1"    -> FnCallL,
-        "ru4"    -> FnCallR,
+        "dao3chu1" -> Export,
 
-        "jie2"   -> BracketL,
-        "he2"    -> BracketR,
+        "ya1"      -> FnCallL,
+        "ru4"      -> FnCallR,
 
-        "zu3"    -> ArrayL,
-        "he2"    -> ArrayR,
+        "jie2"     -> BracketL,
+        "he2"      -> BracketR,
 
-        "han2"   -> Block,
-        "can1"   -> Parameter,
-        "shi4"   -> Comment,
-        "jie2"   -> EndOfBlock,
+        "zu3"      -> ArrayL,
+        "he2"      -> ArrayR,
 
-        "fen1"   -> Semicolon,
-        "wei2"   -> Assign,
-        "de1"    -> GetElement,
-        "biao1"  -> Label,
-        "wen2"   -> Char,
-        "chuan4" -> String,
+        "han2"     -> Block,
+        "can1"     -> Parameter,
+        "shi4"     -> Comment,
+        "jie2"     -> EndOfBlock,
+
+        "fen1"     -> Semicolon,
+        "wei2"     -> Assign,
+        "de1"      -> GetElement,
+        "biao1"    -> Label,
+        "wen2"     -> Char,
+        "chuan4"   -> String,
     }
     keywords ControlFlow {
         "ruo4"      -> If,

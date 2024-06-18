@@ -19,11 +19,24 @@ impl Translate<py_ir::Item<IRValue>> for crate::FileModule {
 }
 impl Translate<py_ir::FnDefine<IRValue>> for crate::FileModule {
     fn translate(&mut self, item: &py_ir::FnDefine<IRValue>) -> std::fmt::Result {
-        self.translate(&item.ty)?;
-        write!(self, " _{}(", encode_base32(&item.name))?;
-        self.translate(&*item.params)?;
-        self.write_char(')')?;
-        self.translate(&item.body)
+        let write_sign = |s: &mut crate::FileModule| {
+            s.translate(&item.ty)?;
+            write!(s, " _{}(", encode_base32(&item.name))?;
+            s.translate(&*item.params)?;
+            s.write_char(')')
+        };
+
+        if item.export {
+            self.write_header_file(|s| {
+                write_sign(s)?;
+                s.eol()
+            })?;
+        }
+
+        self.write_source_file(|s| {
+            write_sign(s)?;
+            s.translate(&item.body)
+        })
     }
 }
 impl Translate<py_ir::Parameter<py_ir::types::TypeDefine>> for crate::FileModule {

@@ -152,6 +152,7 @@ pub struct Parameter<Pty> {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct FnDefine<Var: IRValue> {
+    pub export: bool,
     #[serde(rename = "type")]
     pub ty: Var::FnDefineType,
     pub name: String,

@@ -103,7 +103,9 @@ fn fn_define_task<'d, M: Mangle>(
 
         statement_transmuter.fn_scope.declare_map.declare_all()?;
 
+        let export = fn_define.export.is_some();
         let mir_fn = mir::FnDefine {
+            export,
             ty,
             body,
             params,
@@ -219,57 +221,7 @@ impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
     type Forward = Result<FnDefine, Errors>;
 
     fn generate(&mut self, fn_define: &parse::FnDefine) -> Self::Forward {
-        let ty = fn_define.ty.to_mir_ty().map_err(Either::Left)?;
-
-        let params = fn_define
-            .params
-            .iter()
-            .try_fold(Vec::new(), |mut vec, pu| {
-                let name = pu.name.to_string();
-                let ty = pu.ty.to_mir_ty()?;
-                vec.push(defs::Parameter { name, ty });
-                Result::Ok(vec)
-            })
-            .map_err(Either::Left)?;
-
-        let fn_sign = defs::FnSign::new(
-            ty.clone(),
-            params.clone(),
-            fn_define.retty_span,
-            fn_define.sign_span,
-        );
-
-        let mangled_name = self.regist_fn(fn_define, fn_sign).map_err(Either::Left)?;
-
-        let mut statement_transmuter = {
-            let scopes = BasicScopes::default();
-            let spans = fn_define.params.iter().map(WithSpan::get_span);
-            let fn_scope = FnScope::new(&mangled_name, params.iter(), spans);
-            StatementGenerator::new(&self.defs, fn_scope, scopes)
-        };
-
-        let body = statement_transmuter
-            .generate(&fn_define.codes)
-            .map_err(Either::Left)?;
-        if !body.returned {
-            let reason = format!("function `{}` is never return", fn_define.name);
-            let error = fn_define.sign_span.make_error(reason);
-            return Err(Either::Left(error));
-        }
-
-        statement_transmuter
-            .fn_scope
-            .declare_map
-            .declare_all()
-            .map_err(Either::Right)?;
-
-        let mir_fn = mir::FnDefine {
-            ty,
-            body,
-            params,
-            name: mangled_name,
-        };
-        Ok(mir_fn.into_ir(&statement_transmuter.fn_scope.declare_map))
+        fn_define_task(self, fn_define).map_err(Either::Left)?(self).map_err(Either::Right)
     }
 }
 

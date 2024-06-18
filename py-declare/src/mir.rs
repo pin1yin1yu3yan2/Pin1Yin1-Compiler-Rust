@@ -178,6 +178,7 @@ mod into_ir_impls {
 
         fn into_ir(self, map: &DeclareGraph) -> Self::Forward {
             FnDefine {
+                export: self.export,
                 ty: self.ty,
                 name: self.name,
                 params: self.params,
