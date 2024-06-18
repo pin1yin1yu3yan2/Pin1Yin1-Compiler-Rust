@@ -160,7 +160,7 @@ fn control_flow_test() {
     compile_tester(BASIC_CONTROL_FLOW, |ee| unsafe {
         type Fio = unsafe extern "C" fn(i64) -> i64;
 
-        let py_fio: JitFunction<Fio> = ee.get_function("fio 参 i64 结").unwrap();
+        let py_fio: JitFunction<Fio> = ee.get_function("fib 参 i64 结").unwrap();
 
         fn native_fio(n: i64) -> i64 {
             match n {
