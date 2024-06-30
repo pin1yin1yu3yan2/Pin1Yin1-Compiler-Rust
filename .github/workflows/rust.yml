@@ -18,7 +18,7 @@ jobs:
         wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -;
         sudo add-apt-repository "deb https://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-17 main";
         sudo apt update;
-        sudo apt install llvm-17
+         sudo apt install llvm-17 llvm-17-dev libpolly-17-dev;
 
     - name: install nightly rust
       run : |
