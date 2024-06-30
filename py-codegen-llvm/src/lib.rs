@@ -2,11 +2,6 @@ mod codegen;
 mod operators;
 mod scope;
 
-#[cfg(not(any(feature = "llvm-dynamic", feature = "llvm-static")))]
-compile_error!("
-    to compile `py-codegen-llvm`, you should enable either `llvm-dynamic` or `llvm-static` feature flag.
-");
-
 use std::error::Error;
 
 use codegen::CodeGen;
