@@ -21,12 +21,12 @@ py-ir = { workspace = true }
 py-lex = { workspace = true }
 py-ast = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
-py-codegen-llvm = { workspace = true, optional = true }
+py-codegen-llvm = { workspace = true, default-features = false, optional = true }
 py-codegen-c = { workspace = true, optional = true }
 
 [features]
 default = ["backend-llvm-static", "backend-c", "parallel-declare"]
 backend-c = ["py-codegen-c"]
 parallel-declare = ["py-ast/parallel"]
-backend-llvm-dynamic = ["py-codegen-llvm/llvm-dynamic"]
 backend-llvm-static = ["py-codegen-llvm/llvm-static"]
+backend-llvm-dynamic = ["py-codegen-llvm/llvm-dynamic"]

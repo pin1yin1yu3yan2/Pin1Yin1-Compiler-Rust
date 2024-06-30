@@ -70,6 +70,7 @@ path = "./py-codegen-c"
 [workspace.dependencies.py-codegen-llvm]
 version = "0.0.3"
 path = "./py-codegen-llvm"
+default-features = false
 
 
 [profile.release]

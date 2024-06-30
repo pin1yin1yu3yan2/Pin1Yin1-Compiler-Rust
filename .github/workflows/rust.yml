@@ -13,7 +13,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: install llvm
+    - name: install llvm17
       run: 
         wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -;
         sudo add-apt-repository "deb https://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-17 main";
@@ -88,11 +88,11 @@ jobs:
     - name: Build
       run: |
         cargo build -p pycc-rs --release --no-default-features --features=backend-c,parallel-declare --verbose;
-        mv target/release/pycc-rs target/release/pycc-rs-linux-backend-c;
+        mv target/release/pycc-rs target/release/pycc-rs-macos-backend-c;
         cargo build -p pycc-rs --release --no-default-features --features=backend-llvm-static,backend-c,parallel-declare --verbose;
-        mv target/release/pycc-rs target/release/pycc-rs-linux-backend-llvm-static;
+        mv target/release/pycc-rs target/release/pycc-rs-macos-backend-llvm-static;
         cargo build -p pycc-rs --release --no-default-features --features=backend-llvm-dynamic,backend-c,parallel-declare --verbose;
-        mv target/release/pycc-rs target/release/pycc-rs-linux-backend-llvm-dynamic;
+        mv target/release/pycc-rs target/release/pycc-rs-macos-backend-llvm-dynamic;
   
     - name: release
       uses: softprops/action-gh-release@v1
