@@ -9,7 +9,7 @@ use terl::*;
 
 py_ir::custom_ir_variable!(pub IR<py_ir::value::Value>);
 
-pub trait Generator<Item: ?Sized> {
+pub trait Generate<Item: ?Sized> {
     type Forward;
 
     fn generate(&mut self, item: &Item) -> Self::Forward;
@@ -19,13 +19,20 @@ type Errors = Either<Error, Vec<Error>>;
 
 type ItemsGenerateResult = Result<Vec<Item>, Either<Vec<Error>, Vec<Vec<Error>>>>;
 
-struct FallibleResults<T, E> {
+#[derive(Debug, Clone)]
+struct Results<T, E> {
     inner: Result<Vec<T>, Vec<E>>,
 }
 
-impl<T, E> FallibleResults<T, E> {
-    fn new() -> Self {
+impl<T, E> Default for Results<T, E> {
+    fn default() -> Self {
         Self { inner: Ok(vec![]) }
+    }
+}
+
+impl<T, E> Results<T, E> {
+    fn new() -> Self {
+        Self::default()
     }
 
     fn add_ok(&mut self, item: T) -> Result<(), T> {
@@ -54,6 +61,28 @@ impl<T, E> FallibleResults<T, E> {
 
     fn take(self) -> Result<Vec<T>, Vec<E>> {
         self.inner
+    }
+}
+
+impl<T, E> Extend<Result<T, E>> for Results<T, E> {
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = Result<T, E>>,
+    {
+        for item in iter {
+            self.add_result(item);
+        }
+    }
+}
+
+impl<T, E> FromIterator<Result<T, E>> for Results<T, E> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Result<T, E>>,
+    {
+        let mut results = Self::new();
+        results.extend(iter);
+        results
     }
 }
 
@@ -118,52 +147,52 @@ fn fn_define_task<'d, M: Mangle>(
 #[cfg(feature = "parallel")]
 mod parallel {
     use super::*;
+    use rayon::prelude::*;
 
-    impl<M: Mangle> Generator<[parse::Item]> for Defines<M> {
-        type Forward = ItemsGenerateResult;
-
-        fn generate(&mut self, items: &[parse::Item]) -> Self::Forward {
-            let mut tasks = FallibleResults::new();
-            for item in items {
-                let next = match item {
-                    parse::Item::FnDefine(fn_define) => fn_define,
-                    parse::Item::Comment(_) => continue,
-                };
-                match fn_define_task(self, next).map(Box::new) {
-                    Ok(task) => {
-                        let _ = tasks.add_ok(task);
-                    }
-                    Err(err) => {
-                        tasks.add_err(err);
-                    }
-                };
-            }
-
-            use rayon::prelude::*;
-
+    impl<T, E> FromParallelIterator<Result<T, E>> for Results<T, E>
+    where
+        T: Send + 'static,
+        E: Send + 'static,
+    {
+        fn from_par_iter<I>(iter: I) -> Self
+        where
+            I: IntoParallelIterator<Item = Result<T, E>>,
+        {
             let (result_s, result_r) = std::sync::mpsc::channel();
-
             let state = std::thread::spawn(move || {
-                let mut items = FallibleResults::new();
-
+                let mut items = Self::new();
                 while let Ok(result) = result_r.recv() {
                     items.add_result(result);
                 }
-                items.take()
+                items
             });
+            iter.into_par_iter()
+                .for_each_with(result_s, |sender, item| {
+                    sender.send(item).unwrap();
+                });
+            state.join().unwrap()
+        }
+    }
 
-            tasks
+    impl<M: Mangle> Generate<[parse::Item]> for Defines<M> {
+        type Forward = ItemsGenerateResult;
+
+        fn generate(&mut self, items: &[parse::Item]) -> Self::Forward {
+            items
+                .iter()
+                .filter_map(|item| match item {
+                    parse::Item::FnDefine(fn_define) => Some(fn_define),
+                    parse::Item::Comment(_) => None,
+                })
+                .map(|fn_define| fn_define_task(self, fn_define).map(Box::new))
+                .collect::<Results<_, _>>()
                 .take()
                 .map_err(Either::Left)?
                 .into_par_iter()
-                .map(|task| (task, result_s.clone()))
-                .for_each(|(task, result_s)| {
-                    _ = result_s.send(task(self).map(Into::into));
-                });
-            // drop them, or collection thread will never return
-            drop(result_s);
-
-            state.join().unwrap().map_err(Either::Right)
+                .map(|task| task(self).map(Into::into))
+                .collect::<Results<_, _>>()
+                .take()
+                .map_err(Either::Right)
         }
     }
 }
@@ -171,42 +200,30 @@ mod parallel {
 #[cfg(not(feature = "parallel"))]
 mod normal {
     use super::*;
-    impl<M: Mangle> Generator<[parse::Item]> for Defines<M> {
+    impl<M: Mangle> Generate<[parse::Item]> for Defines<M> {
         type Forward = ItemsGenerateResult;
 
         fn generate(&mut self, items: &[parse::Item]) -> Self::Forward {
-            let tasks = items
+            items
                 .iter()
-                .fold(FallibleResults::new(), |mut result, item| {
-                    match item {
-                        parse::Item::FnDefine(fn_define) => {
-                            result.add_result(fn_define_task(self, fn_define))
-                        }
-                        parse::Item::Comment(_) => {}
-                    };
-                    result
+                .filter_map(|item| match item {
+                    parse::Item::FnDefine(fn_define) => Some(fn_define),
+                    parse::Item::Comment(_) => None,
                 })
+                .map(|fn_define| fn_define_task(self, fn_define).map(Box::new))
+                .collect::<Results<_, _>>()
                 .take()
-                .map_err(Either::Left)?;
-
-            let mut state = FallibleResults::new();
-            for task in tasks {
-                match task(self) {
-                    Ok(fn_define) => {
-                        _ = state.add_ok(py_ir::Item::from(fn_define));
-                    }
-                    Err(err) => {
-                        state.add_err(err);
-                    }
-                };
-            }
-
-            state.take().map_err(Either::Right)
+                .map_err(Either::Left)?
+                .into_iter()
+                .map(|task| task(self).map(Into::into))
+                .collect::<Results<_, _>>()
+                .take()
+                .map_err(Either::Right)
         }
     }
 }
 
-impl<M: Mangle> Generator<parse::Item> for Defines<M> {
+impl<M: Mangle> Generate<parse::Item> for Defines<M> {
     type Forward = Result<Option<Item>, Errors>;
 
     fn generate(&mut self, item: &parse::Item) -> Self::Forward {
@@ -217,7 +234,7 @@ impl<M: Mangle> Generator<parse::Item> for Defines<M> {
     }
 }
 
-impl<M: Mangle> Generator<parse::FnDefine> for Defines<M> {
+impl<M: Mangle> Generate<parse::FnDefine> for Defines<M> {
     type Forward = Result<FnDefine, Errors>;
 
     fn generate(&mut self, fn_define: &parse::FnDefine) -> Self::Forward {
@@ -308,7 +325,7 @@ impl<'w> StatementGenerator<'w> {
     }
 }
 
-impl Generator<parse::Statement> for StatementGenerator<'_> {
+impl Generate<parse::Statement> for StatementGenerator<'_> {
     type Forward = Result<Option<mir::Statement>>;
 
     fn generate(&mut self, stmt: &parse::Statement) -> Self::Forward {
@@ -360,7 +377,7 @@ impl From<mir::Undeclared<mir::Value>> for ValueHandle {
     }
 }
 
-impl Generator<parse::FnCall> for StatementGenerator<'_> {
+impl Generate<parse::FnCall> for StatementGenerator<'_> {
     type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, fn_call: &parse::FnCall) -> Self::Forward {
@@ -410,7 +427,7 @@ impl Generator<parse::FnCall> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::VarStore> for StatementGenerator<'_> {
+impl Generate<parse::VarStore> for StatementGenerator<'_> {
     type Forward = Result<mir::VarStore>;
 
     fn generate(&mut self, var_store: &parse::VarStore) -> Self::Forward {
@@ -434,7 +451,7 @@ impl Generator<parse::VarStore> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::VarDefine> for StatementGenerator<'_> {
+impl Generate<parse::VarDefine> for StatementGenerator<'_> {
     type Forward = Result<Option<mir::VarDefine>>;
 
     fn generate(&mut self, var_define: &parse::VarDefine) -> Self::Forward {
@@ -472,7 +489,7 @@ impl Generator<parse::VarDefine> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::If> for StatementGenerator<'_> {
+impl Generate<parse::If> for StatementGenerator<'_> {
     type Forward = Result<mir::If>;
 
     fn generate(&mut self, if_: &parse::If) -> Self::Forward {
@@ -491,7 +508,7 @@ impl Generator<parse::If> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::While> for StatementGenerator<'_> {
+impl Generate<parse::While> for StatementGenerator<'_> {
     type Forward = Result<mir::While>;
 
     fn generate(&mut self, while_: &parse::While) -> Self::Forward {
@@ -501,7 +518,7 @@ impl Generator<parse::While> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::IfBranch> for StatementGenerator<'_> {
+impl Generate<parse::IfBranch> for StatementGenerator<'_> {
     type Forward = Result<mir::IfBranch>;
 
     fn generate(&mut self, branch: &parse::IfBranch) -> Self::Forward {
@@ -511,7 +528,7 @@ impl Generator<parse::IfBranch> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::Return> for StatementGenerator<'_> {
+impl Generate<parse::Return> for StatementGenerator<'_> {
     type Forward = Result<mir::Return>;
 
     fn generate(&mut self, ret: &parse::Return) -> Self::Forward {
@@ -530,7 +547,7 @@ impl Generator<parse::Return> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::CodeBlock> for StatementGenerator<'_> {
+impl Generate<parse::CodeBlock> for StatementGenerator<'_> {
     type Forward = Result<mir::Statements>;
 
     fn generate(&mut self, item: &parse::CodeBlock) -> Self::Forward {
@@ -546,7 +563,7 @@ impl Generator<parse::CodeBlock> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::Conditions> for StatementGenerator<'_> {
+impl Generate<parse::Conditions> for StatementGenerator<'_> {
     type Forward = Result<mir::Condition>;
 
     fn generate(&mut self, conds: &parse::Conditions) -> Self::Forward {
@@ -568,7 +585,7 @@ impl Generator<parse::Conditions> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<parse::Expr> for StatementGenerator<'_> {
+impl Generate<parse::Expr> for StatementGenerator<'_> {
     type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, expr: &parse::Expr) -> Self::Forward {
@@ -616,7 +633,7 @@ impl Generator<parse::Expr> for StatementGenerator<'_> {
     }
 }
 
-impl Generator<PU<parse::AtomicExpr>> for StatementGenerator<'_> {
+impl Generate<PU<parse::AtomicExpr>> for StatementGenerator<'_> {
     type Forward = Result<ValueHandle>;
 
     fn generate(&mut self, atomic: &PU<parse::AtomicExpr>) -> Self::Forward {
