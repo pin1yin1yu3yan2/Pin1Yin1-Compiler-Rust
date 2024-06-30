@@ -14,4 +14,8 @@ description = "llvm codegen backend implementation for Pin1Yin1"
 py-ir = { workspace = true }
 py-lex = { workspace = true }
 py-codegen = { workspace = true }
-inkwell = { workspace = true, features = ["llvm17-0-prefer-dynamic"] }
+inkwell = { workspace = true }
+
+[features]
+llvm-dynamic = ["inkwell/llvm17-0-prefer-dynamic"]
+llvm-static = ["inkwell/llvm17-0-prefer-static"]

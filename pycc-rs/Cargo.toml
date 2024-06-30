@@ -25,8 +25,8 @@ py-codegen-llvm = { workspace = true, optional = true }
 py-codegen-c = { workspace = true, optional = true }
 
 [features]
-
-default = ["backend-llvm", "backend-c", "parallel-declare"]
-backend-llvm = ["py-codegen-llvm"]
+default = ["backend-llvm-static", "backend-c", "parallel-declare"]
 backend-c = ["py-codegen-c"]
 parallel-declare = ["py-ast/parallel"]
+backend-llvm-dynamic = ["py-codegen-llvm/llvm-dynamic"]
+backend-llvm-static = ["py-codegen-llvm/llvm-static"]
