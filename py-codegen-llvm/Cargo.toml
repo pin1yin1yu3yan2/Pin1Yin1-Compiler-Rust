@@ -17,4 +17,4 @@ py-codegen = { workspace = true }
 inkwell = { workspace = true }
 
 [features]
-default-inkwell = ["inkwell/llvm18-0-prefer-dynamic"]
+default = ["inkwell/llvm18-0-prefer-dynamic"]

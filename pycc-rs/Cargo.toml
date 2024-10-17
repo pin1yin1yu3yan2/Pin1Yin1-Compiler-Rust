@@ -29,7 +29,7 @@ default = [
     "backend-c",
     "parallel-declare",
     "backend-llvm",
-    "py-codegen-llvm/default-inkwell",
+    "py-codegen-llvm/default",
 ]
 backend-c = ["dep:py-codegen-c"]
 parallel-declare = ["py-ast/parallel"]

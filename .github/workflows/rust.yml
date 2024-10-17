@@ -13,12 +13,12 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: install llvm17
+    - name: install llvm18
       run: 
         wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -;
-        sudo add-apt-repository "deb https://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-17 main";
+        sudo add-apt-repository "deb https://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-18 main";
         sudo apt update;
-         sudo apt install llvm-17 llvm-17-dev libpolly-17-dev;
+         sudo apt install llvm-18 llvm-18-dev libpolly-18-dev;
 
     - name: install nightly rust
       run : |
@@ -32,9 +32,9 @@ jobs:
       run: |
         cargo build -p pycc-rs --release --no-default-features --features=backend-c,parallel-declare --verbose;
         mv target/release/pycc-rs target/release/pycc-rs-linux-backend-c;
-        cargo build -p pycc-rs --release --no-default-features --features=backend-llvm-static,backend-c,parallel-declare --verbose;
+        cargo build -p pycc-rs --release --no-default-features --features=backend-llvm,backend-c,parallel-declare,inkwell/llvm18-0-force-static --verbose;
         mv target/release/pycc-rs target/release/pycc-rs-linux-backend-llvm-static;
-        cargo build -p pycc-rs --release --no-default-features --features=backend-llvm-dynamic,backend-c,parallel-declare --verbose;
+        cargo build -p pycc-rs --release --no-default-features --features=backend-llvm,backend-c,parallel-declare,inkwell/llvm18-0-force-static --verbose;
         mv target/release/pycc-rs target/release/pycc-rs-linux-backend-llvm-dynamic;
         
 
@@ -64,14 +64,14 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: install llvm17
+    - name: install llvm18
       run: |
-        brew install llvm@17;
-        echo "$(brew --prefix llvm@17)/bin:$PATH"   >> $GITHUB_PATH;
-        echo LDFLAGS="-L$(brew --prefix llvm@17)/lib"       >> $GITHUB_ENV;
-        echo CPPFLAGS="-I$(brew --prefix llvm@17)/include"  >> $GITHUB_ENV;
-        echo CC="$(brew --prefix llvm@17)/bin/clang"        >> $GITHUB_ENV;
-        echo CXX="$(brew --prefix llvm@17)/bin/clang++"     >> $GITHUB_ENV;
+        brew install llvm@18;
+        echo "$(brew --prefix llvm@18)/bin:$PATH"   >> $GITHUB_PATH;
+        echo LDFLAGS="-L$(brew --prefix llvm@18)/lib"       >> $GITHUB_ENV;
+        echo CPPFLAGS="-I$(brew --prefix llvm@18)/include"  >> $GITHUB_ENV;
+        echo CC="$(brew --prefix llvm@18)/bin/clang"        >> $GITHUB_ENV;
+        echo CXX="$(brew --prefix llvm@18)/bin/clang++"     >> $GITHUB_ENV;
         echo LDFLAGS="-L$(brew --prefix zstd)/lib"          >> $GITHUB_ENV;
         echo CPPFLAGS="-I$(brew --prefix zstd)/include"     >> $GITHUB_ENV;
         echo LIBRARY_PATH="$(brew --prefix zstd)/lib"       >> $GITHUB_ENV;
@@ -90,9 +90,9 @@ jobs:
       run: |
         cargo build -p pycc-rs --release --no-default-features --features=backend-c,parallel-declare --verbose;
         mv target/release/pycc-rs target/release/pycc-rs-macos-backend-c;
-        cargo build -p pycc-rs --release --no-default-features --features=backend-llvm-static,backend-c,parallel-declare --verbose;
+        cargo build -p pycc-rs --release --no-default-features --features=backend-llvm,backend-c,parallel-declare,inkwell/llvm18-0-force-static --verbose;
         mv target/release/pycc-rs target/release/pycc-rs-macos-backend-llvm-static;
-        cargo build -p pycc-rs --release --no-default-features --features=backend-llvm-dynamic,backend-c,parallel-declare --verbose;
+        cargo build -p pycc-rs --release --no-default-features --features=backend-llvm,backend-c,parallel-declare,inkwell/llvm18-0-force-static --verbose;
         mv target/release/pycc-rs target/release/pycc-rs-macos-backend-llvm-dynamic;
   
     - name: release

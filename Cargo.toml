@@ -59,11 +59,11 @@ version = "0.0.4"
 path = "./py-declare"
 
 [workspace.dependencies.py-codegen]
-version = "0.0.3"
+version = "0.0.4"
 path = "./py-codegen"
 
 [workspace.dependencies.py-codegen-c]
-version = "0.0.3"
+version = "0.0.4"
 path = "./py-codegen-c"
 
 [workspace.dependencies.py-codegen-llvm]
