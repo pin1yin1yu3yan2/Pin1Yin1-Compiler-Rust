@@ -1,6 +1,6 @@
 [package]
 name = "pycc-rs"
-version.workspace = true
+version = "0.0.4"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -25,8 +25,12 @@ py-codegen-llvm = { workspace = true, default-features = false, optional = true 
 py-codegen-c = { workspace = true, optional = true }
 
 [features]
-default = ["backend-llvm-static", "backend-c", "parallel-declare"]
-backend-c = ["py-codegen-c"]
+default = [
+    "backend-c",
+    "parallel-declare",
+    "backend-llvm",
+    "py-codegen-llvm/default-inkwell",
+]
+backend-c = ["dep:py-codegen-c"]
 parallel-declare = ["py-ast/parallel"]
-backend-llvm-static = ["py-codegen-llvm/llvm-static"]
-backend-llvm-dynamic = ["py-codegen-llvm/llvm-dynamic"]
+backend-llvm = ["dep:py-codegen-llvm"]

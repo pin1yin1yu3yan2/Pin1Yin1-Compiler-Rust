@@ -25,7 +25,7 @@ impl<'ctx> Defines<'ctx> {
     }
 }
 
-impl<'ctx> Default for Defines<'ctx> {
+impl Default for Defines<'_> {
     fn default() -> Self {
         Self::new()
     }

@@ -87,7 +87,7 @@ impl<M: Mangle> Mangler<M> {
         }
     }
 
-    fn mangle_unit<'m>(&'m self, item: MangleItem<'m>) -> MangleUnit {
+    fn mangle_unit<'m>(&'m self, item: MangleItem<'m>) -> MangleUnit<'m> {
         MangleUnit {
             prefix: Cow::Borrowed(&self.prefix),
             item,

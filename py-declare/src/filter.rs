@@ -112,7 +112,7 @@ pub mod filters {
         }
     }
 
-    impl<'n> WithSpan for FnParamLen<'n> {
+    impl WithSpan for FnParamLen<'_> {
         fn get_span(&self) -> Span {
             self.at
         }
@@ -157,13 +157,13 @@ pub mod filters {
         }
     }
 
-    impl<'t> WithSpan for NthParamTyEqual<'t> {
+    impl WithSpan for NthParamTyEqual<'_> {
         fn get_span(&self) -> Span {
             self.at
         }
     }
 
-    impl<'t> BranchFilter<Overload> for NthParamTyEqual<'t> {
+    impl BranchFilter<Overload> for NthParamTyEqual<'_> {
         fn satisfy(&self, ty: &Type) -> bool {
             ty.overload()
                 .params

@@ -84,7 +84,7 @@ mod serde_type_decorators {
     use super::*;
     struct Visitor;
 
-    impl<'de> serde::de::Visitor<'de> for Visitor {
+    impl serde::de::Visitor<'_> for Visitor {
         type Value = TypeDecorators;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

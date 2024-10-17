@@ -24,7 +24,6 @@ license = "GPL-3.0"
 keywords = ["language", "parser", "Chinese", "compiler", "pinyin"]
 categories = ["compilers"]
 edition = "2021"
-version = "0.0.3"
 
 
 [workspace.dependencies]
@@ -35,7 +34,7 @@ rayon = "1"
 colored = "2"
 base32 = "0.5"
 clap = "4.5"
-inkwell = "0.4.0"
+inkwell = "0.5.0"
 
 
 [workspace.dependencies.terl]
@@ -48,15 +47,15 @@ path = "./py-lex"
 default-features = false
 
 [workspace.dependencies.py-ir]
-version = "0.0.3"
+version = "0.0.4"
 path = "./py-ir"
 
 [workspace.dependencies.py-ast]
-version = "0.0.3"
+version = "0.0.4"
 path = "./py-ast"
 
 [workspace.dependencies.py-declare]
-version = "0.0.3"
+version = "0.0.4"
 path = "./py-declare"
 
 [workspace.dependencies.py-codegen]
@@ -68,7 +67,7 @@ version = "0.0.3"
 path = "./py-codegen-c"
 
 [workspace.dependencies.py-codegen-llvm]
-version = "0.0.3"
+version = "0.0.4"
 path = "./py-codegen-llvm"
 default-features = false
 

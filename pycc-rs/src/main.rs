@@ -9,27 +9,20 @@ use py_ir::Item;
 use py_lex::Token;
 use terl::{Buffer, ResultMapperExt, Source};
 
-#[cfg(all(
-    test,
-    any(feature = "backend-llvm-dynamic", feature = "backend-llvm-static")
-))]
+#[cfg(all(test, feature = "backend-llvm"))]
 mod tests;
 
-#[cfg(any(
-    feature = "backend-llvm-dynamic",
-    feature = "backend-llvm-static",
-    feature = "backend-c"
-))]
+#[cfg(any(feature = "backend-llvm", feature = "backend-c"))]
 #[derive(ValueEnum, Clone, Copy)]
 enum CodeGenBackend {
-    #[cfg(any(feature = "backend-llvm-dynamic", feature = "backend-llvm-static"))]
+    #[cfg(feature = "backend-llvm")]
     #[allow(clippy::upper_case_acronyms)]
     LLVM,
     #[cfg(feature = "backend-c")]
     C,
 }
 
-#[cfg(any(feature = "backend-llvm-dynamic", feature = "backend-llvm-static"))]
+#[cfg(feature = "backend-llvm")]
 #[derive(ValueEnum, Clone, Copy)]
 enum LLVMOutputMode {
     Text,
@@ -55,23 +48,19 @@ struct Cli {
     output_ast: Option<PathBuf>,
     #[arg(long, help = "path for py-ir output file")]
     output_ir: Option<PathBuf>,
-    #[cfg(any(feature = "backend-llvm-dynamic", feature = "backend-llvm-static"))]
+    #[cfg(feature = "backend-llvm")]
     #[arg(short = 'm', long, value_enum, default_value_t = LLVMOutputMode::Bitcode, help = "llvm ir output mode",)]
     output_mode: LLVMOutputMode,
     // #[cfg(feature = "backend-llvm")]
     // #[arg(short = 'O', long = "opt", value_enum, default_value_t = LLVMOptimizeLevel::O1, help = "llvm ir optimize level",)]
     // optimize_level: LLVMOptimizeLevel,
-    #[cfg(any(
-        feature = "backend-llvm-dynamic",
-        feature = "backend-llvm-static",
-        feature = "backend-c"
-    ))]
+    #[cfg(any(feature = "backend-llvm", feature = "backend-c"))]
     #[cfg_attr(
-        any(feature = "backend-llvm-dynamic", feature = "backend-llvm-static"), 
+        feature = "backend-llvm",
         arg(short = 'b', long, value_enum, default_value_t = CodeGenBackend::LLVM, help = "code generation backend")
     )]
     #[cfg_attr(
-        not(any(feature = "backend-llvm-dynamic", feature = "backend-llvm-static")),
+        feature = "backend-c",
         arg(short = 'b', long, value_enum, default_value_t = CodeGenBackend::C, help = "code generation backend")
     )]
     backend: CodeGenBackend,
@@ -99,13 +88,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let output = cli.output.unwrap_or_else(|| PathBuf::from("a.out"));
-    #[cfg(any(
-        feature = "backend-llvm-dynamic",
-        feature = "backend-llvm-static",
-        feature = "backend-c"
-    ))]
+    #[cfg(any(feature = "backend-llvm", feature = "backend-c"))]
     match cli.backend {
-        #[cfg(any(feature = "backend-llvm-dynamic", feature = "backend-llvm-static"))]
+        #[cfg(feature = "backend-llvm")]
         CodeGenBackend::LLVM => {
             use py_codegen_llvm::LLVMBackend;
             let backend = LLVMBackend::init(());

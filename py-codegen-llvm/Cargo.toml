@@ -1,6 +1,6 @@
 [package]
 name = "py-codegen-llvm"
-version.workspace = true
+version = "0.0.4"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -17,6 +17,4 @@ py-codegen = { workspace = true }
 inkwell = { workspace = true }
 
 [features]
-default = ["inkwell/llvm17-0"]
-llvm-static = ["inkwell/llvm17-0-force-static"]
-llvm-dynamic = ["inkwell/llvm17-0-force-dynamic"]
+default-inkwell = ["inkwell/llvm18-0-prefer-dynamic"]

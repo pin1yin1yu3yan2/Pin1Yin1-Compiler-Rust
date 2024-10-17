@@ -251,7 +251,7 @@ struct StatementGenerator<'w> {
 
 struct VarDeineLoc(usize);
 
-impl<'w> StatementGenerator<'w> {
+impl StatementGenerator<'_> {
     fn new(defs: &Defs, fn_scope: FnScope, scopes: BasicScopes) -> StatementGenerator<'_> {
         StatementGenerator {
             defs,

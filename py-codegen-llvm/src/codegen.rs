@@ -101,7 +101,7 @@ struct FnGen<'mg, 'ctx> {
     fn_scope: FnScope<'ctx>,
 }
 
-impl<'mg, 'ctx> FnGen<'mg, 'ctx> {
+impl<'ctx> FnGen<'_, 'ctx> {
     fn type_cast(&self, ty: &ir_types::TypeDefine) -> BasicTypeEnum<'ctx> {
         type_scast(self.context, ty)
     }
@@ -139,7 +139,7 @@ impl<'ctx> std::ops::Deref for FnGen<'_, 'ctx> {
     }
 }
 
-impl<'ctx> std::ops::DerefMut for FnGen<'_, 'ctx> {
+impl std::ops::DerefMut for FnGen<'_, '_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.defines
     }
