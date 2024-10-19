@@ -2,7 +2,6 @@
 resolver = "2"
 
 members = [
-    "terl",
     "py-ir",
     "py-ast",
     "pycc-rs",
@@ -39,7 +38,6 @@ inkwell = "0.5.0"
 
 [workspace.dependencies.terl]
 version = "0.0.3"
-path = "./terl"
 
 [workspace.dependencies.py-lex]
 version = "0.0.3"
